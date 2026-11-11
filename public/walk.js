@@ -9,6 +9,7 @@ import {WISH_FLIGHT_MS} from "./wish-art.js";
 import {isInsideMuseum,museumBounds,museumGalleries,museumGalleryAt,museumHall} from "./visit-layout.js";
 import {museumExhibits} from "./museum-catalog.js";
 import {nearbyPalaceGuide} from "./palace-guide.js";
+import {bindSceneTouch} from "./scene-touch.js";
 
 const $=id=>document.getElementById(id);
 const token=()=>Array.from(crypto.getRandomValues(new Uint8Array(16)),byte=>byte.toString(16).padStart(2,"0")).join("");
@@ -36,7 +37,7 @@ let session=null,active=true,joining=false,lastPost=0,lastWishSynced=0,dirty=tru
 let syncTimer,syncDue=Infinity,syncInFlight=null,syncStarted=-Infinity,syncFailures=0;
 let links=[],queuedSignal=null,queuedHand=null,queuedFeed=null,queuedChat=null,toastTimer;
 let lastChatAt=0;
-let course=[],pendingSeat=null,seatClaim=null,thumb=[0,0],thumbId,orbit=null;
+let course=[],pendingSeat=null,seatClaim=null,thumb=[0,0],thumbId,manualInputAt=-Infinity;
 let clockOffset=null,roundTrip=65;
 let runToggled=false,shiftHeld=false;
 const keys=new Set();
@@ -651,6 +652,7 @@ document.querySelectorAll("dialog .close").forEach(button=>button.addEventListen
 $("model-credits").addEventListener("click",()=>$("credits-dialog").showModal());
 window.addEventListener("pagehide",()=>{active=false;clearSyncTimer();leaveBeacon();});
 document.addEventListener("visibilitychange",()=>{
+  if(document.hidden)clearManualInput();
   clearSyncTimer();scheduleSync(document.hidden?1150:0);
 });
 window.addEventListener("online",()=>{if(!document.hidden)scheduleSync(0);});
@@ -739,6 +741,7 @@ for(const [id,destination] of Object.entries(mapDestinations))$(id).addEventList
 
 const joystick=$("joystick");
 function beginManualMove(){
+  manualInputAt=performance.now();
   course=[];pendingSeat=seatClaim=null;
 }
 function moveThumb(event){
@@ -754,19 +757,22 @@ function moveThumb(event){
 joystick.addEventListener("pointerdown",event=>{
   event.stopPropagation();
   if(event.button!==0||thumbId!==undefined||amFollowingHands())return;
+  event.preventDefault();
   thumbId=event.pointerId;beginManualMove();
   $("game").focus({preventScroll:true});
   joystick.setPointerCapture(thumbId);moveThumb(event);
 });
 joystick.addEventListener("pointermove",event=>{if(event.pointerId===thumbId)moveThumb(event);});
 function releaseThumb(){
+  const id=thumbId;
   thumbId=undefined;thumb=[0,0];
   joystick.style.setProperty("--jx","0px");joystick.style.setProperty("--jy","0px");
+  if(id!==undefined&&joystick.hasPointerCapture(id))joystick.releasePointerCapture(id);
 }
 for(const type of ["pointerup","pointercancel","lostpointercapture"]){
   joystick.addEventListener(type,event=>{if(event.pointerId===thumbId)releaseThumb();});
 }
-function clearManualInput(){keys.clear();shiftHeld=false;orbit=null;releaseThumb();}
+function clearManualInput(){keys.clear();shiftHeld=false;releaseThumb();clearSceneTouch();}
 function resetInput(){clearManualInput();course=[];pendingSeat=seatClaim=null;}
 window.addEventListener("blur",clearManualInput);
 window.addEventListener("keydown",event=>{
@@ -809,34 +815,21 @@ $("world").addEventListener("click",event=>{
   const point=new DOMPoint(event.clientX,event.clientY).matrixTransform($("world").getScreenCTM().inverse());
   walkTo(point);setMap(false);
 });
-$("game").addEventListener("pointerdown",event=>{
-  if(orbit||(event.button!==0&&event.button!==2)||event.target.closest("button,#joystick,.emote-menu"))return;
-  setEmotes(false);$("game").focus({preventScroll:true});
-  orbit={x:event.clientX,y:event.clientY,id:event.pointerId,dragged:false,tap:event.button===0&&thumbId===undefined&&!keys.size};
-  $("game").setPointerCapture(event.pointerId);
-});
-$("game").addEventListener("pointermove",event=>{
-  if(!orbit||orbit.id!==event.pointerId)return;
-  if(!orbit.dragged&&Math.hypot(event.clientX-orbit.x,event.clientY-orbit.y)<8)return;
-  ownView={...ownView,pan:normalize(ownView.pan+(event.clientX-orbit.x)*.34),
-    tilt:Math.max(firstPerson?-72:-24,Math.min(firstPerson?65:48,ownView.tilt+(event.clientY-orbit.y)*.26))};
-  Object.assign(orbit,{x:event.clientX,y:event.clientY,dragged:true});dirty=true;
-});
-$("game").addEventListener("pointerup",event=>{
-  if(!orbit||orbit.id!==event.pointerId)return;
-  if(orbit.tap&&!orbit.dragged&&!keys.size&&thumbId===undefined){
-    const target=world?.pick(event.clientX,event.clientY);
+const clearSceneTouch=bindSceneTouch($("game"),gameShell,{
+  canTap:started=>Boolean(session&&thumbId===undefined&&!keys.size&&started>manualInputAt),
+  onBegin:()=>{setEmotes(false);focusGame();},
+  onTap:(x,y)=>{
+    const target=world?.pick(x,y);
     if(target?.guide&&nearVisitorGuide())openVisitorGuide();
     else walkTo(target);
-  }
-  orbit=null;
+  },
+  onDrag:(dx,dy)=>{
+    ownView={...ownView,pan:normalize(ownView.pan+dx*.34),
+      tilt:Math.max(firstPerson?-72:-24,Math.min(firstPerson?65:48,ownView.tilt+dy*.26))};
+    dirty=true;
+  },
+  onPinch:adjustZoom
 });
-$("game").addEventListener("contextmenu",event=>{
-  if(!event.target.closest("button,#joystick,.emote-menu"))event.preventDefault();
-});
-for(const type of ["pointercancel","lostpointercapture"]){
-  $("game").addEventListener(type,event=>{if(orbit?.id===event.pointerId)orbit=null;});
-}
 
 function move(x,y){
   if(!session||(x===me.x&&y===me.y)||!clearSegment(me,{x,y}))return false;
