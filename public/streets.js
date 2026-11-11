@@ -1,6 +1,6 @@
 import {
   route,entranceWalk,pavilions,city,estateOutline,palacePaths,palaceCourts,palaceGardens,palacePond,palaceWalls,
-  gate,ticket,bridge,middle,hall,stoneHall,stoneFountain,court,courtAngle,fountain,garden,spawn,addObstacle,solidAt
+  gate,ticket,ticketGuide,bridge,middle,hall,stoneHall,stoneFountain,court,courtAngle,fountain,garden,spawn,addObstacle,solidAt
 } from "./layout.js";
 import {buildWestern} from "./western.js";
 import {fromBuilding,pavilionStairAccess} from "./museum.js";
@@ -582,11 +582,11 @@ export function buildJeongdong(T,scene,kit) {
     box(0xb3c3bd,x,1.55,front+.249,.043,.77,.020,kiosk);
     blockLocal(ticket,x,front+.26,1.87,.39,1.03);
   }
-  const guide=placed(fromBuilding(ticket,5.0,2.5));
+  const guide=placed(ticketGuide);
   const board=new T.Group();board.position.set(guide.x,0,guide.z);board.rotation.y=ticket.angle;scene.add(board);
   box(0x4d5b50,0,.87,0,1.52,1.71,.09,board);
   nameplate("관람 안내",board,0,1.18,.053,1.39,.46,"#efe5cd","#263a3d");
-  blockLocal(ticket,5.0,2.5,1.54,.16,1.73);
+  block(guide.x,guide.z,1.54,.16,ticket.angle,1.73);
   const b=placed(bridge);
   const channel=box(0x526f69,b.x,-.035,b.z,2.05,.045,16.5);
   channel.material=matte(0x526f69);

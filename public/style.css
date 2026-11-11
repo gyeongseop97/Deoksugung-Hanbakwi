@@ -69,8 +69,15 @@ dialog h2{font-size:26px;margin-top:8px}
 dialog p{color:#cad0bd}
 dialog a{color:#f5d297;text-underline-offset:3px}
 .credits{padding-left:20px;line-height:1.9}
-#credits-dialog,#exhibit-dialog{max-height:calc(100dvh - 24px);overflow:auto}
+#credits-dialog,#exhibit-dialog,#visitor-guide-dialog{max-height:calc(100dvh - 24px);overflow:auto}
 #exhibit-dialog{max-width:min(550px,calc(100vw - 24px))}
+#visitor-guide-dialog{max-width:min(580px,calc(100vw - 24px));overscroll-behavior:contain}
+#visitor-guide-dialog h2{margin:0}
+#visitor-guide-dialog .guide-intro{margin:12px 0 16px}
+.visitor-guide-list{display:grid;gap:11px}
+.visitor-guide-list section{border-top:1px solid #e8d8aa2b;padding-top:10px}
+.visitor-guide-list h3{font-size:16px;margin:0 0 4px;color:#f1d599}
+.visitor-guide-list p{margin:0;line-height:1.55}
 #exhibit-dialog .exhibit-period{font-size:.88rem;color:#ecd4a3}
 #exhibit-image{display:block;width:100%;max-height:min(50dvh,420px);object-fit:contain;background:#122018;border-radius:8px}
 dialog label{display:block;margin:12px 0 5px}
@@ -108,6 +115,7 @@ dialog input,dialog code{display:block;width:100%;padding:9px;border-radius:7px;
 .game-pad button{min-height:39px;background:#15231bd9}
 #wish{background:#17261ddf;border-color:#cbb27a;color:#f2d393}
 .activity-button{background:#263c2bea;border-color:#b6a577;color:#fff0c9}
+#visitor-guide{background:#ecd086;color:#32281b;border-color:#fff0ad}
 .map-wrap>.pad{display:none}
 .map-wrap{background:radial-gradient(ellipse,#304636,#1e2a23)}
 #world{background:none}
@@ -260,7 +268,7 @@ dialog input,dialog code{display:block;width:100%;padding:9px;border-radius:7px;
   align-items:stretch;gap:clamp(18px,3.4vw,42px);padding:10px;
 }
 .entry-cover{
-  position:relative;align-self:stretch;min-width:0;margin:0;overflow:hidden;
+  position:relative;align-self:stretch;width:100%;min-width:0;max-width:100%;margin:0;overflow:hidden;
   border-radius:16px;background:#384837;aspect-ratio:3/2;
 }
 .entry-cover img{display:block;width:100%;height:100%;object-fit:cover;object-position:center 55%}

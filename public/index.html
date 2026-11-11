@@ -95,7 +95,7 @@
         <div class="scene-wrap">
           <div id="game" tabindex="0" role="group" aria-label="3D 산책. 조이스틱이나 방향키로 화면 기준 이동, 화면 드래그로 시야 회전">
             <p id="loading-game">산책길을 열고 있어요.</p>
-            <div class="game-place"><span>정동의 가을</span><strong id="game-place">대한문 앞 매표 광장</strong><small>화면 기준으로 이동 · 드래그로 시야 돌리기</small></div>
+            <div class="game-place"><span>정동의 가을</span><strong id="game-place">매표소 앞</strong><small>화면 기준으로 이동 · 드래그로 시야 돌리기</small></div>
             <span id="game-presence" class="game-presence">방을 선택해 주세요</span>
             <div id="cat-run-tip" class="cat-run-tip" aria-label="고양이 안내" hidden>
               <p role="status">고양이에게 뛰어가면 놀라서 도망가요!</p>
@@ -112,6 +112,7 @@
             <div id="joystick" class="joystick" role="group" aria-label="이동 조이스틱"><span aria-hidden="true"></span></div>
             <div class="game-hud">
               <div class="game-actions">
+                <button id="visitor-guide" type="button" class="quiet activity-button" aria-haspopup="dialog" aria-controls="visitor-guide-dialog" hidden>관람 안내 읽기</button>
                 <button id="sit" type="button" class="quiet" hidden>앉기</button>
                 <button id="wish" type="button" class="quiet" aria-haspopup="dialog" aria-controls="wish-drawing" hidden disabled>♢ 소원등 <kbd>E</kbd></button>
                 <button id="pet-cat" type="button" class="quiet activity-button" hidden>쓰다듬기</button>
@@ -177,7 +178,7 @@
             <g id="map-people" aria-hidden="true"></g>
             <g id="my-avatar" class="avatar me"><ellipse cy="11" rx="16" ry="6"/><circle r="14"/><path d="M-7 7a8 8 0 0 1 14 0" class="shoulders"/><circle cy="-3" r="4" class="face"/><text y="-21" text-anchor="middle">나</text></g>
           </svg>
-          <div class="map-location"><span>현재 위치</span><strong id="location">대한문 앞 매표 광장</strong></div>
+            <div class="map-location"><span>현재 위치</span><strong id="location">매표소 앞</strong></div>
           <div class="pad" aria-label="이동 버튼">
             <button type="button" data-key="ArrowUp" aria-label="위로">↑</button>
             <button type="button" data-key="ArrowLeft" aria-label="왼쪽으로">←</button>
@@ -245,6 +246,21 @@
     <p>경내 배치와 나머지 외관은 첨부 지도, 네이버 지도 거리뷰와 <a href="https://royal.khs.go.kr/ROYAL/contents/R701000000.do?schGroupCode=dsg" target="_blank" rel="noopener">궁능유적본부 관람 자료</a>를 참고해 재현했습니다.</p>
     <p>전시 이미지와 확대 재현한 유물의 출처입니다.</p>
     <ul id="exhibit-credits" class="credits"></ul>
+  </dialog>
+  <dialog id="visitor-guide-dialog" aria-labelledby="visitor-guide-title">
+    <div class="dialog-top">
+      <h2 id="visitor-guide-title">덕수궁 한바퀴 관람 안내</h2>
+      <button type="button" class="quiet close" aria-label="닫기">×</button>
+    </div>
+    <p class="guide-intro">길을 터치하거나 조이스틱으로 걸어 보세요. 컴퓨터에서는 방향키나 WASD를 쓸 수 있고, 화면을 드래그하면 주변을 둘러볼 수 있어요.</p>
+    <div class="visitor-guide-list">
+      <section><h3>돌담길 가게</h3><p>돌담 커피에서 커피를, 단풍 크레페에서 크레페를, 정동 양조에서 맥주를 받아요. 돌담 편의점에서는 고양이에게 줄 츄르를 살 수 있어요.</p></section>
+      <section><h3>정동 분수 광장의 소원등</h3><p>돌담길 끝 정동 분수 가까이에서 <strong>소원등</strong>을 누르세요. 네 면에 그림을 그려 지금 서 있는 곳에서 띄울 수 있어요.</p></section>
+      <section><h3>석조전 분수 정원의 스파클</h3><p>궁 안 석조전 분수 옆 좌판에서 스파클을 받아 <strong>사용하기</strong>를 누르면 손에 든 폭죽이 반짝여요.</p></section>
+      <section><h3>석조전 서관 전시관</h3><p>계단을 올라 문 앞에서 <strong>입장하기</strong>를 누르세요. 삼국·통일신라부터 근대까지 한국 그림과 공예품 28점을 만날 수 있어요. 가까이에서 <strong>작품 설명</strong>을 열어 보세요.</p></section>
+      <section><h3>고양이와 쉬어 가기</h3><p>고양이에게 천천히 걸어가면 쓰다듬을 수 있어요. 츄르를 들고 기다렸다가 <strong>간식 주기</strong>를 눌러 보세요. 벤치에는 친구와 나란히 앉을 수도 있어요.</p></section>
+      <section><h3>친구와 함께 걷기</h3><p>오픈서버에서 다른 산책자와 만나거나 초대코드로 친구와 같은 방에 들어오세요. 가까이에서 손을 잡고, 보여주고 싶은 곳에서 <strong>여기 봐</strong>를 눌러 보세요.</p></section>
+    </div>
   </dialog>
   <dialog id="exhibit-dialog" aria-labelledby="exhibit-title">
     <div class="dialog-top"><span class="tag" id="exhibit-gallery"></span><button type="button" class="quiet close" aria-label="닫기">×</button></div>
