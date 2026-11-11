@@ -1,9 +1,11 @@
 import {
-  route,entranceWalk,pavilions,city,estateOutline,palacePaths,palaceCourts,palaceGardens,palacePond,palaceWalls,
+  route,entranceWalk,pavilions,city,estateOutline,palacePaths,palaceCourts,palaceGardens,palacePlantings,palacePond,palaceWalls,
   gate,ticket,ticketGuide,bridge,middle,hall,stoneHall,stoneFountain,court,courtAngle,fountain,garden,spawn,addObstacle,solidAt
 } from "./layout.js";
 import {buildWestern} from "./western.js";
 import {fromBuilding,pavilionStairAccess} from "./museum.js";
+import {standPlantingFootprints} from "./street-stands.js";
+import {makePalaceTree} from "./palace-plantings.js";
 
 export function buildJeongdong(T,scene,kit) {
   const {box,cylinder,shape,wx,wz,rand,matte}=kit;
@@ -13,6 +15,16 @@ export function buildJeongdong(T,scene,kit) {
   const branch=new T.CylinderGeometry(.67,1,1,7);
   const up=new T.Vector3(0,1,0);
   const stone=[0x939188,0xa19e92,0x807f76,0xb7b0a4,0x9e9b90];
+  const buildingPlots=[
+    ...standPlantingFootprints,
+    ...city.slice(1).map(spec=>({...spec,w:spec.w+.5,d:spec.d+.5})),
+    ...pavilions.map(spec=>({...spec,w:spec.w+2.7,d:spec.d+2.5,h:spec.h+2.8})),
+    {...gate,w:16.7,d:10.46,h:7.4,angle:Math.PI/2},
+    {...ticket,w:ticket.w+.82,d:ticket.d+.88,h:4.2},
+    {...middle,w:13.4,d:9.26,h:6.6,angle:courtAngle},
+    {...hall,w:21.1,d:19.96,h:10.4,angle:courtAngle},
+    {...stoneHall,w:55.2,d:21.8,h:15.6}
+  ].map(spec=>({...spec,c:Math.cos(spec.angle??0),s:Math.sin(spec.angle??0)}));
   const placed=(point)=>({x:wx(point.x),z:wz(point.y)});
   const block=(x,z,w,d,angle=0,top)=>addObstacle(x+300,z+225,w,d,angle,top);
   function blockLocal(site,x,z,w,d,top){
@@ -24,7 +36,7 @@ export function buildJeongdong(T,scene,kit) {
     const mesh=new T.Mesh(geometry,material);
     mesh.position.set(x,y,z);scene.add(mesh);return mesh;
   };
-  function grain(colors,{stones=false,red=false}={}) {
+  function grain(colors,{stones=false,red=false,random=rand}={}) {
     const canvas=document.createElement("canvas");
     canvas.width=512;canvas.height=256;
     const ctx=canvas.getContext("2d");
@@ -43,7 +55,7 @@ export function buildJeongdong(T,scene,kit) {
     }
     const pixels=ctx.getImageData(0,0,512,256);
     for(let i=0;i<pixels.data.length;i+=4){
-      const variation=(rand()-.5)*(stones?29:22);
+      const variation=(random()-.5)*(stones?29:22);
       for(let c=0;c<3;c++)pixels.data[i+c]+=variation;
     }
     ctx.putImageData(pixels,0,0);
@@ -57,6 +69,42 @@ export function buildJeongdong(T,scene,kit) {
   const brickMap=grain(["#82746a","#a1644d","#aa6b55","#9a5d48","#ac6c51"],{stones:true,red:true});
   const stoneFloor=grain(["#938d7b","#b5ad9a","#b9b09c","#b1ab9d","#bfb8a8"],{stones:true});
   const groundMap=grain(["#9b9688"]);
+  let groundSeed=87149;
+  function groundNoise(){groundSeed=(Math.imul(groundSeed,1664525)+1013904223)>>>0;return groundSeed/4294967296;}
+  function courtyardStone(){
+    const canvas=document.createElement("canvas");canvas.width=512;canvas.height=256;
+    const ctx=canvas.getContext("2d"),colors=["#a8a598","#bab5a6","#b5b3a6","#afa99a","#c0bbad","#a6a396"];
+    const cols=6,rows=4;
+    const corners=Array.from({length:cols*rows},()=>[groundNoise()*25-12.5,groundNoise()*14-7]);
+    function corner(col,row){
+      const [dx,dy]=corners[(row+rows)%rows*cols+(col+cols)%cols];
+      return [col*canvas.width/cols+dx,row*canvas.height/rows+dy];
+    }
+    ctx.fillStyle="#a18b6a";ctx.fillRect(0,0,canvas.width,canvas.height);
+    for(let row=-1;row<=rows;row++)for(let col=-1;col<=cols;col++){
+      const vertices=[corner(col,row),corner(col+1,row),corner(col+1,row+1),corner(col,row+1)];
+      const cx=vertices.reduce((sum,p)=>sum+p[0],0)/4,cy=vertices.reduce((sum,p)=>sum+p[1],0)/4;
+      ctx.fillStyle=colors[((row+rows)%rows*11+(col+cols)%cols*5)%colors.length];ctx.beginPath();
+      vertices.forEach(([x,y],index)=>{
+        const [px,py]=vertices[(index+3)%4],[nx,ny]=vertices[(index+1)%4];
+        const fx=x+(px-x)*.055,fy=y+(py-y)*.055;
+        ctx[index?"lineTo":"moveTo"](fx+(cx-fx)*.033,fy+(cy-fy)*.045);
+        const tx=x+(nx-x)*.073,ty=y+(ny-y)*.073;
+        ctx.lineTo(tx+(cx-tx)*.033,ty+(cy-ty)*.045);
+      });ctx.fill();
+    }
+    const pixels=ctx.getImageData(0,0,canvas.width,canvas.height);
+    for(let i=0;i<pixels.data.length;i+=4){
+      const noise=(groundNoise()-.5)*21;
+      for(let channel=0;channel<3;channel++)pixels.data[i+channel]+=noise;
+    }
+    ctx.putImageData(pixels,0,0);
+    const map=new T.CanvasTexture(canvas);map.wrapS=map.wrapT=T.RepeatWrapping;
+    map.colorSpace=T.SRGBColorSpace;map.anisotropy=4;
+    return new T.MeshStandardMaterial({map,roughness:.94});
+  }
+  const courtStoneMaterial=courtyardStone();
+  const gravelMaterial=new T.MeshStandardMaterial({map:grain(["#b8a78e"],{random:groundNoise}),roughness:1});
   const asphalt=grain(["#747670"]);
   const gardenMaterials={
     lawn:new T.MeshStandardMaterial({map:grain(["#677849"]),roughness:1}),
@@ -92,9 +140,10 @@ export function buildJeongdong(T,scene,kit) {
   function ribbon(points,min,max,material,height){
     const coords=[],uv=[],indices=[];
     let metres=0;
+    const last=points.length-1,closed=points[0]===points[last];
     for(let i=0;i<points.length;i++){
-      const p=points[i],a=points[Math.max(0,i-1)],b=points[Math.min(points.length-1,i+1)];
-      if(i)metres+=Math.hypot(p.x-a.x,p.y-a.y);
+      const p=points[i],a=points[i===0&&closed?last-1:Math.max(0,i-1)],b=points[i===last&&closed?1:Math.min(last,i+1)];
+      if(i)metres+=Math.hypot(p.x-points[i-1].x,p.y-points[i-1].y);
       const length=Math.hypot(b.x-a.x,b.y-a.y)||1,nx=(b.y-a.y)/length,nz=-(b.x-a.x)/length;
       for(const offset of [min,max]){
         coords.push(wx(p.x)+nx*offset,height,wz(p.y)+nz*offset);
@@ -119,11 +168,12 @@ export function buildJeongdong(T,scene,kit) {
   ribbon(entranceWalk,-7.2,7.2,pavingMaterial,.039);
   plot(estateOutline,earthMaterial,.008);
   for(const {outline,kind} of palaceGardens)plot(outline,gardenMaterials[kind],.017);
-  for(const {outline,kind} of palaceCourts)plot(outline,kind==="stone"?pavingMaterial:earthMaterial,.022);
-  for(const [i,{points,width,surface}] of palacePaths.entries()){
+  for(const {name,outline,kind} of palaceCourts)plot(outline,name==="중화전 마당"?courtStoneMaterial:
+    kind==="stone"?pavingMaterial:gravelMaterial,.022);
+  for(const [i,{points,width,surface,edge}] of palacePaths.entries()){
     const half=width/2,height=.028+i*.0003;
-    ribbon(points,-half,half,surface==="stone"?pavingMaterial:earthMaterial,height);
-    if(surface==="gravel"){
+    ribbon(points,-half,half,surface==="stone"?pavingMaterial:gravelMaterial,height);
+    if(edge){
       ribbon(points,-half-.12,-half+.02,curb,height+.022);
       ribbon(points,half-.02,half+.12,curb,height+.022);
     }
@@ -201,6 +251,25 @@ export function buildJeongdong(T,scene,kit) {
     const axis=new T.Vector3(dx,dy,dz),mesh=shape(branch,0x6c5540,x+dx/2,y+dy/2,z+dz/2);
     mesh.scale.set(r,axis.length(),r);mesh.quaternion.setFromUnitVectors(up,axis.normalize());
   }
+  function buildingClear(x,z,radius,base=0){
+    return buildingPlots.every(plot=>{
+      if(base>=plot.h)return true;
+      const dx=x+300-plot.x,dz=z+225-plot.y;
+      const gapX=Math.max(0,Math.abs(dx*plot.c-dz*plot.s)-plot.w/2);
+      const gapZ=Math.max(0,Math.abs(dx*plot.s+dz*plot.c)-plot.d/2);
+      return gapX*gapX+gapZ*gapZ>=radius*radius;
+    });
+  }
+  function treeFits(x,z,height){
+    const mapX=x+300,mapY=z+225,clearance=height*.135+.18;
+    if(solidAt(mapX,mapY)||!buildingClear(x,z,clearance+.26)||
+       trees.some(tree=>Math.hypot(x-tree.x,z-tree.z)<Math.max(4.1,(height+tree.height)*.23)))return false;
+    for(let i=0;i<16;i++){
+      const angle=i*Math.PI/8,dx=Math.cos(angle)*clearance,dz=Math.sin(angle)*clearance;
+      if(solidAt(mapX+dx,mapY+dz)||solidAt(mapX+dx*.5,mapY+dz*.5))return false;
+    }
+    return true;
+  }
   function tree(x,z,height,palette=autumn){
     trees.push({x,z,height});
     const sway=(rand()-.5)*.85;
@@ -213,18 +282,24 @@ export function buildJeongdong(T,scene,kit) {
     for(let i=0;i<7;i++){
       const a=i*.898+rand()*.4,r=height*(.17+rand()*.14),from=height*(.38+i*.041),rise=height*(.22+rand()*.15);
       const dx=Math.cos(a)*r,dz=Math.sin(a)*r;
+      if(!buildingClear(x+sway*.65+dx,z+dz,height*.028,from+rise-height*.028)||
+         !buildingClear(x+sway*.65+dx*.5,z+dz*.5,height*.028,from+rise*.5-height*.028))continue;
       limb(x+sway*.65,from,z,dx,rise,dz,height*.020);
       for(let j=0;j<4;j++){
         const a2=a+(j-1.5)*.69,spread=height*(.047+rand()*.075);
         const tx=x+sway*.65+dx+Math.cos(a2)*spread,tz=z+dz+Math.sin(a2)*spread;
-        const crown=shape(leaf,palette[(i*3+j)%palette.length],tx,from+rise+(rand()-.32)*height*.15,tz);
+        const ty=from+rise+(rand()-.32)*height*.15;
         const size=height*(.107+rand()*.071);
+        if(!buildingClear(tx,tz,size*1.28,ty-size*.89))continue;
+        const crown=shape(leaf,palette[(i*3+j)%palette.length],tx,ty,tz);
         crown.scale.set(size*1.17,size*.68,size*(.91+rand()*.33));
         crown.rotation.set(rand()*.45,rand()*6.28,rand()*.47);
       }
     }
     for(let j=0;j<5;j++){
-      const crown=shape(leaf,palette[j%palette.length],x+sway+(rand()-.5)*height*.29,height*(.79+rand()*.16),z+(rand()-.5)*height*.25);
+      const tx=x+sway+(rand()-.5)*height*.29,ty=height*(.79+rand()*.16),tz=z+(rand()-.5)*height*.25;
+      if(!buildingClear(tx,tz,height*.18,ty-height*.117))continue;
+      const crown=shape(leaf,palette[j%palette.length],tx,ty,tz);
       crown.scale.set(height*.18,height*.117,height*.15);crown.rotation.y=rand()*6.28;
     }
     shade(x,z,height*.36,height*.30);
@@ -237,18 +312,52 @@ export function buildJeongdong(T,scene,kit) {
     }
     return inside;
   }
+  function pathClear(points,x,y,clearance){
+    for(let i=1;i<points.length;i++){
+      const a=points[i-1],b=points[i],dx=b.x-a.x,dy=b.y-a.y;
+      const t=Math.max(0,Math.min(1,((x-a.x)*dx+(y-a.y)*dy)/(dx*dx+dy*dy||1)));
+      if(Math.hypot(x-a.x-t*dx,y-a.y-t*dy)<clearance)return false;
+    }
+    return true;
+  }
   function awayFromPaths(x,y,clearance){
-    return palacePaths.every(({points,width})=>{
-      for(let i=1;i<points.length;i++){
-        const a=points[i-1],b=points[i],dx=b.x-a.x,dy=b.y-a.y;
-        const t=Math.max(0,Math.min(1,((x-a.x)*dx+(y-a.y)*dy)/(dx*dx+dy*dy||1)));
-        if(Math.hypot(x-a.x-t*dx,y-a.y-t*dy)<width/2+clearance)return false;
+    return palacePaths.every(({points,width})=>pathClear(points,x,y,width/2+clearance));
+  }
+  function plantAvenue(){
+    const ginkgo=[0xd6a42d,0xe9bc4a,0xab8a37,0xcfa547];
+    const shifts=[0,-2.1,2.1,-4.2,4.2,-6.3,6.3,-8.4,8.4];
+    for(let i=1;i<route.length;i++){
+      const street=line(route[i-1],route[i]);
+      const count=Math.ceil(street.len/12);
+      for(let j=0;j<count;j++){
+        const palaceSide=(i+j)%3===0;
+        const offsets=palaceSide?[-7.6,-9.1,6.05,7.5]:[6.05,7.5,-7.6,-9.1];
+        const height=6.8+rand()*4.1;
+        let planted=false;
+        for(const offset of offsets){
+          for(const shift of shifts){
+            const t=(j+.4)/count+shift/street.len;
+            if(t<.04||t>.96)continue;
+            const {x,z}=street.at(t,offset);
+            if(!pathClear(route,x+300,z+225,5.3)||!awayFromPaths(x+300,z+225,1)||!treeFits(x,z,height))continue;
+            tree(x,z,height,offset<0?ginkgo:autumn);planted=true;break;
+          }
+          if(planted)break;
+        }
       }
-      return true;
-    });
+    }
   }
   function plantGardens(){
     const foliage=[0x64734b,0x7e8c53,0x526740,0x879259];
+    const plant=makePalaceTree(T,shape);
+    for(const specimen of palacePlantings){
+      const {point,height,spread}=specimen,{x,z}=placed(point);
+      if(!treeFits(x,z,height)||!awayFromPaths(point.x,point.y,.65))continue;
+      const trunkRadius=plant(x,z,specimen);
+      trees.push({x,z,height});
+      block(x,z,trunkRadius*2,trunkRadius*2,0,height*.75);
+      shade(x,z,spread*.46,spread*.38);
+    }
     for(const {outline,kind} of palaceGardens){
       const xs=outline.map(p=>p.x),ys=outline.map(p=>p.y);
       const minX=Math.min(...xs),minY=Math.min(...ys);
@@ -257,10 +366,11 @@ export function buildJeongdong(T,scene,kit) {
       const maxTrees=kind==="grove"?Math.min(5,Math.floor(w*d/180)):kind==="lawn"?1:0;
       for(let i=0;i<maxTrees*5&&spots.length<maxTrees;i++){
         const x=minX+rand()*w,y=minY+rand()*d;
-        if(!contains(outline,x,y)||solidAt(x,y)||!awayFromPaths(x,y,1.4)||
+        const height=5.5+rand()*5;
+        if(!contains(outline,x,y)||!treeFits(wx(x),wz(y),height)||!awayFromPaths(x,y,1.4)||
            spots.some(spot=>Math.hypot(spot.x-x,spot.y-y)<5))continue;
         spots.push({x,y});
-        tree(wx(x),wz(y),5.5+rand()*5,spots.length%3?foliage:autumn);
+        tree(wx(x),wz(y),height,spots.length%3?foliage:autumn);
       }
       if(kind==="parterre"||kind==="grove"){
         for(let i=0;i<outline.length;i++){
@@ -277,7 +387,7 @@ export function buildJeongdong(T,scene,kit) {
     }
   }
   function addPond(){
-    const {outline,x,y}=palacePond;
+    const {outline,x,y,island}=palacePond;
     const bank=outline.map(p=>{
       const dx=p.x-x,dy=p.y-y,scale=1+.72/(Math.hypot(dx,dy)||1);
       return {x:x+dx*scale,y:y+dy*scale};
@@ -322,17 +432,25 @@ export function buildJeongdong(T,scene,kit) {
         rock.rotation.y=rand()*6.28;
       }
     }
+    function islandOutline(scale){
+      return Array.from({length:20},(_,i)=>{
+        const angle=i*Math.PI/10,r=scale*(1+.064*Math.sin(angle*3+.4));
+        return {x:island.x+Math.cos(angle)*island.radiusX*r,y:island.y+Math.sin(angle)*island.radiusY*r};
+      });
+    }
+    plot(islandOutline(1),matte(0x888873),.105);
+    plot(islandOutline(.85),gardenMaterials.lawn,.134);
+    const centre=placed(island);
+    for(let i=0;i<4;i++){
+      const angle=i*2.39996;
+      const shrub=shape(leaf,i%2?0x718152:0x586945,centre.x+Math.cos(angle)*.72,.29+i*.03,centre.z+Math.sin(angle)*.55);
+      shrub.scale.set(.53,.34,.46);shrub.rotation.y=angle;
+    }
     return (clock,night)=>{uniforms.clock.value=clock;uniforms.night.value=night;};
   }
   const singleLeaf=new T.PlaneGeometry(1,1);
   for(let i=1;i<route.length;i++){
     const street=line(route[i-1],route[i]);
-    const count=Math.ceil(street.len/12);
-    for(let j=0;j<count;j++){
-      const side=(i+j)%3===0?-1:1;
-      const p=street.at((j+.40)/count,side<0?-6.5:5.6);
-      tree(p.x,p.z,6.8+rand()*4.1,side<0?[0xd6a42d,0xe9bc4a,0xab8a37,0xcfa547]:autumn);
-    }
     for(let j=0;j<Math.ceil(street.len*2.4);j++){
       const side=j%2===0?1:-1,p=street.at(rand(),side*(3.2+rand()*1.9));
       const item=shape(singleLeaf,autumn[j%autumn.length],p.x,.075,p.z);
@@ -382,7 +500,6 @@ export function buildJeongdong(T,scene,kit) {
   paved(gd.x,gd.z,12,10,.035);
   bench(gd.x-2.1,gd.z+2.2,Math.PI);
   bench(gd.x+2.1,gd.z+2.2,Math.PI);
-  tree(gd.x+3.8,gd.z+3.3,8.9);
 
   function nameplate(text,parent,x,y,z,width,height,background="#26322b",color="#ead1a1"){
     const c=document.createElement("canvas");c.width=480;c.height=120;
@@ -720,7 +837,6 @@ export function buildJeongdong(T,scene,kit) {
     blockLocal(stoneHall,side*7.04,15.81,.52,6.88,2.88);
   }
   const drawPond=addPond();
-  plantGardens();
   for(const {points,width} of palacePaths.filter(p=>p.surface==="gravel").filter((_,i)=>i%3===1)){
     const edge=line(points[0],points[1]),{x,z}=edge.at(.63,width/2+.85);
     if(edge.len>5&&!solidAt(x+300,z+225)&&awayFromPaths(x+300,z+225,.45))bench(x,z,edge.angle);
@@ -731,10 +847,17 @@ export function buildJeongdong(T,scene,kit) {
     const a=i*Math.PI/3;
     lamp(fp.x+Math.cos(a)*7.8,fp.z+Math.sin(a)*7.8,2.73);
   }
+  plantAvenue();
+  plantGardens();
   for(let i=0;i<9;i++){
     const point=estateOutline[Math.min(estateOutline.length-1,i+1)],at=placed(point);
-    tree(at.x+7,at.z+3,9+rand()*5,[0x7f9458,0xb4a349,0x8f934d,0xb39c3e]);
+    const height=9+rand()*5;
+    for(const [dx,dz] of [[7,3],[8,6],[4,8],[8,-1],[3,10],[11,3]]){
+      const x=at.x+dx,z=at.z+dz;
+      if(!awayFromPaths(x+300,z+225,1)||!treeFits(x,z,height))continue;
+      tree(x,z,height,[0x7f9458,0xb4a349,0x8f934d,0xb39c3e]);break;
+    }
   }
-  return {benches,trees,catWalls,fountains:[{x:fp.x,z:fp.z,radius:2.32},{x:sf.x,z:sf.z,radius:4.2}],
+  return {benches,trees,catWalls,fountains:[{x:fp.x,z:fp.z,radius:2.32},{x:sf.x,z:sf.z,radius:4.2,scalloped:true}],
     lampMaterial,classical,middleModel,hallModel,drawPond,pavilionModels};
 }
