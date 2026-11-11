@@ -1,7 +1,7 @@
 import * as T from "three";
 import { buildJeongdong } from "./streets.js";
 import { addWater } from "./water.js";
-import { solidAt, bridge, gate, middle, hall, stoneHall, courtAngle } from "./layout.js";
+import { solidAt, bridge, gate, middle, hall, stoneHall, courtAngle, ticketGuide } from "./layout.js";
 import { addParkLife } from "./park-life.js";
 import { addStands, makeItemProps } from "./street-stands.js";
 import { addMuseum, stairHeight } from "./museum.js";
@@ -9,7 +9,7 @@ import { PET_MS, FEED_MS } from "./activities.js";
 import { makeWalkerModels } from "./walker-model.js";
 import { decodeWishFace, WISH_WIDTH, WISH_HEIGHT, WISH_COLORS, WISH_FLIGHT_MS } from "./wish-art.js";
 
-export function makeWorld(container,{onCatFlee}={}) {
+export function makeWorld(container,{onCatFlee,catSeed}={}) {
   const scene=new T.Scene();
   const camera=new T.PerspectiveCamera(57,1,.15,1290);
   const renderer=new T.WebGLRenderer({antialias:true,powerPreference:"high-performance"});
@@ -144,8 +144,11 @@ export function makeWorld(container,{onCatFlee}={}) {
     if(object!==hemi&&object!==sun&&object!==moonLight)outdoors.add(object);
   }
   scene.add(outdoors);
+  const guideMarker=makeGuideMarker();
+  guideMarker.position.set(wx(ticketGuide.x),2.42,wz(ticketGuide.y));
+  outdoors.add(guideMarker);
   const museum=addMuseum(T,scene,kit);
-  const parkLife=addParkLife(T,outdoors,{...kit,trees,floorHeight,catWalls,benches,onCatFlee});
+  const parkLife=addParkLife(T,outdoors,{...kit,trees,floorHeight,catWalls,benches,onCatFlee,catSeed});
 
   const landmarkLoaders=Promise.all([
     import("https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/loaders/GLTFLoader.js"),
@@ -267,6 +270,12 @@ export function makeWorld(container,{onCatFlee}={}) {
     hemi.color.copy(ambientDay).lerp(ambientNight,night);
     const anchor=focus||me,angle=view.pan*Math.PI/180,indoors=museum.isInside(anchor.x,anchor.y);
     outdoors.visible=!indoors;museum.setVisible(indoors);
+    guideMarker.visible=!indoors&&Math.hypot(anchor.x-ticketGuide.x,anchor.y-ticketGuide.y)<22;
+    if(guideMarker.visible){
+      const pulse=state.guideNearby?Math.sin(now*.004)*.045:0;
+      guideMarker.scale.setScalar((state.guideNearby ? .88 : .78)+pulse);
+      guideMarker.material.opacity=state.guideNearby?1:.82;
+    }
     hemi.intensity=indoors?1.72:1.98-night*1.40;
     sun.intensity=indoors?0:2.35*(1-night);moonLight.intensity=indoors?0:night*.95;
     lampMaterial.emissiveIntensity=.03+night*2.15;
@@ -380,6 +389,7 @@ export function makeWorld(container,{onCatFlee}={}) {
     if(cameraAnchor==null||!rect.width||!rect.height||
        clientX<rect.left||clientX>rect.right||clientY<rect.top||clientY>rect.bottom)return null;
     ray.setFromCamera(new T.Vector2((clientX-rect.left)/rect.width*2-1,-(clientY-rect.top)/rect.height*2+1),camera);
+    if(guideMarker.visible&&ray.intersectObject(guideMarker,false).length)return {...ticketGuide.approach,guide:true};
     if(!ray.ray.intersectPlane(ground,hit)||hit.distanceTo(camera.position)>105)return null;
     const distance=hit.distanceTo(ray.ray.origin);
     for(let step=.25;step<distance;step+=.25){
@@ -390,6 +400,22 @@ export function makeWorld(container,{onCatFlee}={}) {
     return {x:hit.x+300,y:hit.z+225};
   }
   return {render,pick,previewWalker,benches,stations,parkLife,museum};
+}
+
+function makeGuideMarker(){
+  const canvas=document.createElement("canvas");
+  canvas.width=canvas.height=112;
+  const ctx=canvas.getContext("2d");
+  ctx.beginPath();ctx.arc(56,56,49,0,Math.PI*2);
+  ctx.fillStyle="#453716";ctx.fill();
+  ctx.beginPath();ctx.arc(56,56,43,0,Math.PI*2);
+  ctx.fillStyle="#f1c650";ctx.fill();
+  ctx.strokeStyle="#ffea9a";ctx.lineWidth=4;ctx.stroke();
+  ctx.fillStyle="#342918";
+  ctx.beginPath();ctx.roundRect(50,29,12,36,6);ctx.fill();
+  ctx.beginPath();ctx.arc(56,78,6,0,Math.PI*2);ctx.fill();
+  const map=new T.CanvasTexture(canvas);map.colorSpace=T.SRGBColorSpace;
+  return new T.Sprite(new T.SpriteMaterial({map,transparent:true,depthWrite:false,toneMapped:false}));
 }
 
 function makeWishLantern({box,cylinder,matte}){
