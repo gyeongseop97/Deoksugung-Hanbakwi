@@ -16,6 +16,7 @@ const outline=(points)=>points.map(point=>mapPoint(point));
 export const gate=p("대한문",37.56503,126.97655);
 export const ticket={...p("덕수궁 매표소",gate.lat+10.3/northMetres,gate.lng+17.4/eastMetres),w:7.9,d:3.16,angle:Math.PI/2};
 export const ticketApproach=p("매표소 앞",ticket.lat,ticket.lng+4.3/eastMetres);
+export const ticketGuide={x:ticket.x+2.5,y:ticket.y-5,approach:{x:ticket.x+3.9,y:ticket.y-5}};
 export const spawn=p("대한문 앞 매표 광장",37.56515,126.97679);
 export const bridge=p("금천교",37.56503,126.97641);
 export const middle=p("중화문",37.56523,126.97467);
