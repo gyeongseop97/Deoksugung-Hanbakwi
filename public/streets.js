@@ -5,7 +5,8 @@ import {
 import {buildWestern} from "./western.js";
 import {fromBuilding,pavilionStairAccess} from "./museum.js";
 import {standPlantingFootprints} from "./street-stands.js";
-import {makePalaceClearance,makePalaceTree} from "./palace-plantings.js";
+import {makePalaceClearance} from "./palace-plantings.js";
+import {makeTreeBuilder} from "./lowpoly-trees.js";
 
 export function buildJeongdong(T,scene,kit) {
   const {box,cylinder,shape,wx,wz,rand,matte}=kit;
@@ -13,8 +14,8 @@ export function buildJeongdong(T,scene,kit) {
   const treeClearance=makePalaceClearance(T);
   const autumn=[0xe9b940,0xd6a736,0xc99728,0xffcb52,0xba8731,0xe5a943];
   const leaf=new T.IcosahedronGeometry(1,1);
-  const branch=new T.CylinderGeometry(.67,1,1,7);
   const up=new T.Vector3(0,1,0);
+  const singleLeaf=new T.PlaneGeometry(1,1);
   const stone=[0x939188,0xa19e92,0x807f76,0xb7b0a4,0x9e9b90];
   const buildingPlots=[
     ...standPlantingFootprints,
@@ -102,7 +103,7 @@ export function buildJeongdong(T,scene,kit) {
     ctx.putImageData(pixels,0,0);
     const map=new T.CanvasTexture(canvas);map.wrapS=map.wrapT=T.RepeatWrapping;
     map.colorSpace=T.SRGBColorSpace;map.anisotropy=4;
-    return new T.MeshStandardMaterial({map,roughness:.94});
+    return new T.MeshStandardMaterial({map,bumpMap:map,bumpScale:.8,roughness:.94});
   }
   const courtStoneMaterial=courtyardStone();
   const gravelMaterial=new T.MeshStandardMaterial({map:grain(["#b8a78e"],{random:groundNoise}),roughness:1});
@@ -112,11 +113,12 @@ export function buildJeongdong(T,scene,kit) {
     grove:new T.MeshStandardMaterial({map:grain(["#656e4a"]),roughness:1}),
     parterre:new T.MeshStandardMaterial({map:grain(["#738254"]),roughness:1})
   };
-  const stoneMaterial=new T.MeshStandardMaterial({map:wallMap,roughness:.93});
-  const pavingMaterial=new T.MeshStandardMaterial({map:stoneFloor,roughness:.91});
+  // The painted joints double as a height map, so stones catch the light with a little relief.
+  const stoneMaterial=new T.MeshStandardMaterial({map:wallMap,bumpMap:wallMap,bumpScale:1.6,roughness:.93});
+  const pavingMaterial=new T.MeshStandardMaterial({map:stoneFloor,bumpMap:stoneFloor,bumpScale:.9,roughness:.91});
   const roadMaterial=new T.MeshStandardMaterial({map:asphalt,roughness:1});
   const earthMaterial=new T.MeshStandardMaterial({map:groundMap,roughness:1});
-  const brickMaterial=new T.MeshStandardMaterial({map:brickMap,roughness:.89});
+  const brickMaterial=new T.MeshStandardMaterial({map:brickMap,bumpMap:brickMap,bumpScale:1.2,roughness:.89});
   function uvScale(mesh,u,v){
     const uv=mesh.geometry.attributes.uv;
     for(let i=0;i<uv.count;i++)uv.setXY(i,uv.getX(i)*u,uv.getY(i)*v);
@@ -241,18 +243,12 @@ export function buildJeongdong(T,scene,kit) {
     const canvas=shade.canvas||(shade.canvas=(()=>{
       const c=document.createElement("canvas");c.width=c.height=48;
       const c2=c.getContext("2d"),g=c2.createRadialGradient(24,24,3,24,24,24);
-      g.addColorStop(0,"rgba(24,34,23,0.50)");g.addColorStop(.55,"rgba(30,39,28,0.23)");
+      g.addColorStop(0,"rgba(24,34,23,0.30)");g.addColorStop(.55,"rgba(30,39,28,0.14)");
       g.addColorStop(1,"rgba(30,39,28,0)");c2.fillStyle=g;c2.fillRect(0,0,48,48);return c;
     })());
     if(!shade.material)shade.material=new T.MeshBasicMaterial({map:new T.CanvasTexture(canvas),transparent:true,depthWrite:false});
     const shadow=flat(new T.PlaneGeometry(rx*2,rz*2),shade.material,x+rx*.38,.081,z+rz*.34);
     shadow.rotation.x=-Math.PI/2;
-  }
-  function limb(x,y,z,dx,dy,dz,r){
-    const axis=new T.Vector3(dx,dy,dz),mesh=shape(branch,0x6c5540,x+dx/2,y+dy/2,z+dz/2);
-    mesh.scale.set(r,axis.length(),r);mesh.quaternion.setFromUnitVectors(up,axis.normalize());
-    if(treeClearance.meshFits(mesh)){mesh.name="Tree limb";return true;}
-    mesh.removeFromParent();return false;
   }
   function buildingClear(x,z,radius,base=0){
     return buildingPlots.every(plot=>{
@@ -273,46 +269,50 @@ export function buildJeongdong(T,scene,kit) {
     }
     return true;
   }
-  function tree(x,z,height,palette=autumn){
-    let sway=(rand()-.5)*.85;
-    if(!limb(x,0,z,sway,height*.73,.12,height*.043)){
-      sway=0;
-      if(!limb(x,0,z,0,height*.73,0,height*.043))return false;
+  const treeKit=makeTreeBuilder(T,scene,{clearance:treeClearance,rand,
+    fits:(x,y,z,radius)=>buildingClear(x,z,radius*1.15,y-radius*.9)});
+  const weighted=options=>{
+    let roll=rand()*options.reduce((sum,[weight])=>sum+weight,0);
+    for(const [weight,value] of options)if((roll-=weight)<=0)return value;
+    return options.at(-1)[1];
+  };
+  const pickOf=list=>list[Math.floor(rand()*list.length)];
+  // Autumn in Jeongdong: ginkgo gold along the wall, maples and still-green crowns inside the palace.
+  const treeMix={
+    avenue:()=>({style:pickOf(["cone","column","cloud","round","cone"]),
+      palette:weighted([[58,"ginkgo"],[14,"amber"],[10,"maple"],[10,"fresh"],[8,"olive"]])}),
+    garden:()=>{
+      const palette=weighted([[20,"fresh"],[17,"deep"],[9,"pine"],[15,"ginkgo"],[12,"amber"],[15,"maple"],[6,"russet"],[6,"olive"]]);
+      return {palette,style:palette==="pine"?pickOf(["branchy","cone"]):pickOf(["cloud","branchy","cone","ball","round","column","round","cloud"])};
+    },
+    edge:()=>({style:pickOf(["round","cloud","cone","branchy","ball"]),
+      palette:weighted([[30,"deep"],[26,"fresh"],[12,"pine"],[14,"olive"],[10,"amber"],[8,"ginkgo"]])}),
+    specimen:kind=>({
+      pine:{style:"branchy",palette:"pine"},
+      ginkgo:{style:pickOf(["cone","column"]),palette:"ginkgo"},
+      zelkova:{style:pickOf(["round","cloud"]),palette:pickOf(["amber","olive","deep"])},
+      maple:{style:"cloud",palette:"maple"}
+    })[kind]
+  };
+  function scatterLeaves(x,z,reach,colors){
+    const count=9+Math.floor(rand()*8);
+    for(let i=0;i<count;i++){
+      const angle=rand()*6.283,radius=reach*(.25+rand()*1.05);
+      const px=x+Math.cos(angle)*radius,pz=z+Math.sin(angle)*radius;
+      if(solidAt(px+300,pz+225))continue;
+      const item=shape(singleLeaf,colors[i%colors.length],px,.078,pz);
+      item.rotation.set(-Math.PI/2,0,rand()*6.28);
+      item.scale.set(.07+rand()*.09,.05+rand()*.07,1);
     }
-    trees.push({x,z,height});
-    block(x,z,height*.092,height*.092,0,height*.73);
-    for(let i=0;i<5;i++){
-      const a=i*1.256+rand()*.3;
-      limb(x,.22,z,Math.cos(a)*height*.102,-.21,Math.sin(a)*height*.102,height*.03);
-    }
-    for(let i=0;i<7;i++){
-      const a=i*.898+rand()*.4,r=height*(.17+rand()*.14),from=height*(.38+i*.041),rise=height*(.22+rand()*.15);
-      const dx=Math.cos(a)*r,dz=Math.sin(a)*r;
-      if(!buildingClear(x+sway*.65+dx,z+dz,height*.028,from+rise-height*.028)||
-         !buildingClear(x+sway*.65+dx*.5,z+dz*.5,height*.028,from+rise*.5-height*.028))continue;
-      const supported=limb(x+sway*.65,from,z,dx,rise,dz,height*.020);
-      for(let j=0;j<4;j++){
-        const a2=a+(j-1.5)*.69,spread=height*(.047+rand()*.075);
-        const tx=x+sway*.65+dx+Math.cos(a2)*spread,tz=z+dz+Math.sin(a2)*spread;
-        const ty=from+rise+(rand()-.32)*height*.15;
-        const size=height*(.107+rand()*.071);
-        if(!buildingClear(tx,tz,size*1.28,ty-size*.89))continue;
-        const depth=size*(.91+rand()*.33),pitch=rand()*.45,yaw=rand()*6.28,roll=rand()*.47;
-        if(!supported)continue;
-        const crown=shape(leaf,palette[(i*3+j)%palette.length],tx,ty,tz);
-        crown.name="Tree crown";crown.scale.set(size*1.17,size*.68,depth);
-        crown.rotation.set(pitch,yaw,roll);treeClearance.trim(crown);
-      }
-    }
-    for(let j=0;j<5;j++){
-      const tx=x+sway+(rand()-.5)*height*.29,ty=height*(.79+rand()*.16),tz=z+(rand()-.5)*height*.25;
-      if(!buildingClear(tx,tz,height*.18,ty-height*.117))continue;
-      const crown=shape(leaf,palette[j%palette.length],tx,ty,tz);
-      crown.name="Tree crown";crown.scale.set(height*.18,height*.117,height*.15);crown.rotation.y=rand()*6.28;
-      treeClearance.trim(crown);
-    }
-    shade(x,z,height*.36,height*.30);
-    return true;
+  }
+  function tree(x,z,height,choice=treeMix.garden(),spread=height*(.52+rand()*.2)){
+    const grown=treeKit.grow(x,z,{height,spread,...choice});
+    if(!grown)return 0;
+    trees.push({x,z,height,top:grown.top});
+    block(x,z,grown.radius*2.2,grown.radius*2.2,0,height*.5);
+    shade(x,z,grown.reach*1.05,grown.reach*.92);
+    if(grown.autumn)scatterLeaves(x,z,grown.reach,grown.leaf);
+    return grown.radius;
   }
   function contains(points,x,y){
     let inside=false;
@@ -334,7 +334,6 @@ export function buildJeongdong(T,scene,kit) {
     return palacePaths.every(({points,width})=>pathClear(points,x,y,width/2+clearance));
   }
   function plantAvenue(){
-    const ginkgo=[0xd6a42d,0xe9bc4a,0xab8a37,0xcfa547];
     const shifts=[0,-2.1,2.1,-4.2,4.2,-6.3,6.3,-8.4,8.4];
     for(let i=1;i<route.length;i++){
       const street=line(route[i-1],route[i]);
@@ -350,7 +349,7 @@ export function buildJeongdong(T,scene,kit) {
             if(t<.04||t>.96)continue;
             const {x,z}=street.at(t,offset);
             if(!pathClear(route,x+300,z+225,5.3)||!awayFromPaths(x+300,z+225,1)||!treeFits(x,z,height))continue;
-            if(tree(x,z,height,offset<0?ginkgo:autumn)){planted=true;break;}
+            if(tree(x,z,height,treeMix.avenue())){planted=true;break;}
           }
           if(planted)break;
         }
@@ -358,29 +357,23 @@ export function buildJeongdong(T,scene,kit) {
     }
   }
   function plantGardens(){
-    const foliage=[0x64734b,0x7e8c53,0x526740,0x879259];
-    const plant=makePalaceTree(T,shape,treeClearance);
     for(const specimen of palacePlantings){
-      const {point,height,spread}=specimen,{x,z}=placed(point);
+      const {point,height,spread,kind}=specimen,{x,z}=placed(point);
       if(!treeFits(x,z,height)||!awayFromPaths(point.x,point.y,.65))continue;
-      const trunkRadius=plant(x,z,specimen);
-      if(!trunkRadius)continue;
-      trees.push({x,z,height});
-      block(x,z,trunkRadius*2,trunkRadius*2,0,height*.75);
-      shade(x,z,spread*.46,spread*.38);
+      tree(x,z,height,treeMix.specimen(kind),spread);
     }
     for(const {outline,kind} of palaceGardens){
       const xs=outline.map(p=>p.x),ys=outline.map(p=>p.y);
       const minX=Math.min(...xs),minY=Math.min(...ys);
       const w=Math.max(...xs)-minX,d=Math.max(...ys)-minY;
       const spots=[];
-      const maxTrees=kind==="grove"?Math.min(5,Math.floor(w*d/180)):kind==="lawn"?1:0;
+      const maxTrees=kind==="grove"?Math.min(7,Math.floor(w*d/140)):kind==="lawn"?2:0;
       for(let i=0;i<maxTrees*5&&spots.length<maxTrees;i++){
         const x=minX+rand()*w,y=minY+rand()*d;
         const height=5.5+rand()*5;
         if(!contains(outline,x,y)||!treeFits(wx(x),wz(y),height)||!awayFromPaths(x,y,1.4)||
            spots.some(spot=>Math.hypot(spot.x-x,spot.y-y)<5))continue;
-        if(tree(wx(x),wz(y),height,(spots.length+1)%3?foliage:autumn))spots.push({x,y});
+        if(tree(wx(x),wz(y),height,treeMix.garden()))spots.push({x,y});
       }
       if(kind==="parterre"||kind==="grove"){
         for(let i=0;i<outline.length;i++){
@@ -389,9 +382,7 @@ export function buildJeongdong(T,scene,kit) {
           for(let j=0;j<count;j++){
             const {x,z}=edge.at((j+.50)/count);
             if(solidAt(x+300,z+225)||!awayFromPaths(x+300,z+225,.47))continue;
-            const r=.53+rand()*.45,shrub=shape(leaf,foliage[j%foliage.length],x,r*.38,z);
-            shrub.name="Garden shrub";shrub.scale.set(r,r*.62,r*.83);shrub.rotation.y=rand()*6.28;
-            treeClearance.trim(shrub);
+            treeKit.shrub(x,z,.53+rand()*.45,weighted([[40,"deep"],[34,"fresh"],[14,"olive"],[7,"maple"],[5,"amber"]]));
           }
         }
       }
@@ -459,7 +450,6 @@ export function buildJeongdong(T,scene,kit) {
     }
     return (clock,night)=>{uniforms.clock.value=clock;uniforms.night.value=night;};
   }
-  const singleLeaf=new T.PlaneGeometry(1,1);
   for(let i=1;i<route.length;i++){
     const street=line(route[i-1],route[i]);
     for(let j=0;j<Math.ceil(street.len*2.4);j++){
@@ -479,7 +469,9 @@ export function buildJeongdong(T,scene,kit) {
       box(0x43504b,side*.83,.66,-.25,.077,.71,.092,group);
       box(0x44514d,side*1.06,.66,.021,.071,.075,.44,group);
     }
-    block(x,z,2.21,.61,angle,1);
+    // Seat and backrest collide separately so a jump can land on the seat.
+    block(x,z,2.21,.61,angle,.52);
+    block(x-.24*Math.sin(angle),z-.24*Math.cos(angle),2.21,.13,angle,.98);
     const xMap=x+300,yMap=z+225;
     const heading=(Math.atan2(Math.sin(angle),-Math.cos(angle))*180/Math.PI+360)%360;
     const slots=[-.50,.50].map(offset=>{
@@ -876,7 +868,7 @@ export function buildJeongdong(T,scene,kit) {
     for(const [dx,dz] of [[7,3],[8,6],[4,8],[8,-1],[3,10],[11,3]]){
       const x=at.x+dx,z=at.z+dz;
       if(!awayFromPaths(x+300,z+225,1)||!treeFits(x,z,height))continue;
-      if(tree(x,z,height,[0x7f9458,0xb4a349,0x8f934d,0xb39c3e]))break;
+      if(tree(x,z,height,treeMix.edge()))break;
     }
   }
   return {benches,trees,catWalls,fountains:[{x:fp.x,z:fp.z,radius:2.32},{x:sf.x,z:sf.z,radius:4.2,scalloped:true}],

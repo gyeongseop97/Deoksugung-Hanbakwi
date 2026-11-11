@@ -16,40 +16,6 @@ const corridors=[
   ...["금천교에서 중화문까지","대한문 안길","정관헌에서 함녕전까지","융안문 앞길","즉조당에서 중화전까지",
     "중화전 동쪽","중화전 마당 서쪽 둘레","서쪽 산책길","석조전 서관과 정원","평성문에서 석조전으로"].map(palaceTrail)
 ];
-const areas={
-  plaza:entranceWalk.slice(0,2).concat(palace[1]),
-  roadEast:route.slice(1,6),roadWest:route.slice(6,12),
-  east:pondEast.slice(2,10).concat(pondWest.slice(2,7)),south:southernGarden.slice(1,6),
-  west:fountainGarden.slice(2,12),north:dondeokjeon.slice(1,10).concat(dondeokjeonDoor.at(-1)),
-  pavilion:pavilionWalk.slice(5,12)
-};
-const circuits=[
-  ["plaza","roadEast","east"],
-  ["roadEast","roadWest","plaza"],
-  ["roadWest","roadEast","plaza"],
-  ["east","pavilion","plaza"],
-  ["south","west","east"],
-  ["west","north","south"],
-  ["north","pavilion","west"],
-  ["pavilion","north","east"],
-  ["plaza","pavilion","east"],
-  ["roadEast","east","roadWest"],
-  ["roadWest","plaza","roadEast"],
-  ["east","west","north"],
-  ["south","pavilion","west"],
-  ["west","east","south"],
-  ["north","west","pavilion"],
-  ["pavilion","west","south"],
-  ["plaza","east","roadEast"],
-  ["roadEast","roadWest","east"],
-  ["roadWest","roadEast","south"],
-  ["east","plaza","pavilion"],
-  ["south","north","east"],
-  ["west","south","north"],
-  ["north","pavilion","south"],
-  ["pavilion","east","west"]
-];
-
 const metres=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
 const keyOf=point=>point.x+","+point.y;
 const close=(a,b)=>metres(a,b)<.001;
@@ -113,9 +79,7 @@ function makeNetwork(){
       if(!reachable.has(to)){reachable.add(to);queue.push(to);}
     }
   }
-  const available=Object.fromEntries(Object.entries(areas).map(([area,points])=>
-    [area,points.map(nodeFor).filter(node=>reachable.has(node))]));
-  return {nodes:[...reachable],available,byLocation};
+  return {nodes:[...reachable],byLocation};
 }
 
 function networkPath(from,to){
@@ -174,34 +138,77 @@ export function makeCatRoaming(){
     }
     return null;
   }
-  function roam(home,random,index=0){
-    const {available}=graph(),entry=access(home);
-    const circuit=circuits[index%circuits.length];
-    const visits=random()<.5?circuit.slice(1):circuit.slice(1).reverse();
+  // Shift a few waypoints off the centre of the path so cats do not all trace the same line.
+  function meander(points,random){
+    const result=[points[0]];
+    for(let i=1;i<points.length-1;i++){
+      const point=points[i],previous=result.at(-1),next=points[i+1];
+      let chosen=point;
+      if(random()<.5){
+        const angle=random()*Math.PI*2,radius=.5+random()*1.5;
+        const shifted={x:point.x+Math.cos(angle)*radius,y:point.y+Math.sin(angle)*radius};
+        if(onGround(shifted)&&clearSegment(previous,shifted,.24)&&clearSegment(shifted,next,.24))chosen=shifted;
+      }
+      result.push(chosen);
+    }
+    if(points.length>1)result.push(points.at(-1));
+    return result;
+  }
+  // A short detour onto the grass or courtyard beside a stop, then back to it.
+  function stray(origin,random){
+    const points=[origin];
+    const hops=1+Math.floor(random()*3);
+    for(let hop=0;hop<hops;hop++){
+      const from=points.at(-1);
+      for(let attempt=0;attempt<6;attempt++){
+        const angle=random()*Math.PI*2,radius=2.2+random()*6.5;
+        const to={x:from.x+Math.cos(angle)*radius,y:from.y+Math.sin(angle)*radius};
+        if(!onGround(to)||!clearSegment(from,to,.24)||!clearSegment(to,origin,.24))continue;
+        points.push(to);break;
+      }
+    }
+    if(points.length>1)points.push(origin);
+    return points;
+  }
+  // Cats wander the whole grounds: each one strings together far-apart stops chosen from
+  // every reachable path junction, strays off the path at some of them and naps at others.
+  function roam(home,random){
+    const {nodes}=graph(),entry=access(home);
     const legs=[];
     let untilRest=24+random()*24;
-    const add=(points,rest)=>{
+    const add=(points,rest,pace=.69+random()*.26,everyStop=0)=>{
       for(let i=1;i<points.length;i++){
         const a=points[i-1],b=points[i],distance=metres(a,b);
         if(distance<=.001)continue;
         untilRest-=distance;
-        const pause=i===points.length-1&&rest?rest:untilRest<=0?1.2+random()*2.8:0;
+        const last=i===points.length-1;
+        const pause=last&&rest?rest:everyStop?everyStop*(.5+random()):untilRest<=0?1.2+random()*2.8:0;
         if(pause)untilRest=24+random()*24;
-        legs.push({a,b,travel:distance/(.69+random()*.26),pause});
+        legs.push({a,b,travel:distance/(pace*(.92+random()*.16)),pause});
       }
     };
-    if(entry){
+    if(entry&&nodes.length>1){
       add(entry.path,0);
       let current=entry.node;
-      for(const area of visits){
-        const next=choose(available[area],random);
+      const visited=new Set([current]);
+      const stops=6+Math.floor(random()*4);
+      for(let stop=0;stop<stops;stop++){
+        const options=nodes.filter(node=>{
+          const distance=metres(node.point,current.point);
+          return !visited.has(node)&&distance>20&&distance<170;
+        });
+        const next=choose(options.length?options:nodes,random);
         if(!next||next===current)continue;
         const path=networkPath(current,next);
         if(!path.length)continue;
-        add(path,2.8+random()*6.5);current=next;
+        // Mostly an unhurried walk, sometimes a purposeful trot across the grounds.
+        const pace=random()<.22?1.35+random()*.5:.62+random()*.34;
+        add(meander(path,random),1.5+random()*7.5,pace);
+        current=next;visited.add(next);
+        if(random()<.7)add(stray(current.point,random),.8+random()*2.4,.55+random()*.25,2.6);
       }
-      add(networkPath(current,entry.node),0);
-      add(entry.path.slice().reverse(),0);
+      add(meander(networkPath(current,entry.node),random),0);
+      add(entry.path.slice().reverse(),4+random()*9);
     }
     if(!legs.length){
       // A blocked optional perch must not strand the cat or invalidate the patrol clock.
@@ -216,9 +223,11 @@ export function makeCatRoaming(){
     return legs;
   }
   roam.start=(random,index=0,used=new Set())=>{
-    const {available,nodes}=graph(),area=circuits[index%circuits.length][0];
+    const {nodes}=graph();
     const unused=node=>!used.has(keyOf(node.point));
-    const point=(choose(available[area].filter(unused),random)??choose(nodes.filter(unused),random))?.point??findGround(spawn);
+    // Spread starting points over the whole map instead of a few named areas.
+    const free=nodes.filter(unused);
+    const point=(free.length?free[(Math.floor(random()*free.length)+index*7)%free.length]:null)?.point??findGround(spawn);
     if(point)used.add(keyOf(point));
     return point;
   };

@@ -1,4 +1,5 @@
-import {clearSegment,distance,walkable} from "./layout.js";
+import {clearSegment,distance,platformAt} from "./layout.js";
+import {JUMP_MS,JUMP_HEIGHT} from "./activities.js";
 
 export const normalize = angle => ((angle % 360) + 360) % 360;
 export const angleDelta = (from,to) => normalize(to-from+180)-180;
@@ -15,28 +16,21 @@ export function receivePeople(people,rows,self,serverTime){
     let person=people.get(row.id);
     if(!person){
       person={id:row.id,position:{x:avatar.x,y:avatar.y,heading:avatar.heading??252},
-        view:{...row.view},samples:[{at,avatar}],interval:95,sampleAge:0};
+        view:{...row.view},sample:{at,avatar},interval:120,error:{x:0,y:0},velocity:{x:0,y:0},fresh:false};
       people.set(row.id,person);
     }
-    const previous=person.samples.at(-1);
+    const previous=person.sample;
     if(at<previous.at)continue;
     if(at>previous.at){
       const interval=at-previous.at;
-      if(distance(previous.avatar,avatar.x,avatar.y)>8){
-        person.samples.length=0;
-        Object.assign(person.position,{x:avatar.x,y:avatar.y,heading:avatar.heading??252});
-        person.playbackAt=undefined;
-      }else if(!moving(previous.avatar)&&!previous.avatar.blocked&&moving(avatar)&&interval>250){
-        // Anchor the first step after a long idle period to the newest interval.
-        person.samples.push({at:at-Math.min(100,person.interval),avatar:previous.avatar});
-      }else if(interval<=450&&(moving(previous.avatar)||previous.avatar.blocked)){
-        person.interval+=(Math.max(50,Math.min(240,interval))-person.interval)*.28;
+      // Track how often this walker's position really arrives. The render loop predicts
+      // that far ahead, so a slow connection shows steady walking instead of stop-and-go.
+      if(interval<=1200&&(moving(previous.avatar)||previous.avatar.blocked)){
+        person.interval+=(Math.max(40,Math.min(700,interval))-person.interval)*.3;
       }
-      person.samples.push({at,avatar});
-      if(person.samples.length>10)person.samples.splice(0,person.samples.length-10);
+      person.sample={at,avatar};
+      person.fresh=true;
     }
-    const age=Math.max(0,Math.min(140,serverTime-at));
-    person.sampleAge+=(age-person.sampleAge)*.3;
     person.avatar=avatar;
     person.targetView=row.view;
     person.nickname=row.nickname;
@@ -47,62 +41,68 @@ export function receivePeople(people,rows,self,serverTime){
   for(const id of people.keys())if(!present.has(id))people.delete(id);
 }
 
+// Remote walkers are drawn where they are now, not where the last message left them.
+// Each frame extends the newest report along its velocity (dead reckoning). When a
+// fresh report disagrees with the prediction, the difference is blended away over a
+// few frames, so the motion stays continuous without holding the walker back in time.
 export function smoothPeople(people,seconds,serverTime,roundTrip=65){
-  const ease=1-Math.exp(-seconds*36),lookEase=1-Math.exp(-seconds*19);
-  const frameMs=seconds*1000;
+  const lookEase=1-Math.exp(-seconds*19),turnEase=1-Math.exp(-seconds*13);
+  const settle=Math.exp(-seconds/.24);
+  // A report was already about half a round trip old when the server stamped it.
+  const uplink=Math.min(.12,Math.max(0,roundTrip)*.0005);
   for(const person of people.values()){
-    const {avatar,position,view,targetView,samples}=person;
-    const delay=Math.max(60,Math.min(185,person.interval*.64+roundTrip*.25+person.sampleAge*.36));
-    const targetTime=serverTime-delay,previousTime=person.playbackAt;
-    // Absorb timing changes without rewinding or jumping the rendered movement.
-    const sampleTime=previousTime==null||targetTime-previousTime>500?targetTime:
-      previousTime+Math.max(frameMs*.8,Math.min(frameMs*1.25,targetTime-previousTime));
-    person.playbackAt=sampleTime;
-    const last=samples.at(-1);
-    while(samples.length>2&&samples[1].at<=sampleTime)samples.shift();
-    const first=samples[0],second=samples[1];
-    let goal=first.avatar,pose=goal,facing=goal.heading??targetView.pan;
-    if(avatar.seat!=null){
-      goal=pose=avatar;facing=avatar.heading??targetView.pan;
-    }else if(second&&sampleTime>first.at&&sampleTime<second.at){
-      const a=first.avatar,b=second.avatar,ratio=(sampleTime-first.at)/(second.at-first.at);
-      const blend={x:a.x+(b.x-a.x)*ratio,y:a.y+(b.y-a.y)*ratio};
-      goal=clearSegment(a,blend)?blend:a;
-      pose=ratio>.5?b:a;
-      facing=normalize(facing+angleDelta(facing,b.heading??facing)*ratio);
-    }else if(sampleTime>=last.at){
-      const a=last.avatar,age=(sampleTime-last.at)/1000;
-      const linear=Math.min(.055,age);
-      const lead=a.blocked?0:linear+.085*(1-Math.exp(-(age-linear)/.085));
-      const guess={x:a.x+(a.vx||0)*lead,y:a.y+(a.vy||0)*lead};
-      goal=clearSegment(a,guess)?guess:a;pose=a;facing=a.heading??targetView.pan;
+    const {avatar,position,view,targetView,sample,error,velocity}=person;
+    const a=sample.avatar,seated=avatar.seat!=null;
+    const age=Math.max(0,(serverTime-sample.at)/1000);
+    const travelling=!seated&&!a.blocked&&moving(a);
+    const airborne=serverTime-(avatar.jump||0)<JUMP_MS+250;
+    let goal=seated?avatar:a,predicting=false;
+    if(travelling){
+      // Predict up to the expected arrival of the next report, then ease to a stop.
+      const horizon=Math.min(.95,Math.max(.28,person.interval*.0017+.12));
+      const elapsed=age+uplink;
+      const lead=elapsed<=horizon?elapsed:horizon+.16*(1-Math.exp(-(elapsed-horizon)/.16));
+      predicting=elapsed<horizon+.35;
+      const feet=airborne?JUMP_HEIGHT+platformAt(a.x,a.y):platformAt(a.x,a.y);
+      for(const share of [1,.6,.3]){
+        const guess={x:a.x+(a.vx||0)*lead*share,y:a.y+(a.vy||0)*lead*share};
+        if(clearSegment(a,guess,.36,feet)){goal=guess;break;}
+      }
     }
     const gap=distance(position,goal.x,goal.y);
-    const step=seconds*(pose.running?9.5:6.4);
-    const ratio=gap>6||gap<.008?1:Math.min(ease,step/gap);
-    const next={x:position.x+(goal.x-position.x)*ratio,y:position.y+(goal.y-position.y)*ratio};
-    const beforeX=position.x,beforeY=position.y;
-    if(gap>6||clearSegment(position,next))Object.assign(position,next);
-    else if(walkable(goal.x,goal.y)&&clearSegment(position,pose)){
-      const turnRatio=Math.min(1,step/Math.max(.001,distance(position,pose.x,pose.y)));
-      position.x+=(pose.x-position.x)*turnRatio;
-      position.y+=(pose.y-position.y)*turnRatio;
+    let nextX,nextY;
+    if(gap>7||seconds<=0){
+      nextX=goal.x;nextY=goal.y;error.x=error.y=0;velocity.x=velocity.y=0;
+    }else{
+      if(person.fresh){
+        // Keep last frame's motion and absorb the correction gradually.
+        error.x=position.x+velocity.x*seconds-goal.x;
+        error.y=position.y+velocity.y*seconds-goal.y;
+      }else{
+        error.x*=settle;error.y*=settle;
+      }
+      nextX=goal.x+error.x;nextY=goal.y+error.y;
+      velocity.x=(nextX-position.x)/seconds;velocity.y=(nextY-position.y)/seconds;
     }
+    person.fresh=false;
+    const moved=Math.hypot(nextX-position.x,nextY-position.y);
+    position.x=nextX;position.y=nextY;
+    const facing=(seated?avatar.heading:a.heading)??targetView.pan;
     const turn=angleDelta(position.heading,facing);
-    position.heading=Math.abs(turn)<.04?facing:normalize(position.heading+turn*ease);
+    position.heading=Math.abs(turn)<.04?facing:normalize(position.heading+turn*turnEase);
     view.pan=normalize(view.pan+angleDelta(view.pan,targetView.pan)*lookEase);
     view.tilt+=(targetView.tilt-view.tilt)*lookEase;
     view.zoom+=(targetView.zoom-view.zoom)*lookEase;
     view.night=targetView.night;
-    const progressed=Math.hypot(position.x-beforeX,position.y-beforeY)>.003;
-    person.stepping=Boolean(avatar.seat==null&&(sampleTime-last.at<300&&(pose.blocked||moving(pose))||progressed));
-    person.running=Boolean(person.stepping&&pose.running);
+    const speed=seconds>0?moved/seconds:0;
+    person.stepping=Boolean(!seated&&(predicting||a.blocked&&age<1.2||speed>.45));
+    person.running=Boolean(person.stepping&&a.running);
   }
 }
 
 export function handPosition(leader,side){
   const angle=(leader.heading??252)*Math.PI/180;
-  return {x:leader.x+Math.cos(angle)*side*1.04,y:leader.y+Math.sin(angle)*side*1.04,heading:leader.heading??252};
+  return {x:leader.x+Math.cos(angle)*side*.90,y:leader.y+Math.sin(angle)*side*.90,heading:leader.heading??252};
 }
 
 export function handSide(leader,follower){

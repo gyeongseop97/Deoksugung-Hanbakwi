@@ -1,7 +1,7 @@
 import * as T from "three";
 import { buildJeongdong } from "./streets.js";
 import { addWater } from "./water.js";
-import { solidAt, bridge, gate, middle, hall, stoneHall, courtAngle, ticketGuide } from "./layout.js";
+import { solidAt, platformAt, bridge, gate, middle, hall, stoneHall, courtAngle, ticketGuide } from "./layout.js";
 import { addParkLife } from "./park-life.js";
 import { addPalaceBirds } from "./palace-birds.js";
 import { addPalaceSky } from "./palace-sky.js";
@@ -17,7 +17,14 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
   const renderer=new T.WebGLRenderer({antialias:true,powerPreference:"high-performance"});
   renderer.toneMapping=T.ACESFilmicToneMapping;
   renderer.toneMappingExposure=1.07;
-  renderer.setPixelRatio(Math.min(devicePixelRatio,1.45));
+  const handheld=matchMedia("(pointer:coarse)").matches;
+  // Frame-rate governor: the render scale and shadows step down on a slow device and recover later.
+  const quality={max:Math.min(devicePixelRatio,handheld?1.6:2),min:handheld?.6:.75,ratio:0,shadows:true,
+    pinned:new URLSearchParams(location.search).get("quality")==="max",frame:16.7,checkAt:0,calm:0};
+  quality.ratio=Math.min(quality.max,handheld?1.25:1.5);
+  renderer.setPixelRatio(quality.pinned?quality.max:quality.ratio);
+  renderer.shadowMap.enabled=true;
+  renderer.shadowMap.type=T.PCFSoftShadowMap;
   const selfEmote=document.createElement("span");
   selfEmote.className="self-emote";selfEmote.hidden=true;selfEmote.setAttribute("aria-hidden","true");
   const selfChat=document.createElement("span");
@@ -56,13 +63,32 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
   }));
   sky.renderOrder=-3;scene.add(sky);
   scene.fog=new T.FogExp2(0xc6dbe3,.0039);
-  const hemi=new T.HemisphereLight(0xe8f0ff,0x75664e,1.98);
-  const sun=new T.DirectionalLight(0xffe5b6,2.35);
+  const hemi=new T.HemisphereLight(0xe8f0ff,0x86765a,1.42);
+  const sun=new T.DirectionalLight(0xffe7bd,3.05);
   sun.position.set(-86,97,52);
+  const sunDirection=sun.position.clone().normalize();
+  // One shadow map follows the walker; snapping it to whole texels keeps edges from crawling.
+  const shadowReach=handheld?40:58;
+  sun.castShadow=true;
+  sun.shadow.mapSize.setScalar(handheld?1024:2048);
+  Object.assign(sun.shadow.camera,{left:-shadowReach,right:shadowReach,top:shadowReach,bottom:-shadowReach,near:10,far:420});
+  sun.shadow.bias=-.00035;sun.shadow.normalBias=.045;
+  const shadowRight=new T.Vector3().crossVectors(new T.Vector3(0,1,0),sunDirection).normalize();
+  const shadowUp=new T.Vector3().crossVectors(sunDirection,shadowRight).normalize();
+  const shadowFocus=new T.Vector3();
+  function aimShadow(x,y,z){
+    const texel=shadowReach*2/sun.shadow.mapSize.x;
+    shadowFocus.set(x,y,z);
+    const across=Math.round(shadowFocus.dot(shadowRight)/texel)*texel,along=Math.round(shadowFocus.dot(shadowUp)/texel)*texel;
+    const depth=shadowFocus.dot(sunDirection);
+    sun.target.position.copy(shadowRight).multiplyScalar(across).addScaledVector(shadowUp,along).addScaledVector(sunDirection,depth);
+    sun.position.copy(sun.target.position).addScaledVector(sunDirection,210);
+    sun.target.updateMatrixWorld();
+  }
   const moonLight=new T.DirectionalLight(0xabc9ff,0);
   moonLight.position.set(-145,94,33);
-  scene.add(hemi,sun,moonLight);
-  const drawPalaceSky=addPalaceSky(T,scene,{sunDirection:sun.position});
+  scene.add(hemi,sun,sun.target,moonLight);
+  const drawPalaceSky=addPalaceSky(T,scene,{sunDirection:sunDirection.clone().multiplyScalar(142)});
   const wx=x=>x-300,wz=y=>y-225;
   let seed=220621;
   function rand(){seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;}
@@ -101,7 +127,7 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
   const dayZenith=new T.Color(0x367ec5),nightZenith=new T.Color(0x080e21);
   const dayFog=new T.Color(0xc6dbe3),nightFog=new T.Color(0x1b2b40);
   const ambientDay=new T.Color(0xe8f0ff),ambientNight=new T.Color(0xa7c1ff);
-  let night=0;
+  let night=0,scannedMiddle=false;
   const lanterns=new Map();
   const lanternModel=makeWishLantern(kit);
   function removeLantern(id,entry){
@@ -117,39 +143,11 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     return {model,point:spec,groups,angle:spec.angle};
   });
   const fallbackGroups=new Set([classical,middleModel,hallModel,...surveyedPavilions.flatMap(pavilion=>pavilion.groups)]);
-  const groups=new Map(),inverse=new T.Matrix4(),transform=new T.Matrix4();
-  scene.traverse(object=>{
-    if(!object.isMesh||object.isInstancedMesh||!object.material.isMeshStandardMaterial)return;
-    const parent=fallbackGroups.has(object.parent)?object.parent:scene;
-    const key=parent.id+"/"+object.geometry.id+"/"+object.material.id;
-    if(!groups.has(key))groups.set(key,[]);
-    groups.get(key).push(object);
-  });
-  for(const objects of groups.values()){
-    if(objects.length<4)continue;
-    const parent=fallbackGroups.has(objects[0].parent)?objects[0].parent:scene;
-    inverse.copy(parent.matrixWorld).invert();
-    // Keep batches local so distant blocks can be culled on a phone.
-    const chunks=new Map();
-    for(const object of objects){
-      const p=object.matrixWorld.elements,k=parent===scene?Math.floor(p[12]/45)+"/"+Math.floor(p[14]/45):"local";
-      if(!chunks.has(k))chunks.set(k,[]);
-      chunks.get(k).push(object);
-    }
-    for(const group of chunks.values()){
-      if(group.length<4)continue;
-      const batch=new T.InstancedMesh(group[0].geometry,group[0].material,group.length);
-      group.forEach((object,i)=>{
-        batch.setMatrixAt(i,transform.multiplyMatrices(inverse,object.matrixWorld));
-        object.removeFromParent();
-      });
-      batch.computeBoundingSphere();parent.add(batch);
-    }
-  }
+  consolidate(scene,fallbackGroups);
 
   const outdoors=new T.Group();
   for(const object of [...scene.children]){
-    if(object!==hemi&&object!==sun&&object!==moonLight)outdoors.add(object);
+    if(object!==hemi&&object!==sun&&object!==sun.target&&object!==moonLight)outdoors.add(object);
   }
   scene.add(outdoors);
   const guideMarker=makeGuideMarker();
@@ -163,13 +161,25 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     import("https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/loaders/GLTFLoader.js"),
     import("https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/libs/meshopt_decoder.module.js")
   ]);
-  let scannedMiddle=false;
   async function loadLandmark(name,point,groups,angle=0){
     try{
       const [{GLTFLoader},{MeshoptDecoder}]=await landmarkLoaders;
       const asset=await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync("/"+name+".glb");
       asset.scene.position.set(wx(point.x),0,wz(point.y));
       asset.scene.rotation.y=angle;
+      const anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());
+      asset.scene.traverse(mesh=>{
+        if(!mesh.isMesh)return;
+        if(!mesh.geometry.attributes.normal){
+          const smoothed=smoothSurveyNormals(mesh.geometry);
+          if(smoothed!==mesh.geometry){mesh.geometry.dispose();mesh.geometry=smoothed;}
+        }
+        const material=mesh.material;
+        material.flatShading=false;material.metalness=0;material.roughness=.92;
+        if(material.map){material.map.anisotropy=anisotropy;material.map.needsUpdate=true;}
+        material.needsUpdate=true;
+        mesh.castShadow=mesh.receiveShadow=true;
+      });
       outdoors.add(asset.scene);
       for(const group of groups)group.visible=false;
       container.dataset[name]="survey";
@@ -198,7 +208,7 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     ctx.fillStyle="#fff7e4";ctx.font=font;ctx.textBaseline="middle";ctx.fillText(nickname,40,32);
     const texture=new T.CanvasTexture(canvas);texture.colorSpace=T.SRGBColorSpace;
     const sprite=new T.Sprite(new T.SpriteMaterial({map:texture,transparent:true,depthWrite:false,toneMapped:false}));
-    sprite.scale.set(Math.min(3.6,canvas.width/160),.38,1);sprite.position.y=2.20;
+    sprite.scale.set(Math.min(3.6,canvas.width/160),.38,1);sprite.position.y=1.84;
     return sprite;
   }
   function emojiTexture(emoji){
@@ -257,7 +267,7 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     if(!walkerPreview){
       const stage=new T.Scene(),camera=new T.PerspectiveCamera(33,width/height,.1,20);
       stage.background=new T.Color(0x26392d);
-      camera.position.set(1.48,1.64,4.22);camera.lookAt(0,1.02,0);
+      camera.position.set(1.05,1.12,3.42);camera.lookAt(0,.76,0);
       const key=new T.DirectionalLight(0xffe1ba,1.45);
       key.position.set(4,7,5);
       stage.add(new T.HemisphereLight(0xf5f1df,0x8b7863,2.05),key);
@@ -267,9 +277,10 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
         model:null,coat:null,pixels:new Uint8Array(width*height*4),image:context.createImageData(width,height)};
     }
     const preview=walkerPreview,coat=appearance.coat??0xab5947;
-    if(preview.coat!==coat){
+    const name=appearance.nickname??"";
+    if(preview.coat!==coat||preview.name!==name){
       if(preview.model)preview.models.dispose(preview.model);
-      preview.model=preview.models.create(coat,"",labelSprite);preview.coat=coat;
+      preview.model=preview.models.create(coat,"",labelSprite,name);preview.coat=coat;preview.name=name;
     }
     preview.models.update(preview.model,{x:300,y:225,heading:180,character:appearance.character,look:appearance.look},
       {now:performance.now(),clock:Date.now(),delta:.1,floor:0,turnEase:1,emojiTexture});
@@ -287,7 +298,11 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     context.putImageData(preview.image,0,0);
   }
   function seatAt(position){return benches[position.seat]?.slots[position.seatSide??0];}
-  function floorHeight(position) {
+  // Low kerbs, benches and ledges can be stood on after a jump, so they raise the floor too.
+  function floorHeight(position){
+    return Math.max(groundHeight(position),platformAt(position.x,position.y,true));
+  }
+  function groundHeight(position) {
     const stair=stairHeight(position);
     if(stair!=null)return stair;
     if(Math.abs(position.y-bridge.y)<3.15&&Math.abs(position.x-bridge.x)<3.6)return Math.max(0,.23-(Math.abs(position.x-bridge.x)-2.70)*.34);
@@ -325,7 +340,32 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     }
     if(element.hidden===show)element.hidden=!show;
   }
-  let cameraAnchor=null,cameraDistance=0,prevTime=0;
+  let cameraAnchor=null,cameraDistance=0,prevTime=0,governedAt=0;
+  function govern(now){
+    const elapsed=now-(governedAt||now);
+    governedAt=now;
+    if(quality.pinned||elapsed<=0||elapsed>250)return;
+    quality.frame+=(elapsed-quality.frame)*.06;
+    if(now<quality.checkAt)return;
+    quality.checkAt=now+1300;
+    if(quality.frame>23){
+      quality.calm=0;
+      // Hold the lower setting for a while so the picture does not pump up and down.
+      quality.raiseAfter=now+40000;
+      if(quality.ratio>quality.min+.01){
+        quality.ratio=Math.max(quality.min,quality.ratio*.87);
+        renderer.setPixelRatio(quality.ratio);resize();
+      }else if(quality.shadows&&quality.frame>30)quality.shadows=false;
+      quality.frame=19;
+    }else if(quality.frame<17.6&&++quality.calm>=5&&now>(quality.raiseAfter??0)){
+      quality.calm=0;
+      if(!quality.shadows)quality.shadows=true;
+      else if(quality.ratio<quality.max-.01){
+        quality.ratio=Math.min(quality.max,quality.ratio*1.08);
+        renderer.setPixelRatio(quality.ratio);resize();
+      }
+    }
+  }
   function render(state,now){
     if(container.hidden)return;
     const {me,peers,view,firstPerson,clock=Date.now()}=state,delta=Math.min(.064,(now-(prevTime||now))/1000);
@@ -343,8 +383,12 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
       guideMarker.scale.setScalar((state.guideNearby ? .88 : .78)+pulse);
       guideMarker.material.opacity=state.guideNearby?1:.82;
     }
-    hemi.intensity=indoors?1.72:1.98-night*1.40;
-    sun.intensity=indoors?0:2.35*(1-night);moonLight.intensity=indoors?0:night*.95;
+    hemi.intensity=indoors?1.72:1.42-night*.88;
+    sun.intensity=indoors?0:3.05*(1-night);moonLight.intensity=indoors?0:night*.95;
+    const shadowed=quality.shadows&&!indoors&&night<.97;
+    if(sun.castShadow!==shadowed)sun.castShadow=shadowed;
+    if(shadowed)aimShadow(wx(anchor.x),0,wz(anchor.y));
+    govern(now);
     lampMaterial.emissiveIntensity=.03+night*2.15;
     spotLights.forEach((light,i)=>{light.intensity=night*(i===2?720:126);});
     const roster=[me,...peers],present=new Set(roster.map(player=>player.id));
@@ -366,7 +410,7 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
         turnEase:player===me?1-Math.exp(-delta*22):1});
     });
     const seat=seatAt(anchor);
-    const eyeHeight=seat?(firstPerson?1.35:1.23):(firstPerson?1.74:1.57)+floorHeight(anchor)+jumpLift(anchor,clock);
+    const eyeHeight=seat?(firstPerson?1.30:1.22):(firstPerson?1.28:1.20)+floorHeight(anchor)+jumpLift(anchor,clock);
     anchorPoint.set(wx(seat?.x??anchor.x),eyeHeight,wz(seat?.y??anchor.y));
     const changed=cameraAnchor!==anchor.id||pivot.distanceToSquared(anchorPoint)>144;
     if(changed)pivot.copy(anchorPoint);
@@ -386,7 +430,7 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
       camera.lookAt(gaze.copy(pivot).sub(arm));
       cameraDistance=0;
     }else{
-      const distance=Math.min(5.25-view.zoom*.47,indoors&&arm.y>0?(4.97-pivot.y)/arm.y:Infinity);
+      const distance=Math.min(4.55-view.zoom*.42,indoors&&arm.y>0?(4.97-pivot.y)/arm.y:Infinity);
       let available=distance;
       // Shorten the orbit arm at walls and let it ease back out as space opens.
       for(let sample=1,count=Math.ceil(distance/.20);sample<=count;sample++){
@@ -411,7 +455,7 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
       if(player.id===anchor.id)continue;
       const group=models.get(player.id)?.group;
       if(group?.visible&&Math.hypot(group.position.x-camera.position.x,group.position.z-camera.position.z)<.70&&
-        camera.position.y>=group.position.y-.10&&camera.position.y<group.position.y+2.08)group.visible=false;
+        camera.position.y>=group.position.y-.10&&camera.position.y<group.position.y+1.72)group.visible=false;
     }
     ring.visible=Boolean(state.destination);
     if(state.destination){
@@ -480,7 +524,164 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     for(const model of models.values())walkerModels.clearChat(model);
     selfChat.hidden=true;selfChat.textContent="";
   }
-  return {render,pick,previewWalker,clearChat,benches,stations,parkLife,birds,museum};
+  const renderStats=()=>({...renderer.info.render,geometries:renderer.info.memory.geometries,textures:renderer.info.memory.textures});
+  return {render,pick,previewWalker,clearChat,floorHeight,groundHeight,renderStats,benches,stations,parkLife,birds,museum};
+}
+
+// The world is assembled from tens of thousands of small boxes and cylinders. Drawing each
+// one separately costs far more than its triangles, so static pieces are combined per map
+// cell: repeated shapes become instanced batches and everything else is merged into one
+// vertex-coloured mesh. Cells outside the view are culled as a whole.
+function consolidate(scene,fallbackGroups,cell=48){
+  scene.updateMatrixWorld(true);
+  const plainMaterials=new Map(),instanceGroups=new Map(),mergeGroups=new Map();
+  const local=new T.Matrix4(),inverse=new T.Matrix4(),normalMatrix=new T.Matrix3(),centre=new T.Vector3(),vertex=new T.Vector3();
+  const inverses=new Map();
+  function plainKey(material){
+    return (material.flatShading?"f":"s")+material.side+"/"+material.roughness.toFixed(2)+"/"+material.metalness.toFixed(2);
+  }
+  function plainMaterial(key,source,vertexColors){
+    const id=key+(vertexColors?"/v":"/i");
+    if(!plainMaterials.has(id))plainMaterials.set(id,new T.MeshStandardMaterial({color:0xffffff,vertexColors,
+      roughness:source.roughness,metalness:source.metalness,flatShading:source.flatShading,side:source.side}));
+    return plainMaterials.get(id);
+  }
+  const candidates=[];
+  scene.traverse(mesh=>{
+    if(!mesh.isMesh||mesh.isInstancedMesh||mesh.isSkinnedMesh||mesh.userData.dynamic||!mesh.visible)return;
+    const material=mesh.material;
+    if(Array.isArray(material)||!material.isMeshStandardMaterial||material.transparent||material.alphaTest>0)return;
+    if(!mesh.geometry.attributes.position||!mesh.geometry.attributes.normal)return;
+    candidates.push(mesh);
+  });
+  for(const mesh of candidates){
+    const material=mesh.material,geometry=mesh.geometry;
+    let owner=scene;
+    for(let parent=mesh.parent;parent;parent=parent.parent)if(fallbackGroups.has(parent)){owner=parent;break;}
+    if(!geometry.boundingBox)geometry.computeBoundingBox();
+    geometry.boundingBox.getCenter(centre).applyMatrix4(mesh.matrixWorld);
+    const place=owner===scene?Math.floor(centre.x/cell)+"/"+Math.floor(centre.z/cell):"local";
+    const plain=!material.map&&!material.bumpMap&&!material.normalMap&&!material.emissiveMap&&!material.vertexColors&&
+      material.emissive.getHex()===0;
+    const look=plain?plainKey(material):"m"+material.id;
+    const entry={mesh,owner,plain,look};
+    const instanceKey=owner.id+"|"+place+"|"+look+"|"+geometry.id;
+    if(!instanceGroups.has(instanceKey))instanceGroups.set(instanceKey,[]);
+    instanceGroups.get(instanceKey).push(entry);
+  }
+  const ownerInverse=owner=>{
+    if(!inverses.has(owner))inverses.set(owner,new T.Matrix4().copy(owner.matrixWorld).invert());
+    return inverses.get(owner);
+  };
+  for(const [key,entries] of instanceGroups){
+    const {mesh:first,owner,plain,look}=entries[0];
+    if(entries.length>=14){
+      const material=plain?plainMaterial(look,first.material,false):first.material;
+      const batch=new T.InstancedMesh(first.geometry,material,entries.length);
+      inverse.copy(ownerInverse(owner));
+      entries.forEach(({mesh},i)=>{
+        batch.setMatrixAt(i,local.multiplyMatrices(inverse,mesh.matrixWorld));
+        if(plain)batch.setColorAt(i,mesh.material.color);
+        mesh.removeFromParent();
+      });
+      batch.castShadow=batch.receiveShadow=true;
+      batch.computeBoundingSphere();owner.add(batch);
+      continue;
+    }
+    const mergeKey=key.slice(0,key.lastIndexOf("|"));
+    if(!mergeGroups.has(mergeKey))mergeGroups.set(mergeKey,[]);
+    mergeGroups.get(mergeKey).push(...entries);
+  }
+  for(const entries of mergeGroups.values()){
+    const {mesh:first,owner,plain,look}=entries[0];
+    const withUv=!plain&&entries.every(({mesh})=>mesh.geometry.attributes.uv);
+    const withColor=plain||first.material.vertexColors;
+    let vertices=0,corners=0;
+    for(const {mesh} of entries){
+      vertices+=mesh.geometry.attributes.position.count;
+      corners+=mesh.geometry.index?mesh.geometry.index.count:mesh.geometry.attributes.position.count;
+    }
+    const positions=new Float32Array(vertices*3),normals=new Float32Array(vertices*3);
+    const uvs=withUv?new Float32Array(vertices*2):null,colors=withColor?new Float32Array(vertices*3):null;
+    const indices=vertices>65535?new Uint32Array(corners):new Uint16Array(corners);
+    inverse.copy(ownerInverse(owner));
+    let v=0,c=0;
+    for(const {mesh} of entries){
+      const {position,normal,uv,color}=mesh.geometry.attributes,index=mesh.geometry.index;
+      local.multiplyMatrices(inverse,mesh.matrixWorld);
+      normalMatrix.getNormalMatrix(local);
+      const flipped=local.determinant()<0,tint=mesh.material.color,count=position.count;
+      for(let i=0;i<count;i++){
+        vertex.fromBufferAttribute(position,i).applyMatrix4(local);
+        positions[(v+i)*3]=vertex.x;positions[(v+i)*3+1]=vertex.y;positions[(v+i)*3+2]=vertex.z;
+        vertex.fromBufferAttribute(normal,i).applyMatrix3(normalMatrix).normalize();
+        normals[(v+i)*3]=vertex.x;normals[(v+i)*3+1]=vertex.y;normals[(v+i)*3+2]=vertex.z;
+        if(uvs){uvs[(v+i)*2]=uv.getX(i);uvs[(v+i)*2+1]=uv.getY(i);}
+        if(colors){
+          const shade=!plain&&color;
+          colors[(v+i)*3]=plain?tint.r:shade?color.getX(i):1;
+          colors[(v+i)*3+1]=plain?tint.g:shade?color.getY(i):1;
+          colors[(v+i)*3+2]=plain?tint.b:shade?color.getZ(i):1;
+        }
+      }
+      const total=index?index.count:count;
+      for(let i=0;i<total;i+=3){
+        const a=v+(index?index.getX(i):i),b=v+(index?index.getX(i+1):i+1),d=v+(index?index.getX(i+2):i+2);
+        indices[c++]=a;indices[c++]=flipped?d:b;indices[c++]=flipped?b:d;
+      }
+      v+=count;
+      mesh.removeFromParent();
+    }
+    const geometry=new T.BufferGeometry();
+    geometry.setAttribute("position",new T.BufferAttribute(positions,3));
+    geometry.setAttribute("normal",new T.BufferAttribute(normals,3));
+    if(uvs)geometry.setAttribute("uv",new T.BufferAttribute(uvs,2));
+    if(colors)geometry.setAttribute("color",new T.BufferAttribute(colors,3));
+    geometry.setIndex(new T.BufferAttribute(indices,1));
+    geometry.computeBoundingSphere();
+    const merged=new T.Mesh(geometry,plain?plainMaterial(look,first.material,true):first.material);
+    merged.castShadow=merged.receiveShadow=true;
+    owner.add(merged);
+  }
+}
+
+// Survey models arrive without normals and would be shaded one hard facet at a time. This
+// rebuilds them so neighbouring faces blend smoothly while real edges (eaves, columns,
+// steps) stay crisp.
+function smoothSurveyNormals(geometry,creaseDegrees=48){
+  const source=geometry.index?geometry.toNonIndexed():geometry;
+  const position=source.attributes.position,count=position.count,faces=count/3;
+  const faceNormal=new Float32Array(faces*3),unit=new Float32Array(faces*3);
+  const a=new T.Vector3(),b=new T.Vector3(),c=new T.Vector3();
+  const around=new Map();
+  for(let face=0;face<faces;face++){
+    a.fromBufferAttribute(position,face*3);b.fromBufferAttribute(position,face*3+1);c.fromBufferAttribute(position,face*3+2);
+    b.sub(a);c.sub(a);b.cross(c);
+    faceNormal[face*3]=b.x;faceNormal[face*3+1]=b.y;faceNormal[face*3+2]=b.z;
+    const length=b.length()||1;
+    unit[face*3]=b.x/length;unit[face*3+1]=b.y/length;unit[face*3+2]=b.z/length;
+    for(let corner=0;corner<3;corner++){
+      const i=face*3+corner,key=position.getX(i)+"/"+position.getY(i)+"/"+position.getZ(i);
+      const list=around.get(key);
+      if(list)list.push(face);else around.set(key,[face]);
+    }
+  }
+  const limit=Math.cos(creaseDegrees*Math.PI/180),normals=new Float32Array(count*3);
+  for(let face=0;face<faces;face++){
+    const ux=unit[face*3],uy=unit[face*3+1],uz=unit[face*3+2];
+    for(let corner=0;corner<3;corner++){
+      const i=face*3+corner,key=position.getX(i)+"/"+position.getY(i)+"/"+position.getZ(i);
+      let x=0,y=0,z=0;
+      for(const other of around.get(key)){
+        if(ux*unit[other*3]+uy*unit[other*3+1]+uz*unit[other*3+2]<limit)continue;
+        x+=faceNormal[other*3];y+=faceNormal[other*3+1];z+=faceNormal[other*3+2];
+      }
+      const length=Math.hypot(x,y,z)||1;
+      normals[i*3]=x/length;normals[i*3+1]=y/length;normals[i*3+2]=z/length;
+    }
+  }
+  source.setAttribute("normal",new T.BufferAttribute(normals,3));
+  return source;
 }
 
 function makeGuideMarker(){

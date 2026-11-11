@@ -8,9 +8,15 @@ const SIDE = [-1, 1];
 const LEG = [.322, .304];
 const ARM = [.252, .228];
 const SOLE = .124;
+// SD proportions: the rig keeps its limb lengths in body units, the whole body is drawn
+// at BODY scale and the head is enlarged on top of it, giving a two-heads-tall figure.
+const BODY = .74;
+const HEAD = .93;
+const WIDE = 1.14;
+const SEAT_LIFT = .17;
 const CHAT_BUBBLE_MS = 6000;
 const FACE_TONES = [
-  {top:"#f8d1ad", middle:"#f4c59f", chin:"#e3a880", light:"#fff1d55d", cheek:"#e88e897a", radius:14},
+  {top:"#f8d1ad", middle:"#f5c8a3", chin:"#edb892", light:"#fff1d55d", cheek:"#e88e897a", radius:14},
   {top:"#f8c1aa", middle:"#f4b198", chin:"#e39b86", light:"#ffe2ce50", cheek:"#e57678a6", radius:18},
   {top:"#f8ae9e", middle:"#f09788", chin:"#df887b", light:"#ffd4c148", cheek:"#df636bc2", radius:22},
   {top:"#f69e96", middle:"#ef8078", chin:"#d76d68", light:"#ffc3b842", cheek:"#d54d59d2", radius:26}
@@ -46,52 +52,73 @@ function softTint(ctx, x, y, radius, color) {
 
 function faceTexture(T, eyes, blink, blushLevel) {
   const colors = FACE_TONES[blushLevel];
-  return canvasTexture(T, 512, 256, ctx => {
+  return canvasTexture(T, 1024, 512, ctx => {
+    ctx.scale(2, 2);
     const tone = ctx.createLinearGradient(0, 42, 0, 204);
     tone.addColorStop(0, colors.top);
     tone.addColorStop(.47, colors.middle);
     tone.addColorStop(1, colors.chin);
     ctx.fillStyle = tone;
     ctx.fillRect(0, 0, 512, 256);
-    softTint(ctx, 128, 108, 49, colors.light);
+    softTint(ctx, 128, 116, 56, colors.light);
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    const eyeY = 139;
     for (const side of SIDE) {
-      const x = 128 + side * 27;
-      softTint(ctx, 128 + side * 42, 148, colors.radius, colors.cheek);
-      ctx.strokeStyle = "#52352b";
-      ctx.lineWidth = 2.5;
-      ctx.lineCap = "round";
+      const x = 128 + side * 33;
+      softTint(ctx, 128 + side * 50, 161, colors.radius + 7, colors.cheek);
+      ctx.strokeStyle = "#5a3a2e";
+      ctx.lineWidth = 2.6;
       ctx.beginPath();
-      ctx.moveTo(x - 7, 114);
-      ctx.quadraticCurveTo(x, eyes === "soft" ? 110 : 108, x + 7, 113);
+      ctx.moveTo(x - 9, 116 + side * .6);
+      ctx.quadraticCurveTo(x, eyes === "soft" ? 112 : 110, x + 9, 116 - side * .6);
       ctx.stroke();
       if (blink || eyes === "soft") {
-        ctx.lineWidth = blink ? 2.6 : 3.5;
+        ctx.strokeStyle = "#3d2a26";
+        ctx.lineWidth = blink ? 3.2 : 4.2;
         ctx.beginPath();
-        ctx.moveTo(x - 8, 129);
-        ctx.quadraticCurveTo(x, blink ? 133 : 119, x + 8, 129);
+        ctx.moveTo(x - 11, eyeY + 2);
+        ctx.quadraticCurveTo(x, blink ? eyeY + 8 : eyeY - 11, x + 11, eyeY + 2);
         ctx.stroke();
       } else {
-        if (eyes === "bright") oval(ctx, x, 128.5, 10.5, 12.4, "#fff5dd");
-        const narrow = eyes === "bright" ? 7.1 : 7.9;
-        oval(ctx, x, 128.3, narrow, 11.4, "#3d2a26", side * .09);
-        oval(ctx, x + .7, 133, narrow * .66, 5.5, "#9c6549");
-        oval(ctx, x - .1, 128.1, narrow * .72, 8.6, "#352526");
-        oval(ctx, x - 2.4, 123.9, 2.75, 3.0, "#fff6e5");
-        oval(ctx, x + 2.8, 132.1, 1.15, 1.3, "#f4c89b");
-      }
-      for (let spot = 0; spot < 3; spot++) {
-        oval(ctx, 128 + side * (36 + spot * 4.6), 148 + (spot === 1 ? 2 : 0), .77, .65, "#a4554359");
+        const wide = eyes === "bright" ? 10.4 : 11.6, tall = 16.2;
+        if (eyes === "bright") oval(ctx, x, eyeY, 13.6, 17.8, "#fffaf0");
+        oval(ctx, x, eyeY, wide, tall, "#33221f");
+        oval(ctx, x, eyeY + 4.5, wide * .78, tall * .62, eyes === "bright" ? "#7a5a3f" : "#6b4332");
+        oval(ctx, x, eyeY + .5, wide * .58, tall * .56, "#241718");
+        oval(ctx, x - 3.6, eyeY - 6.4, 4.3, 5.0, "#ffffff");
+        oval(ctx, x + 3.8, eyeY + 6.6, 2.0, 2.3, "#ffe9cf");
+        ctx.strokeStyle = "#33221f";
+        ctx.lineWidth = 2.4;
+        ctx.beginPath();
+        ctx.moveTo(x + side * (wide - 1), eyeY - tall * .62);
+        ctx.lineTo(x + side * (wide + 4.5), eyeY - tall * .86);
+        ctx.stroke();
       }
     }
-    softTint(ctx, 128, 144, 10, "#c2795b79");
-    oval(ctx, 127, 140.5, 3.9, 1.9, "#ffdcb7");
-    ctx.lineWidth = 2.1;
-    ctx.strokeStyle = "#78463e";
+    oval(ctx, 128, 154.5, 2.1, 1.3, "#d99577");
+    ctx.lineWidth = 2.4;
+    ctx.strokeStyle = "#8a4a40";
     ctx.beginPath();
-    ctx.moveTo(121, 155);
-    ctx.quadraticCurveTo(128, 162, 135, 155);
+    ctx.moveTo(121.5, 164);
+    ctx.quadraticCurveTo(128, 171.5, 134.5, 164);
     ctx.stroke();
   });
+}
+
+// A rounder head with soft cheeks and a slightly flattened chin.
+function chibiHead(T) {
+  const geometry = new T.SphereGeometry(1, 32, 24), points = geometry.attributes.position;
+  for (let i = 0; i < points.count; i++) {
+    let x = points.getX(i), y = points.getY(i), z = points.getZ(i);
+    const cheek = 1 + .075 * Math.exp(-(((y + .36) / .34) ** 2));
+    x *= cheek;
+    z *= z > 0 ? 1 + (cheek - 1) * .6 : 1;
+    if (y < -.5) y = -.5 + (y + .5) * .92;
+    points.setXYZ(i, x, y, z);
+  }
+  geometry.computeVertexNormals();
+  return geometry;
 }
 
 function garmentTexture(T, style) {
@@ -130,30 +157,55 @@ function garmentTexture(T, style) {
   });
 }
 
+// Vertex colours store only light and shade; the material supplies the hair colour.
+const HAIR_BASE = 0x46312e;
+const HAIR_SHADES = [0x2e2528,0x46312e,0x6a4733,0x8b6340,0x3b2d3d,0xa77b4c,0x54382c];
+const ease = (edge0, edge1, n) => smooth((n-edge0)/(edge1-edge0));
+
+// How far down the head the hair reaches at each side angle (0 = front), in radians from the crown.
+function hairline(style, angle) {
+  const side = Math.abs(Math.atan2(Math.sin(angle),Math.cos(angle)));
+  const back = ease(.70,1.30,side);
+  if (style === "short") {
+    const fringe = 1.02+.20*Math.sin(angle*1.15+.55)+.045*Math.cos(angle*9);
+    return mix(fringe,1.62+.10*ease(1.7,2.6,side),back);
+  }
+  if (style === "bob") {
+    const fringe = 1.25+.028*Math.cos(angle*11);
+    return mix(fringe,2.02,back);
+  }
+  if (style === "long") {
+    const fringe = .90+.42*ease(0,.72,side)**1.25;
+    return mix(fringe,1.86,back);
+  }
+  const fringe = .93+.14*ease(0,.9,side)+.03*Math.cos(angle*7);
+  return mix(fringe,1.60,back);
+}
+
 function hairCap(T, style) {
   const geometry = new T.BufferGeometry();
   const positions = [], colors = [], triangles = [];
-  const rings = 13, sides = 48;
-  const base = new T.Color(style === "bun" ? 0x372b32 : 0x46312e);
+  const rings = 16, sides = 56;
   for (let row = 0; row <= rings; row++) {
     for (let side = 0; side <= sides; side++) {
-      const angle = side / sides * TAU;
-      const front = Math.cos(angle);
-      const trim = {
-        short:1.60-front*.62+Math.sin(angle)*.12,
-        bob:1.78-front*.46+Math.cos(angle*12)*.026*Math.max(0,front),
-        long:1.73-front*.84+Math.abs(Math.sin(angle))*.25*Math.max(0,front),
-        bun:1.56-front*.82+Math.sin(angle)*.042
-      }[style];
-      const pitch = .009 + row / rings * trim;
-      const wave = Math.sin(angle * 13 + pitch * 2) * .0034 * Math.sin(pitch);
-      positions.push(Math.sin(angle) * Math.sin(pitch) * (.358 + wave),
-        .016 + Math.cos(pitch) * (.350 + wave),
-        -.019 + Math.cos(angle) * Math.sin(pitch) * (.351 + wave));
-      const strand = style === "bob" ? Math.sin(angle*22+pitch*.9) : Math.sin(angle*13+pitch*2);
-      const sheen = 1 + .11 * Math.sin(angle * 2 + .3) + .071 * strand
-        + .22 * Math.max(0, 1 - Math.abs(pitch - .75) * 2) * Math.max(0, Math.cos(angle - .55));
-      colors.push(base.r * sheen, base.g * sheen, base.b * sheen);
+      const angle = side / sides * TAU, t = row / rings;
+      const reach = hairline(style,angle);
+      const pitch = .009 + t * reach;
+      const strand = Math.sin(angle * (style === "bob" ? 22 : 14) + pitch * 1.6);
+      // Puff the crown slightly and curl the ends back toward the head.
+      const puff = 1.035 + .030*Math.sin(Math.min(pitch,1.6)) - .050*t**6
+        + (style === "bob" ? .055*ease(1.45,2.0,pitch) : 0) + strand*.0045*Math.sin(pitch);
+      const below = Math.max(0,pitch-1.571), level = Math.min(pitch,1.571);
+      // Past the widest point the hair hangs instead of wrapping under the chin.
+      const hang = style === "bob" ? .86 : 1;
+      const radius = Math.sin(level)*(1-below*(1-hang)*.55);
+      positions.push(Math.sin(angle) * radius * .362 * puff,
+        .012 + (Math.cos(level) - below*.94) * .348 * puff,
+        -.016 + Math.cos(angle) * radius * .346 * puff);
+      const sheen = .86 + .09 * Math.sin(angle * 2 + .3) + .075 * strand
+        + .30 * Math.max(0, 1 - Math.abs(pitch - .72) * 2.1) * Math.max(0, Math.cos(angle - .55))
+        - .10*t**3;
+      colors.push(sheen, sheen, sheen);
       if (row && side) {
         const a = (row - 1) * (sides + 1) + side - 1, b = a + sides + 1;
         triangles.push(a, b, a + 1, a + 1, b, b + 1);
@@ -172,7 +224,8 @@ function hairLock(T, points, width, depth, tint) {
   const geometry = new T.TubeGeometry(path, 14, 1, 9, false);
   const position = geometry.attributes.position;
   const colors = [];
-  const base = new T.Color(tint);
+  const reference = new T.Color(HAIR_BASE), base = new T.Color(tint);
+  base.setRGB(base.r/reference.r,base.g/reference.g,base.b/reference.b);
   for (let row = 0; row <= 14; row++) {
     const p = row / 14, center = path.getPointAt(p);
     const volume = .025 + .975 * Math.sin(Math.PI * p) ** .52;
@@ -210,50 +263,53 @@ function combineParts(T, parts) {
   return geometry;
 }
 
+function hairBall(T, x, y, z, rx, ry, rz, twist = 6) {
+  const ball = new T.SphereGeometry(1,24,16), points = ball.attributes.position, colors = [];
+  for (let i = 0; i < points.count; i++) {
+    const px = points.getX(i), py = points.getY(i), pz = points.getZ(i);
+    const ridge = Math.sin(Math.atan2(pz,px)*twist+py*5.7)*(1-py*py);
+    const volume = 1+ridge*.05;
+    points.setXYZ(i,x+px*rx*volume,y+py*ry,z+pz*rz*volume);
+    const light = .92+.12*ridge+.16*py;
+    colors.push(light,light,light);
+  }
+  ball.setAttribute("color",new T.Float32BufferAttribute(colors,3));
+  ball.computeVertexNormals();
+  return ball;
+}
+
 function styledHair(T, style) {
   const parts = [hairCap(T, style)];
   const lock = (points, width, depth, tint) => parts.push(hairLock(T, points, width, depth, tint));
   if (style === "short") {
-    lock([[-.236,.226,.179],[-.178,.323,.204],[-.051,.360,.228],[.111,.312,.263],[.234,.175,.233]],
-      .089,.065,0x4d3430);
-    lock([[-.253,.195,.166],[-.168,.260,.249],[-.036,.235,.312],[.117,.181,.300]], .059,.035,0x553934);
-    lock([[-.274,.148,.155],[-.216,.196,.247],[-.133,.155,.292]], .043,.027,0x412c2a);
+    // Side-swept fringe and a small cowlick.
+    lock([[-.262,.170,.186],[-.190,.300,.224],[-.046,.345,.262],[.118,.292,.286],[.250,.150,.238]],
+      .092,.060,0x4d3430);
+    lock([[-.268,.120,.178],[-.170,.214,.268],[-.030,.196,.322],[.120,.150,.306]], .060,.034,0x553934);
+    lock([[.020,.352,-.040],[.050,.420,-.020],[.110,.432,.020],[.150,.398,.050]], .034,.030,0x553934);
+  } else if (style === "bob") {
+    parts.push(hairBall(T,.262,.258,.118,.040,.030,.026,3));
   } else if (style === "long") {
     for (const side of SIDE) {
-      lock([[side*.021,.321,.132],[side*.077,.291,.233],[side*.161,.222,.281],[side*.233,.136,.265],
-        [side*.286,.024,.199]], .058,.035,side===1 ? 0x573932 : 0x4b322e);
+      // Strands framing the face, then falling in front of the shoulders.
+      lock([[side*.030,.330,.150],[side*.120,.300,.248],[side*.232,.196,.262],[side*.300,.050,.212],
+        [side*.318,-.110,.170]], .060,.040,side===1 ? 0x573932 : 0x4b322e);
+      lock([[side*.310,.060,.090],[side*.330,-.110,.100],[side*.300,-.290,.110],
+        [side*.262,-.440,.118],[side*.236,-.540,.118]], .056,.050,0x503732);
     }
-  } else if (style === "bun") {
+    // Back panel reaching the shoulder blades.
+    lock([[0,.120,-.250],[0,-.120,-.330],[0,-.380,-.330],[0,-.600,-.300],[0,-.730,-.262]],.300,.120,0x442f30);
     for (const side of SIDE) {
-      lock([[side*.055,.319,.162],[side*.137,.329,.164],[side*.243,.252,.149],[side*.294,.131,.133]],
-        .054,.041,0x4a3437);
+      lock([[side*.190,.080,-.210],[side*.250,-.160,-.240],[side*.250,-.420,-.240],[side*.210,-.660,-.220]],
+        .130,.100,0x49312f);
     }
-  }
-  if (style === "bob" || style === "long") {
-    const end = style === "long" ? -.565 : -.297;
+  } else {
+    // Twin buns with a few loose strands at the temples.
     for (const side of SIDE) {
-      lock([[side*.234,.151,-.135],[side*.286,.017,-.125],[side*.286,-.153,-.137],
-        [side*.282,end*.79,-.130],[side*.23,end,-.117]], .111, .112, 0x49312f);
-      lock([[side*.269,.146,.128],[side*.307,.016,.143],[side*.296,-.128,.122],
-        [side*.264,end*.72,.079]], .069, .056, 0x503732);
+      parts.push(hairBall(T,side*.232,.330,-.060,.132,.124,.128,5));
+      lock([[side*.070,.318,.170],[side*.170,.300,.200],[side*.270,.200,.170],[side*.316,.050,.130]],
+        .050,.036,0x4a3437);
     }
-    lock([[0,.213,-.184],[.014,.02,-.238],[-.016,end*.60,-.221],[0,end,-.19]],
-      style === "long" ? .26 : .244, .118, 0x442f30);
-  } else if (style === "bun") {
-    const bun = new T.SphereGeometry(1,24,16), points = bun.attributes.position;
-    const colors = [], base = new T.Color(0x493439);
-    for (let i = 0; i < points.count; i++) {
-      const x = points.getX(i), y = points.getY(i), z = points.getZ(i);
-      const ridge = Math.sin(Math.atan2(z,x)*6+y*5.7)*(1-y*y);
-      const volume = 1+ridge*.055;
-      points.setXYZ(i,.032+x*.143*volume,.424+y*.129,-.101+z*.129*volume);
-      const light = 1+.13*ridge+.14*y;
-      colors.push(base.r*light,base.g*light,base.b*light);
-    }
-    bun.setAttribute("color",new T.Float32BufferAttribute(colors,3));
-    bun.computeVertexNormals();
-    parts.push(bun);
-    lock([[-.114,.378,-.126],[-.051,.342,.003],[.057,.344,.024],[.157,.383,-.091]], .043,.037,0x614344);
   }
   return combineParts(T, parts);
 }
@@ -308,8 +364,8 @@ function chimaGeometry(T) {
 
 export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
   const sphere = new T.SphereGeometry(1,16,12);
-  const head = new T.SphereGeometry(1,28,22);
-  const shadowGeometry = new T.CircleGeometry(.42,20);
+  const head = chibiHead(T);
+  const shadowGeometry = new T.CircleGeometry(.40,24);
   const segment = roundedLathe(T, [[0,-1.125],[.49,-1.109],[.72,-1.068],[.86,-.994],
     [.92,-.67],[1,-.28],[.99,-.035],[.87,.048],[.56,.111],[0,.14]],1,12);
   const paddedSleeve = roundedLathe(T,[[0,-1.12],[.53,-1.075],[.91,-1],[1,-.82],[.84,-.65],
@@ -340,7 +396,8 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
       [.254,.32],[.262,.385],[.235,.443],[.163,.475],[.126,.476],[0,.476]],.75)
   };
   const hairGeometry = Object.fromEntries(HAIR.map(style => [style,styledHair(T,style)]));
-  const hairMaterial = new T.MeshStandardMaterial({vertexColors:true,roughness:.79,side:T.DoubleSide});
+  const hairMaterials = HAIR_SHADES.map(color =>
+    new T.MeshStandardMaterial({color,vertexColors:true,roughness:.72,side:T.DoubleSide}));
   const textileStyles = OUTFITS.filter(style=>style!=="coat");
   const garmentMaps = Object.fromEntries(textileStyles.map(style => [style,garmentTexture(T,style)]));
   const faces = new Map(), clothes = new Map();
@@ -348,17 +405,25 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
   const skin = matte(0xf0bc99), details = new T.MeshStandardMaterial({vertexColors:true,roughness:.86});
   const earMaterials = [0xffffff,0xffe0ee,0xffc4d9,0xffa6c5].map(color =>
     new T.MeshStandardMaterial({color,vertexColors:true,roughness:.86}));
-  const pants = matte(0x514e57), hanbokPants = matte(0xa0997f);
-  const ivory = matte(0xf0debd), hairpin = matte(0xdfb475);
+  const hanbokPants = matte(0xb9b295);
+  const trousers = {coat:matte(0x3f4452),puffer:matte(0x4d6787),tee:matte(0xc7b089),hanbok:hanbokPants};
+  const pants = trousers.coat;
+  const ivory = matte(0xf0debd), hairpin = matte(0xdfb475), scarfCloth = matte(0xf2e4c8,.95);
   const earGeometry = modeledDetails(T,sphere,SIDE.flatMap(side => [
-    [0xf0bc99,side*.309,-.026,.001,.062,.083,.050], [0xd8947e,side*.340,-.024,.034,.024,.046,.017]
+    [0xf0bc99,side*.330,-.040,.004,.066,.086,.052], [0xd8947e,side*.362,-.038,.038,.026,.048,.018]
   ]));
-  const footGeometry = modeledDetails(T,sphere,[
-    [0xcdbda2,0,-.098,.044,.106,.026,.171],[0x463836,0,-.057,.041,.105,.057,.167],
-    [0xddc9a9,0,-.011,.087,.066,.010,.020]
+  const shoe = (sole,upper,toe) => modeledDetails(T,sphere,[
+    [sole,0,-.100,.046,.136,.030,.200],[upper,0,-.050,.042,.134,.072,.194],[toe,0,.010,.100,.080,.012,.024]
   ]);
+  const footGeometries = {
+    coat:shoe(0xcdbda2,0x5a4034,0x7a5a48), puffer:shoe(0xf2efe8,0xf7f4ee,0xd8dde4),
+    tee:shoe(0xf2efe8,0xe9695b,0xf7f4ee), hanbok:shoe(0xe9e1cf,0xf6f1e6,0xc65a52)
+  };
+  const footGeometry = footGeometries.coat;
+  const scarfGeometry = new T.TorusGeometry(.150,.058,10,26);
+  scarfGeometry.rotateX(Math.PI/2);
   const handGeometry = SIDE.map(side => modeledDetails(T,sphere,[
-    [0xf2bd98,0,-.035,.012,.067,.073,.052],[0xf2bd98,-side*.043,-.028,.035,.028,.040,.029]
+    [0xf2bd98,0,-.046,.012,.088,.094,.080],[0xf2bd98,-side*.060,-.034,.044,.034,.046,.035]
   ]));
   const knotGeometry = modeledDetails(T,sphere,[
     [0xc97c66,0,0,0,.048,.036,.027],[0xc97c66,-.045,-.017,.007,.062,.023,.016,-.36],
@@ -422,44 +487,59 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
     return {upper,lower,end,top,bottom,lengths,target:new T.Vector3()};
   }
 
-  function create(coat, nickname, labelSprite) {
-    const group = joint(scene), pelvis = joint(group,0,.705), chest = joint(pelvis,0,.045);
+  function create(coat, nickname, labelSprite, seedName) {
+    const group = joint(scene), body = joint(group);
+    body.scale.setScalar(BODY);
+    const pelvis = joint(body,0,.705), chest = joint(pelvis,0,.045);
+    // Clothes are widened around the trunk; the limbs keep their own joints.
+    const garb = joint(chest), lower = joint(pelvis);
+    garb.scale.set(WIDE,1,WIDE);
+    lower.scale.set(WIDE,1,WIDE);
     const palette = outfitMaterials(coat ?? 0xab5947);
-    const torso = part(chest,torsoGeometry.coat,palette.lining,0,0,0,1,1,1);
-    const waist = part(pelvis,sphere,pants,0,-.029,0,.204,.108,.130);
-    part(chest,sphere,skin,0,.478,0,.106,.094,.100);
-    const overcoat = joint(chest);
+    const torso = part(garb,torsoGeometry.coat,palette.lining,0,0,0,1,1,1);
+    const waist = part(lower,sphere,pants,0,-.036,0,.190,.108,.132);
+    part(garb,sphere,skin,0,.470,0,.100,.080,.096);
+    const overcoat = joint(garb);
     part(overcoat,coatTop,palette.outer,0,0,0,1,1,1);
     part(overcoat,lapelGeometry,palette.trim,0,0,.223,1,1,1);
     part(overcoat,buttonsGeometry,details,0,0,0,1,1,1);
-    const hem = part(pelvis,coatTail,palette.outer,0,.025,0,1,1,1);
-    const pufferCollar = part(chest,sphere,palette.collar,0,.452,-.042,.180,.093,.159);
-    const hanbokDetails = joint(chest);
+    // A wool scarf for the autumn walk.
+    part(overcoat,scarfGeometry,scarfCloth,0,.468,.004,1,1.05,.92);
+    const scarfEnd = part(overcoat,sphere,scarfCloth,.085,.335,.214,.050,.115,.026);
+    scarfEnd.rotation.z = .16;
+    const hem = part(lower,coatTail,palette.outer,0,.025,0,1,1,1);
+    const pufferCollar = part(garb,sphere,palette.collar,0,.452,-.042,.180,.093,.159);
+    const teeHem = part(garb,sphere,palette.sleeve,0,-.082,0,.240,.074,.176);
+    const hanbokDetails = joint(garb);
     part(hanbokDetails,jeogoriCollar,ivory,0,0,.186,1,1,1);
     part(hanbokDetails,knotGeometry,details,.066,.31,.190,1,1,1);
-    const skirt = part(pelvis,skirtGeometry,palette.chima,0,.259,0,1,1,1);
+    const skirt = part(lower,skirtGeometry,palette.chima,0,.259,0,1,1,1);
 
     const headJoint = joint(chest,0,.487,.011);
-    const face = joint(headJoint,0,.323,.021);
-    const faceMesh = part(face,head,faceMaterial("round",false,0),0,0,0,.332,.330,.303);
+    headJoint.scale.setScalar(HEAD/BODY);
+    const face = joint(headJoint,0,.300,.012);
+    const faceMesh = part(face,head,faceMaterial("round",false,0),0,0,0,.338,.322,.314);
     const ears = part(face,earGeometry,earMaterials[0],0,0,0,1,1,1);
-    const hairMesh = part(face,hairGeometry.short,hairMaterial,0,0,0,1,1,1);
-    const pin = part(face,sphere,hairpin,.067,.374,.013,.135,.012,.014);
-    pin.rotation.z = .31;
+    let offset = 0;
+    for (const letter of String(seedName ?? nickname ?? "")) offset = (offset * 31 + letter.charCodeAt(0)) >>> 0;
+    const hairMesh = part(face,hairGeometry.short,hairMaterials[offset % hairMaterials.length],0,0,0,1.06,1,1.05);
+    const pin = part(face,sphere,hairpin,.262,.258,.150,.050,.016,.012);
+    pin.rotation.z = .5;
 
     const legs = SIDE.map(side => {
-      const leg = chain(pelvis,side*.123,-.014,LEG,[.114,.088],pants);
-      part(leg.end,footGeometry,details,0,0,0,1,1,1);
+      const leg = chain(pelvis,side*.135,-.014,LEG,[.142,.122],pants);
+      leg.foot = part(leg.end,footGeometry,details,0,0,0,1,1,1);
       return leg;
     });
     const arms = SIDE.map((side,i) => {
-      const arm = chain(chest,side*.268,.405,ARM,[.098,.083],palette.sleeve);
-      arm.cuff = part(arm.lower,sphere,palette.trim,0,-.208,0,.085,.045,.083);
-      arm.shortSleeve = part(arm.upper,shortSleeve,palette.sleeve,0,0,0,.099,.159,.099);
+      const arm = chain(chest,side*.300,.405,ARM,[.110,.098],palette.sleeve);
+      arm.cuff = part(arm.lower,sphere,palette.trim,0,-.204,0,.102,.046,.100);
+      arm.shortSleeve = part(arm.upper,shortSleeve,palette.sleeve,0,0,0,.114,.165,.114);
       part(arm.end,handGeometry[i],details,0,0,0,1,1,1);
       return arm;
     });
     const itemPivot = joint(chest);
+    itemPivot.scale.setScalar(1.35);
     itemPivot.visible = false;
     const label = nickname && labelSprite ? labelSprite(nickname,coat) : null;
     if (label) group.add(label);
@@ -467,14 +547,13 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
     emote.scale.set(.65,.65,1);
     emote.visible = false;
     group.add(emote);
-    const shadow = new T.Mesh(shadowGeometry,new T.MeshBasicMaterial({color:0x27352d,transparent:true,opacity:.24,depthWrite:false}));
+    const shadow = new T.Mesh(shadowGeometry,new T.MeshBasicMaterial({color:0x27352d,transparent:true,opacity:.20,depthWrite:false}));
     shadow.rotation.x = -Math.PI / 2;
     shadow.position.y = .028;
     group.add(shadow);
     group.visible = false;
-    let offset = 0;
-    for (const letter of String(nickname ?? "")) offset = (offset * 31 + letter.charCodeAt(0)) >>> 0;
-    return {group,pelvis,chest,torso,waist,faceMesh,ears,headJoint,hairMesh,pin,overcoat,hem,pufferCollar,hanbokDetails,skirt,legs,arms,label,
+    group.traverse(mesh => { if (mesh.isMesh && mesh !== shadow) mesh.castShadow = true; });
+    return {group,body,floorY:null,teeHem,pelvis,chest,torso,waist,faceMesh,ears,headJoint,hairMesh,pin,overcoat,hem,pufferCollar,hanbokDetails,skirt,legs,arms,label,
       shadow,emote,chatSprite:null,chatMessage:null,itemPivot,itemProp:createItemProp(itemPivot),palette,offset,phase:(offset%100)/100,
       stride:0,sprint:0,seatBlend:0,petBlend:0,appearance:"",lastX:null,lastY:null};
   }
@@ -511,20 +590,22 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
     if (key !== model.appearance) {
       model.appearance = key;
       model.hairMesh.geometry = hairGeometry[hair];
-      model.pin.visible = hair === "bun";
+      model.pin.visible = hair === "bob";
       model.torso.geometry = torsoGeometry[outfit];
       model.torso.material = outfit === "coat" ? model.palette.lining : model.palette.tops[outfit];
-      model.torso.scale.set(chima ? .94 : 1,1,1);
+      model.torso.scale.set(chima ? .94 : 1,1,chima ? .94 : 1);
       model.overcoat.visible = model.hem.visible = outfit === "coat";
       model.pufferCollar.visible = outfit === "puffer";
+      model.teeHem.visible = outfit === "tee";
       model.hanbokDetails.visible = outfit === "hanbok";
       model.skirt.visible = chima;
-      model.waist.material = outfit === "hanbok" ? hanbokPants : pants;
+      model.waist.material = trousers[outfit];
       for (const leg of model.legs) {
         const roomy = outfit === "hanbok" && !chima;
         leg.top.material = leg.bottom.material = model.waist.material;
-        leg.top.scale.set(roomy ? .134 : .114,LEG[0],roomy ? .128 : .114);
-        leg.bottom.scale.set(roomy ? .109 : .088,LEG[1],roomy ? .105 : .088);
+        leg.foot.geometry = footGeometries[outfit];
+        leg.top.scale.set(roomy ? .164 : .142,LEG[0],roomy ? .158 : .142);
+        leg.bottom.scale.set(roomy ? .142 : .122,LEG[1],roomy ? .136 : .122);
         leg.top.visible = !chima;
         leg.bottom.visible = !chima;
       }
@@ -532,8 +613,8 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
         const bare = outfit === "tee", padded = outfit === "puffer";
         arm.top.geometry = arm.bottom.geometry = padded ? paddedSleeve : segment;
         arm.top.material = arm.bottom.material = bare ? skin : padded ? model.palette.padded : model.palette.sleeve;
-        const upperRadius = bare ? .077 : padded ? .110 : .098;
-        const lowerRadius = bare ? .064 : padded ? .092 : .083;
+        const upperRadius = bare ? .092 : padded ? .126 : .110;
+        const lowerRadius = bare ? .084 : padded ? .112 : .098;
         arm.top.scale.set(upperRadius,ARM[0],upperRadius);
         arm.bottom.scale.set(lowerRadius,ARM[1],lowerRadius);
         arm.cuff.visible = !bare;
@@ -582,12 +663,12 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
       anchor.getWorldPosition(chatAnchor).addScaledVector(cameraUp,anchor.scale.y/2+.085);
       chatSprite.position.copy(model.group.worldToLocal(chatAnchor));
     } else {
-      chatSprite.position.set(0,2.62,0);
+      chatSprite.position.set(0,2.15,0);
     }
   }
 
   function update(model, position, {now,clock,delta=1/60,seat,floor=0,jump=0,emojiTexture,chatTexture,turnEase=1}) {
-    const {group,pelvis,chest,headJoint,legs,arms,itemPivot,emote} = model;
+    const {group,body,pelvis,chest,headJoint,legs,arms,itemPivot,emote} = model;
     const wasVisible = group.visible;
     group.visible = true;
     const smoothPose = wasVisible ? 1 - Math.exp(-delta*15) : 1;
@@ -611,7 +692,10 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
     const facing = Math.PI - (seat?.heading ?? position.heading ?? 252) * Math.PI/180;
     const turn = facing - group.rotation.y;
     group.rotation.y += Math.atan2(Math.sin(turn),Math.cos(turn)) * (wasVisible && !seat && !held ? turnEase : 1);
-    group.position.set(wx(seat?.x ?? position.x),seat ? 0 : floor+jump,wz(seat?.y ?? position.y));
+    // Stepping onto or off a ledge eases the floor so the body does not pop.
+    model.floorY = wasVisible && model.floorY !== null && Math.abs(floor-model.floorY) < 1.6
+      ? mix(model.floorY,floor,1-Math.exp(-delta*17)) : floor;
+    group.position.set(wx(seat?.x ?? position.x),seat ? 0 : model.floorY+jump,wz(seat?.y ?? position.y));
     const travel = model.lastX === null ? 0 : Math.hypot(position.x-model.lastX,position.y-model.lastY);
     model.lastX = position.x;
     model.lastY = position.y;
@@ -619,7 +703,8 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
     model.seatBlend = mix(model.seatBlend,Number(Boolean(seat)),smoothPose);
     model.petBlend = mix(model.petBlend,Math.max(petPose,feedPose),smoothPose);
     const sprint = model.sprint, seated = model.seatBlend, crouch = model.petBlend;
-    const cycleDistance = mix(1.20,2.28,sprint), stance = mix(.57,.34,sprint);
+    // Short legs take quick little steps.
+    const cycleDistance = mix(1.00,1.80,sprint), stance = mix(.57,.36,sprint);
     const velocity = mix(2.58,6.675,sprint);
     const strideTarget = walking ? (position.blocked ? .32 : 1) : 0;
     model.stride = mix(model.stride,strideTarget,smoothPose);
@@ -633,13 +718,14 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
     const sway = stride * (1-seated);
     const flight = stance < .5 ? Math.sin(Math.PI*clamp((phase%.5-stance)/(.5-stance))) : 0;
     const bob = (.009*(1-sprint)*(1-Math.cos(phase*TAU*2))+.065*sprint*flight)*sway;
-    const strideDip = (.047+.024*sprint)*sway;
+    const strideDip = (.074+.020*sprint)*sway;
     const idleRise = .035*(1-stride)*(1-seated)*(1-crouch);
-    pelvis.position.set(.013*pendulum*sway,.691+bob-strideDip+idleRise+breath*.004-seated*.145-crouch*.225,0);
-    chest.rotation.set(.024 + sprint*.15 + crouch*.40 + seated*.04,pendulum*sway*.085,pendulum*sway*.048);
-    headJoint.rotation.set(-.054-sprint*.080+crouch*.24, -pendulum*sway*.044,breath*.022+pendulum*sway*.018);
+    body.position.y = seated*SEAT_LIFT;
+    pelvis.position.set(.020*pendulum*sway,.691+bob-strideDip+idleRise+breath*.004-seated*.145-crouch*.225,0);
+    chest.rotation.set(.020 + sprint*.13 + crouch*.34 + seated*.03,pendulum*sway*.10,pendulum*sway*.065);
+    headJoint.rotation.set(-.030-sprint*.070+crouch*.16, -pendulum*sway*.05,breath*.020-pendulum*sway*.045);
     model.shadow.visible = !seat;
-    model.shadow.position.y = .028-jump;
+    model.shadow.position.y = .028-jump-(model.floorY-floor);
     model.shadow.material.opacity = .25 - sprint*bob*1.12 - airborne*.09;
     model.shadow.scale.set(1+sprint*.05-airborne*.18,1+crouch*.13-airborne*.18,1);
 
@@ -647,7 +733,7 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
     const blushLevel = position.blushUntil > clock ? clamp(Math.trunc(Number(position.blushLevel))||1,1,3) : 0;
     appearance(model,position,blinkTick > 3970 && blinkTick < 4100,blushLevel);
     if (model.hem.visible) {
-      model.hem.scale.set(1+seated*.08,1-seated*.61,1+stride*.13);
+      model.hem.scale.set(1+seated*.08,1-seated*.61,1+stride*.10);
       model.hem.rotation.set(-seated*.37-sprint*.12,pendulum*sway*.065,pendulum*sway*.044);
     }
     if (model.skirt.visible) {
@@ -660,11 +746,11 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
       const footPhase = (phase + i*.5)%1;
       const swing = clamp((footPhase-stance)/(1-stance));
       const stroke = footPhase < stance ? stance*.5-footPhase : stance*(smooth(swing)-.5);
-      const step = cycleDistance*stroke*stride;
-      const lift = (.11+sprint*.12)*Math.sin(Math.PI*swing)*stride;
-      const ankleY = SOLE+lift*(1-seated)+airborne*(.15+i*.045);
-      leg.target.set(side*(.128+crouch*.033)-pelvis.position.x,ankleY-pelvis.position.y,
-        mix(step+crouch*.09,.425,seated)+airborne*(.10+i*.045));
+      const step = clamp(cycleDistance/BODY*stroke*stride,-.38,.38);
+      const lift = (.13+sprint*.12)*Math.sin(Math.PI*swing)*stride;
+      const ankleY = SOLE+lift*(1-seated)+seated*.10+airborne*(.17+i*.05);
+      leg.target.set(side*(.140+crouch*.033)-pelvis.position.x,ankleY-pelvis.position.y,
+        mix(step+crouch*.09,.47,seated)+airborne*(.10+i*.05));
       solve(leg,leg.target,forward);
       const roll = (footPhase < stance ? 0 : Math.sin(swing*TAU)*.24*stride) * (1-seated);
       pitch.setFromAxisAngle(xAxis,roll+seated*.06);
@@ -678,33 +764,33 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
       ? smooth(Math.min(itemAge/255,(spec.duration-itemAge)/360)) : 0;
     for (let i=0;i<2;i++) {
       const side = SIDE[i], arm = arms[i];
-      let x = side*.299, y = -.036+seated*.118, z = .018+seated*.227;
-      z += side*pendulum*sway*(.145+sprint*.10);
+      let x = side*.385, y = -.015+seated*.09, z = .020+seated*.21;
+      z += side*pendulum*sway*(.17+sprint*.10);
       y += sprint*sway*(.050+Math.max(0,side*pendulum)*.12);
-      x += side*airborne*.095; y += airborne*.23; z += airborne*.11;
+      x += side*airborne*.14; y += airborne*.30; z += airborne*.08;
       pole.set(side*.56,-.12,-1);
       const clasping = held && side === position.hand;
       if (clasping) {
         inverseChest.copy(chest.quaternion).invert();
-        clasp.set(side*.519-pelvis.position.x,.795-pelvis.position.y-chest.position.y,.078).applyQuaternion(inverseChest);
+        clasp.set(side*.608-pelvis.position.x,.930-pelvis.position.y-chest.position.y,.078).applyQuaternion(inverseChest);
         x = clasp.x; y = clasp.y; z = clasp.z;
       } else if (waving && side === waveSide) {
-        x = mix(x,side*(.481+Math.sin(waveAge*17)*.085),waveLift);
-        y = mix(y,.725+Math.cos(waveAge*17)*.034,waveLift);
-        z = mix(z,.139,waveLift);
+        x = mix(x,side*(.590+Math.sin(waveAge*17)*.075),waveLift);
+        y = mix(y,.640+Math.cos(waveAge*17)*.034,waveLift);
+        z = mix(z,.150,waveLift);
         pole.set(side,-.38,-.32);
       } else if (carrying && side === itemSide) {
-        x = side*mix(.347,.124,eat); y = mix(.065,.550,eat); z = mix(.288,.324,eat);
-        if (spark) { x = side*.414; y = .127; z = .302; }
+        x = side*mix(.370,.170,eat); y = mix(.110,.395,eat); z = mix(.330,.440,eat);
+        if (spark) { x = side*.440; y = .150; z = .320; }
         if (feeding) {
-          x = side*mix(.347,.16,feedPose);
-          y = mix(.065,-.235,feedPose);
-          z = mix(.288,.48,feedPose);
+          x = side*mix(.370,.18,feedPose);
+          y = mix(.110,-.215,feedPose);
+          z = mix(.330,.46,feedPose);
         }
         pole.set(side*.8,-.69,-.16);
       } else if (pet && side === 1) {
         const pat = Math.sin(petAge*.018)*.041;
-        x = mix(x,.252,crouch); y = mix(y,.025+pat,crouch); z = mix(z,.374+pat,crouch);
+        x = mix(x,.290,crouch); y = mix(y,.030+pat,crouch); z = mix(z,.390+pat,crouch);
         pole.set(side*.42,-.48,-.76);
       }
       const armEase = wasVisible && !clasping ? 1 - Math.exp(-delta*29) : 1;
@@ -722,7 +808,7 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
 
     const reaction = position.emote, age = (clock-reaction?.at)/1000;
     emote.visible = age >= -.3 && age < 3.15 && Boolean(emojiTexture);
-    const labelY = (model.pin.visible ? 2.40 : 2.26)-seated*.145-crouch*.235;
+    const labelY = (model.hairMesh.geometry === hairGeometry.bun ? 1.90 : 1.84)+seated*(SEAT_LIFT-.107)-crouch*.166;
     if (model.label) model.label.position.y = labelY;
     if (emote.visible) {
       const map = emojiTexture(reaction.emoji);

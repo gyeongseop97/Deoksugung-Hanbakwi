@@ -499,7 +499,9 @@ function catModel(T,scene,cat,coat,meshes){
   for(let i=0;i<8;i++)paws.setColorAt(i,tint.setHex(i%2===0?cat.coat:cat.paw));
   group.add(paws);
   const shadow=new T.Mesh(shadowGeometry,shadowMaterial);
-  shadow.position.y=.023;shadow.rotation.x=-Math.PI/2;shadow.scale.set(.28,.46,1);group.add(shadow);
+  shadow.position.y=.023;shadow.rotation.x=-Math.PI/2;shadow.scale.set(.28,.46,1);
+  group.traverse(mesh=>{if(mesh.isMesh)mesh.castShadow=true;});
+  group.add(shadow);
   return {group,upper,head,eyes,tail,paws,shadow};
 }
 

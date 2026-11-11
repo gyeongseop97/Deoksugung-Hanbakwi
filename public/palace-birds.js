@@ -25,6 +25,8 @@ const spots=flocks.flatMap(([anchor,members])=>members.map(([dx,dy,kind="pigeon"
 })));
 const drawRangeSquared=130**2;
 const ordinaryArches=[2.5,3.8,5.2,6.6],escapeArches=[5.4,7.6,10.2,12.8];
+// Journeys between feeding grounds rise over the trees and palace roofs.
+const journeyArches=[7,10,13.5,17,21,26];
 const emptyGround=Object.freeze([]);
 const distance=(a,b)=>Math.hypot(b.x-a.x,b.y-a.y);
 const mix=(a,b,t)=>a+(b-a)*t;
@@ -65,10 +67,10 @@ function flightClear(leg,length){
   return true;
 }
 
-function flight(from,to,speed,escaping=false){
+function flight(from,to,speed,escaping=false,journey=false){
   const length=distance(from,to);
   const time=Math.max(escaping?3250:1050,length/speed*1000+520);
-  for(const arch of escaping?escapeArches:ordinaryArches){
+  for(const arch of escaping?escapeArches:journey?journeyArches:ordinaryArches){
     const leg={from,to,arch,time,mode:"flight"};
     if(flightClear(leg,length))return leg;
   }
@@ -112,6 +114,12 @@ function perchSites(T,parent,kit,trees,walls){
   const ray=new T.Raycaster(),from=new T.Vector3(),down=new T.Vector3(0,-1,0);
   const originX=kit.wx(0),originZ=kit.wz(0);
   for(const tree of trees){
+    if(tree.top){
+      // Low-poly trees report the top of their highest crown directly.
+      const x=tree.top.x-originX,y=tree.top.z-originZ,height=tree.top.y+.015;
+      if(!solidAt(x,y,height))sites.push({x,y,height,kind:"tree"});
+      continue;
+    }
     const col=Math.floor(tree.x/8),row=Math.floor(tree.z/8),reach=tree.height*.22;
     let crown;
     for(let x=col-1;x<=col+1;x++)for(let z=row-1;z<=row+1;z++){
@@ -132,36 +140,82 @@ function perchSites(T,parent,kit,trees,walls){
   return sites;
 }
 
-function makePatrol(home,random,sites,used,kind,floor,cruises){
-  const legs=[],points=[home];
-  for(let i=0;i<3;i++)for(let attempt=0;attempt<12;attempt++){
-    const angle=random()*Math.PI*2,radius=1.25+random()*3.6;
-    const x=home.x+Math.sin(angle)*radius,y=home.y+Math.cos(angle)*radius;
-    const point={x,y,height:floor({x,y})},previous=points.at(-1);
-    if(distance(previous,point)<.75||!ground(x,y)||!clearSegment(previous,point,.24)||!clearSegment(point,home,.24))continue;
-    points.push(point);break;
+// Open spots all over the palace and the stone-wall road where birds may land to feed.
+function feedingGrounds(random){
+  const grounds=[];
+  for(let attempt=0;attempt<900&&grounds.length<54;attempt++){
+    const x=60+random()*485,y=40+random()*370;
+    if(!ground(x,y)||![[1.6,0],[-1.6,0],[0,1.6],[0,-1.6]].every(([dx,dy])=>ground(x+dx,y+dy)))continue;
+    if(grounds.some(spot=>distance(spot,{x,y})<9))continue;
+    grounds.push({x,y});
   }
-  points.push(home);
+  return grounds;
+}
+
+// Each bird keeps a home, but its day is a tour: it feeds there, flies on to other
+// grounds across the map, rests on a tree or wall along the way and finally returns.
+function makePatrol(home,random,sites,used,kind,floor,cruises,grounds=[]){
+  const legs=[];
   let time=0;
   function add(leg){legs.push({...leg,start:time});time+=leg.time;}
-  for(let i=1;i<points.length;i++){
-    const from=points[i-1],to=points[i],turn=heading(from,to),length=distance(from,to);
-    add({from,to:from,time:1300+random()*2800,mode:"peck",turn});
-    if(length>.1)add({from,to,time:length/(.58+random()*.27)*1000,mode:"walk",turn});
+  function forage(spot,hops){
+    const points=[spot];
+    for(let i=0;i<hops;i++)for(let attempt=0;attempt<12;attempt++){
+      const angle=random()*Math.PI*2,radius=1.25+random()*4.2;
+      const x=spot.x+Math.sin(angle)*radius,y=spot.y+Math.cos(angle)*radius;
+      const point={x,y,height:floor({x,y})},previous=points.at(-1);
+      if(distance(previous,point)<.75||!ground(x,y)||!clearSegment(previous,point,.24)||!clearSegment(point,spot,.24))continue;
+      points.push(point);break;
+    }
+    points.push(spot);
+    for(let i=1;i<points.length;i++){
+      const from=points[i-1],to=points[i],turn=heading(from,to),length=distance(from,to);
+      add({from,to:from,time:1300+random()*2800,mode:"peck",turn});
+      if(length>.1)add({from,to,time:length/(.58+random()*.27)*1000,mode:"walk",turn});
+    }
   }
-  const candidates=sites.filter(site=>!used.has(site)&&distance(home,site)>3&&distance(home,site)<25);
-  candidates.sort((a,b)=>distance(home,a)-distance(home,b)+(a.kind===b.kind?0:
-    a.kind===(kind==="magpie"?"tree":"wall")?-5:5));
-  for(const site of candidates){
-    const outbound=flight(home,site,4.2);
-    if(!outbound)continue;
-    used.add(site);add(outbound);
-    add({from:site,to:site,time:4300+random()*7200,mode:"perch",turn:heading(site,home)});
-    add({...outbound,from:site,to:home});break;
+  function perch(from,back){
+    const candidates=sites.filter(site=>!used.has(site)&&distance(from,site)>3&&distance(from,site)<28);
+    candidates.sort((a,b)=>distance(from,a)-distance(from,b)+(a.kind===b.kind?0:
+      a.kind===(kind==="magpie"?"tree":"wall")?-5:5));
+    for(const site of candidates.slice(0,6)){
+      const outbound=flight(from,site,4.2);
+      if(!outbound)continue;
+      used.add(site);add(outbound);
+      add({from:site,to:site,time:4300+random()*7200,mode:"perch",turn:heading(site,back)});
+      add({...outbound,from:site,to:from});
+      return true;
+    }
+    return false;
   }
+  forage(home,3);
+  let rested=perch(home,home);
   if(cruises){
     const circuit=cruise(home,random);
     if(circuit)add(circuit);
+  }
+  let here=home;
+  const speed=kind==="magpie"?7.2:8.4,visits=3+Math.floor(random()*3),seen=new Set();
+  for(let visit=0;visit<visits;visit++){
+    const options=grounds.filter(spot=>!seen.has(spot)&&distance(here,spot)>22&&distance(here,spot)<150);
+    for(let attempt=0;attempt<5&&options.length;attempt++){
+      const base=options.splice(Math.floor(random()*options.length),1)[0];
+      const x=base.x+(random()-.5)*5,y=base.y+(random()-.5)*5;
+      if(!ground(x,y))continue;
+      const spot={x,y,height:floor({x,y})};
+      // Only fly somewhere the bird can also leave again toward home.
+      const outbound=flight(here,spot,speed,false,true),homeward=flight(spot,home,speed,false,true);
+      if(!outbound||!homeward)continue;
+      seen.add(base);add(outbound);
+      forage(spot,1+Math.floor(random()*3));
+      if(!rested||random()<.4)rested=perch(spot,here)||rested;
+      here=spot;break;
+    }
+  }
+  if(here!==home){
+    const homeward=flight(here,home,speed,false,true);
+    if(homeward)add(homeward);
+    add({from:home,to:home,time:1500+random()*2500,mode:"peck",turn:heading(here,home)});
   }
   return {legs,time};
 }
@@ -200,13 +254,13 @@ export function addPalaceBirds(T,parent,kit,{trees=[],walls=[],seed}={}){
     if(next===roomSeed)return;
     roomSeed=next;birds.length=0;birdsById.clear();checkAt=0;walkers=[];
     groundAt=-Infinity;groundSnapshot=undefined;
-    const random=rng(next+":palace birds"),used=new Set();
+    const random=rng(next+":palace birds"),used=new Set(),grounds=feedingGrounds(rng(next+":feeding grounds"));
     for(const [index,{anchor,dx,dy,kind,cruises}] of spots.entries()){
       for(let attempt=0;attempt<20;attempt++){
         const radius=attempt?1+attempt*.24:0,angle=random()*Math.PI*2;
         const x=anchor.x+dx+Math.cos(angle)*radius,y=anchor.y+dy+Math.sin(angle)*radius;
         if(!ground(x,y)||birds.some(bird=>distance(bird.home,{x,y})<.9))continue;
-        const home={x,y,height:floor({x,y})},patrol=makePatrol(home,random,perches,used,kind,floor,cruises);
+        const home={x,y,height:floor({x,y})},patrol=makePatrol(home,random,perches,used,kind,floor,cruises,grounds);
         const bird={id:`bird-${index}`,kind,home,patrol,offset:random()*patrol.time,
           size:species[kind].size*(.89+random()*.18),angle:null};
         birds.push(bird);birdsById.set(bird.id,bird);

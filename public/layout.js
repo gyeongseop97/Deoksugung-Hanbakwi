@@ -272,6 +272,25 @@ export function solidAt(x,y,height=0){
   }
   return false;
 }
+// A walker whose feet are at least this close to the top of a box may pass over or stand on it.
+const stepReach=.03;
+const feetLevel=feet=>feet>0?feet+stepReach:0;
+// Height of the tallest finite box under a point. With soft=true the edge eases down to the
+// ground across the collision margin so a walker does not hover beside the object.
+export function platformAt(x,y,soft=false){
+  const boxes=obstacleBuckets.get(bucketKey(x,y));
+  if(!boxes)return 0;
+  let top=0;
+  for(const box of boxes){
+    if(box.top===Infinity)continue;
+    const dx=x-box.x,dy=y-box.y;
+    const inX=box.halfWidth-Math.abs(dx*box.c-dy*box.s),inY=box.halfDepth-Math.abs(dx*box.s+dy*box.c);
+    if(inX<=0||inY<=0)continue;
+    const height=soft?box.top*Math.min(1,Math.min(inX,inY)/.26):box.top;
+    if(height>top)top=height;
+  }
+  return top;
+}
 function crossesBox(x,y,dx,dy,box){
   const ox=x-box.x,oy=y-box.y;
   const fromX=ox*box.c-oy*box.s,fromY=ox*box.s+oy*box.c;
@@ -286,7 +305,7 @@ function crossesBox(x,y,dx,dy,box){
   const a=(-box.halfDepth-fromY)/deltaY,b=(box.halfDepth-fromY)/deltaY;
   return Math.max(enter,Math.min(a,b))<Math.min(leave,Math.max(a,b));
 }
-function crossesObstacle(from,to){
+function crossesObstacle(from,to,level=0){
   const dx=to.x-from.x,dy=to.y-from.y,stepX=Math.sign(dx),stepY=Math.sign(dy);
   let col=Math.floor(from.x/stride),row=Math.floor(from.y/stride);
   const endCol=Math.floor(to.x/stride),endRow=Math.floor(to.y/stride);
@@ -297,46 +316,48 @@ function crossesObstacle(from,to){
   while(true){
     const boxes=obstacleBuckets.get(col+row*100);
     if(boxes)for(const box of boxes){
-      if(crossesBox(from.x,from.y,dx,dy,box))return true;
+      if(level<=box.top&&crossesBox(from.x,from.y,dx,dy,box))return true;
     }
     if(col===endCol&&row===endRow)return false;
     if(col!==endCol&&(row===endRow||nextX<=nextY)){col+=stepX;nextX+=cellX;}
     else{row+=stepY;nextY+=cellY;}
   }
 }
-export function walkable(x,y){
-  if(x<45||x>560||y<30||y>420||solidAt(x,y)||inPolygon(x,y,palacePond.outline))return false;
+// feet is the absolute height of a jumping or perched walker; 0 keeps every obstacle solid.
+export function walkable(x,y,feet=0){
+  if(x<45||x>560||y<30||y>420||solidAt(x,y,feetLevel(feet))||inPolygon(x,y,palacePond.outline))return false;
   return isInsideMuseum(x,y) || inPolygon(x,y,estateOutline) || distance(spawn,x,y)<23 || distance(fountain,x,y)<15 ||
     inPolygon(x,y,stonewallVerge) || distance(garden,x,y)<9 || nearPath(entranceWalk,x,y,7.4) || nearPath(route,x,y,5.4) ||
     nearPath(palace,x,y,4.1);
 }
-export function clearSegment(from,to,step=.36){
+export function clearSegment(from,to,step=.36,feet=0){
   const dx=to.x-from.x,dy=to.y-from.y;
   const count=Math.ceil(Math.hypot(dx,dy)/step);
   for(let i=1;i<=count;i++){
-    if(!walkable(from.x+dx*i/count,from.y+dy*i/count))return false;
+    if(!walkable(from.x+dx*i/count,from.y+dy*i/count,feet))return false;
   }
-  return !count||!crossesObstacle(from,to);
+  return !count||!crossesObstacle(from,to,feetLevel(feet));
 }
 const spacing=2, cols=300, rows=225;
 const around=[[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,1],[1,-1],[-1,-1]];
 const gridPoint=(i)=>({x:i%cols*spacing,y:Math.floor(i/cols)*spacing});
-function snap(point,radius,direct){
+function snap(point,radius,direct,feet=0){
   let best=-1,gap=Infinity;
   const cx=Math.round(point.x/spacing),cy=Math.round(point.y/spacing);
   for(let y=Math.max(0,cy-radius);y<=Math.min(rows-1,cy+radius);y++){
     for(let x=Math.max(0,cx-radius);x<=Math.min(cols-1,cx+radius);x++){
       const next={x:x*spacing,y:y*spacing},d=distance(point,next.x,next.y);
-      if(d>=gap||!walkable(next.x,next.y)||(direct&&!clearSegment(point,next)))continue;
+      if(d>=gap||!walkable(next.x,next.y)||(direct&&!clearSegment(point,next,.36,feet)))continue;
       best=y*cols+x;gap=d;
     }
   }
   return best;
 }
-export function planWalk(from,target){
+// feet lets a walker standing on a bench or ledge plan the first step down from it.
+export function planWalk(from,target,feet=0){
   const exact=walkable(target.x,target.y);
-  if(exact&&clearSegment(from,target))return [target];
-  const start=snap(from,3,true);
+  if(exact&&clearSegment(from,target,.36,feet))return [target];
+  const start=snap(from,3,true,feet);
   let goal=snap(target,7,exact);
   if(start<0||goal<0)return [];
   const previous=new Int32Array(cols*rows).fill(-1),queue=[start];
@@ -367,7 +388,7 @@ export function planWalk(from,target){
   let cursor=from;
   for(let i=0;i<points.length;){
     let last=i;
-    for(let j=i+1;j<points.length&&clearSegment(cursor,points[j]);j++)last=j;
+    for(let j=i+1;j<points.length&&clearSegment(cursor,points[j],.36,i?0:feet);j++)last=j;
     cursor=points[last];simplified.push(cursor);i=last+1;
   }
   return simplified;

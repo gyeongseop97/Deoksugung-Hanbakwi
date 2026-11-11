@@ -1,9 +1,9 @@
 import {
   route,palacePaths,palaceCourts,palaceGardens,palacePond,palaceWalls,fountain,ticket,ticketApproach,ticketGuide,gate,bridge,court,
-  middle,hall,stoneHall,stoneFountain,city,pavilions,estateOutline,nearest,distance as near,walkable,clearSegment,planWalk
+  middle,hall,stoneHall,stoneFountain,city,pavilions,estateOutline,nearest,distance as near,walkable,clearSegment,planWalk,platformAt
 } from "./layout.js";
 import {normalize,angleDelta,hexCoat,moving,receivePeople,smoothPeople,handPosition,handSide,pairFits} from "./people.js";
-import {ITEMS,PET_MS,FEED_MS,JUMP_MS} from "./activities.js";
+import {ITEMS,PET_MS,FEED_MS,JUMP_MS,jumpLift} from "./activities.js";
 import {makeWishDrawing} from "./wish-drawing.js";
 import {WISH_FLIGHT_MS} from "./wish-art.js";
 import {isInsideMuseum,museumBounds,museumGalleries,museumGalleryAt,museumHall} from "./visit-layout.js";
@@ -39,7 +39,7 @@ let links=[],queuedSignal=null,queuedHand=null,queuedFeed=null,queuedChat=null,t
 let lastChatAt=0;
 let course=[],pendingSeat=null,seatClaim=null,thumb=[0,0],thumbId,manualInputAt=-Infinity;
 let clockOffset=null,roundTrip=65;
-let runToggled=false,shiftHeld=false;
+let runToggled=false,shiftHeld=false,sentHeading=0,jumpBase=0;
 const keys=new Set();
 const vectors={ArrowUp:[0,-1],ArrowDown:[0,1],ArrowLeft:[-1,0],ArrowRight:[1,0],w:[0,-1],s:[0,1],a:[-1,0],d:[1,0]};
 const fragments=new URLSearchParams(location.hash.slice(1));
@@ -447,8 +447,9 @@ function scheduleSync(delay){
 }
 function movingCadence(){
   // Keep busy public rooms from multiplying database traffic as people join.
-  return session.mode==="open"?96+Math.min(44,Math.max(0,people.size-5)*5):
-    68+Math.min(22,Math.max(0,people.size-8)*2);
+  // Other walkers predict my motion between reports, so ten updates a second is plenty.
+  return session.mode==="open"?110+Math.min(60,Math.max(0,people.size-5)*6):
+    90+Math.min(40,Math.max(0,people.size-8)*3);
 }
 function wakeSync(){
   if(!session||document.hidden||syncFailures)return;
@@ -674,6 +675,7 @@ function jump(){
   if(!session||!world||feedingLocked(time)||time-me.jump<JUMP_MS)return;
   if(pendingSeat)course=[];
   pendingSeat=seatClaim=null;stand();
+  jumpBase=standingHeight();
   me.jump=time;dirty=true;wakeSync();focusGame();
 }
 $("jump").addEventListener("click",jump);
@@ -722,7 +724,7 @@ $("close-map").addEventListener("click",()=>setMap(false));
 function walkTo(target,seat=null){
   if(!target||!session||amFollowingHands()||!world&&!worldFailed)return;
   stand();
-  const steps=planWalk(me,target);
+  const steps=planWalk(me,target,feetHeight(gameTime()));
   if(!steps.length){toast("걸을 수 있는 길을 터치해 주세요.");return;}
   course=steps;seatClaim=null;pendingSeat=seat;
 }
@@ -831,8 +833,17 @@ const clearSceneTouch=bindSceneTouch($("game"),gameShell,{
   onPinch:adjustZoom
 });
 
+// Absolute height of my feet while airborne or perched on a low structure. On plain ground it
+// stays 0 so kerbs, benches and railings block as usual until I jump.
+function standingHeight(){return Math.max(world?.groundHeight(me)??0,platformAt(me.x,me.y));}
+function feetHeight(time){
+  const lift=jumpLift(me,time),platform=platformAt(me.x,me.y);
+  if(!lift&&!platform)return 0;
+  // A jump rises from where it started; landing on something lower or level ends it there.
+  return lift?Math.max(jumpBase+lift,platform):standingHeight();
+}
 function move(x,y){
-  if(!session||(x===me.x&&y===me.y)||!clearSegment(me,{x,y}))return false;
+  if(!session||(x===me.x&&y===me.y)||!clearSegment(me,{x,y},.36,feetHeight(gameTime())))return false;
   const aim=normalize(Math.atan2(x-me.x,me.y-y)*180/Math.PI);
   const link=myLink();
   const heading=link?.active?normalize(me.heading+angleDelta(me.heading,aim)*.26):aim;
@@ -1082,7 +1093,11 @@ function motion(now,elapsed){
   if(me.vx!==vx||me.vy!==vy||me.blocked!==blocked||me.running!==running){
     Object.assign(me,{vx,vy,blocked,running});dirty=true;
   }
-  if(wasMoving!==(moving(me)||blocked)||wasBlocked!==blocked||wasRunning!==running)wakeSync();
+  // Starts, stops and sharp turns are what prediction cannot guess, so send those at once.
+  const turned=Math.abs(angleDelta(sentHeading,me.heading))>28;
+  if(wasMoving!==(moving(me)||blocked)||wasBlocked!==blocked||wasRunning!==running||turned&&moved){
+    sentHeading=me.heading;wakeSync();
+  }
   return leader?leader.stepping||moved:moved||blocked;
 }
 function actors(now,stepping){
@@ -1102,7 +1117,7 @@ function actors(now,stepping){
   }
   return {self,others};
 }
-let lastFrame=performance.now();
+let lastFrame=performance.now(),interfaceAt=0,guideNearby=false;
 function frame(now){
   const elapsed=Math.max(0,Math.min(56,now-lastFrame))/1000;lastFrame=now;
   requestAnimationFrame(frame);
@@ -1111,16 +1126,21 @@ function frame(now){
   smoothPeople(people,elapsed,time,roundTrip);
   const stepping=motion(now,elapsed);
   const {self,others}=actors(now,stepping);
-  const guideNearby=nearVisitorGuide();
-  updateActivities(time,guideNearby);
-  const seatEnabled=world&&session&&!myLink()?.active&&!feedingLocked(time);
-  const bench=seatEnabled&&me.seat==null&&!pendingSeat&&!seatClaim?benchNearby():null;
-  const seatLabel=me.seat!=null?"일어나기":seatClaim?"자리 확인 중":pendingSeat?"벤치로 이동 중":
-    bench?.choice?"앉기":bench?.nearby?"빈자리 없음":null;
-  setActivity("sit",seatEnabled?seatLabel:null,me.seat==null&&!bench?.choice);
-  attr($("sit"),"aria-pressed",me.seat!=null);
-  setText($("game-place"),$("location").textContent);
-  updateHandControls();updateLocationGuides(time);updateMaps(self,others);
+  // Buttons, the map and guides do not need every frame; updating them about ten times a
+  // second leaves the rest of each frame for drawing.
+  if(now>=interfaceAt){
+    interfaceAt=now+95;
+    guideNearby=nearVisitorGuide();
+    updateActivities(time,guideNearby);
+    const seatEnabled=world&&session&&!myLink()?.active&&!feedingLocked(time);
+    const bench=seatEnabled&&me.seat==null&&!pendingSeat&&!seatClaim?benchNearby():null;
+    const seatLabel=me.seat!=null?"일어나기":seatClaim?"자리 확인 중":pendingSeat?"벤치로 이동 중":
+      bench?.choice?"앉기":bench?.nearby?"빈자리 없음":null;
+    setActivity("sit",seatEnabled?seatLabel:null,me.seat==null&&!bench?.choice);
+    attr($("sit"),"aria-pressed",me.seat!=null);
+    setText($("game-place"),$("location").textContent);
+    updateHandControls();updateLocationGuides(time);updateMaps(self,others);
+  }
   world?.render({me:self,peers:[...others.values()],view:ownView,firstPerson,guideNearby,destination:course.at(-1),clock:time},now);
 }
 
