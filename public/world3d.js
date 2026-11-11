@@ -3,9 +3,11 @@ import { buildJeongdong } from "./streets.js";
 import { addWater } from "./water.js";
 import { solidAt, bridge, gate, middle, hall, stoneHall, courtAngle, ticketGuide } from "./layout.js";
 import { addParkLife } from "./park-life.js";
+import { addPalaceBirds } from "./palace-birds.js";
+import { addPalaceSky } from "./palace-sky.js";
 import { addStands, makeItemProps } from "./street-stands.js";
 import { addMuseum, stairHeight } from "./museum.js";
-import { PET_MS, FEED_MS } from "./activities.js";
+import { PET_MS, FEED_MS, jumpLift } from "./activities.js";
 import { makeWalkerModels } from "./walker-model.js";
 import { decodeWishFace, WISH_WIDTH, WISH_HEIGHT, WISH_COLORS, WISH_FLIGHT_MS } from "./wish-art.js";
 
@@ -21,10 +23,11 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
   const selfChat=document.createElement("span");
   selfChat.className="self-chat";selfChat.hidden=true;selfChat.setAttribute("aria-hidden","true");
   container.append(renderer.domElement,selfEmote,selfChat);
+  let baseFov=57;
   const resize=()=>{
     if(!container.clientWidth||!container.clientHeight)return;
     camera.aspect=container.clientWidth/container.clientHeight;
-    camera.fov=camera.aspect<.78?68:57;
+    baseFov=camera.aspect<.78?68:57;
     camera.updateProjectionMatrix();
     renderer.setSize(container.clientWidth,container.clientHeight);
   };
@@ -59,6 +62,7 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
   const moonLight=new T.DirectionalLight(0xabc9ff,0);
   moonLight.position.set(-145,94,33);
   scene.add(hemi,sun,moonLight);
+  const drawPalaceSky=addPalaceSky(T,scene,{sunDirection:sun.position});
   const wx=x=>x-300,wz=y=>y-225;
   let seed=220621;
   function rand(){seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;}
@@ -153,6 +157,7 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
   outdoors.add(guideMarker);
   const museum=addMuseum(T,scene,kit);
   const parkLife=addParkLife(T,outdoors,{...kit,trees,floorHeight,catWalls,benches,onCatFlee,catSeed});
+  const birds=addPalaceBirds(T,outdoors,{...kit,floorHeight},{trees,walls:catWalls,seed:catSeed});
 
   const landmarkLoaders=Promise.all([
     import("https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/loaders/GLTFLoader.js"),
@@ -342,8 +347,8 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     sun.intensity=indoors?0:2.35*(1-night);moonLight.intensity=indoors?0:night*.95;
     lampMaterial.emissiveIntensity=.03+night*2.15;
     spotLights.forEach((light,i)=>{light.intensity=night*(i===2?720:126);});
-    if(!indoors){drawWater(now*.001,night);drawPond(now*.001,night);nightSky(night);}
     const roster=[me,...peers],present=new Set(roster.map(player=>player.id));
+    if(!indoors){drawWater(now*.001,night);drawPond(now*.001,night);nightSky(night);drawPalaceSky(now,night);birds.update(clock,delta,roster);}
     for(const {id,feed} of roster)if(feed&&feed.at<=clock&&feed.at+FEED_MS>clock)parkLife.feed(feed.id,feed.at,id);
     for(const {pet} of roster)if(pet&&pet.at<=clock&&pet.at+PET_MS>clock)parkLife.pet(pet.id,pet.at);
     parkLife.update(clock,indoors?null:anchor,roster);
@@ -357,16 +362,21 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
       const visible=museum.isInside(player.x,player.y)===indoors&&Math.hypot(player.x-anchor.x,player.y-anchor.y)<135;
       if(!visible){if(model){model.group.visible=false;walkerModels.clearChat(model);}return;}
       if(!model){model=walkerModels.create(player.coat??0xab5947,player.nickname,labelSprite);models.set(player.id,model);}
-      walkerModels.update(model,player,{now,clock,delta,seat:seatAt(player),floor:floorHeight(player),emojiTexture,chatTexture,
+      walkerModels.update(model,player,{now,clock,delta,seat:seatAt(player),floor:floorHeight(player),jump:jumpLift(player,clock),emojiTexture,chatTexture,
         turnEase:player===me?1-Math.exp(-delta*22):1});
     });
     const seat=seatAt(anchor);
-    const eyeHeight=seat?(firstPerson?1.35:1.23):(firstPerson?1.74:1.57)+floorHeight(anchor);
+    const eyeHeight=seat?(firstPerson?1.35:1.23):(firstPerson?1.74:1.57)+floorHeight(anchor)+jumpLift(anchor,clock);
     anchorPoint.set(wx(seat?.x??anchor.x),eyeHeight,wz(seat?.y??anchor.y));
     const changed=cameraAnchor!==anchor.id||pivot.distanceToSquared(anchorPoint)>144;
     if(changed)pivot.copy(anchorPoint);
     else pivot.lerp(anchorPoint,1-Math.exp(-delta*20));
     cameraAnchor=anchor.id;
+    const zoomFov=baseFov-view.zoom*(firstPerson?6:1.7);
+    if(Math.abs(zoomFov-camera.fov)>.01){
+      camera.fov+=(zoomFov-camera.fov)*(1-Math.exp(-delta*12));
+      camera.updateProjectionMatrix();
+    }
     const pitch=firstPerson?Math.max(-72,Math.min(65,view.tilt)):Math.max(-10,Math.min(62,14+view.tilt));
     const elevation=pitch*Math.PI/180;
     const horizontal=Math.cos(elevation);
@@ -470,7 +480,7 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     for(const model of models.values())walkerModels.clearChat(model);
     selfChat.hidden=true;selfChat.textContent="";
   }
-  return {render,pick,previewWalker,clearChat,benches,stations,parkLife,museum};
+  return {render,pick,previewWalker,clearChat,benches,stations,parkLife,birds,museum};
 }
 
 function makeGuideMarker(){

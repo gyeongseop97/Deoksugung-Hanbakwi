@@ -17,6 +17,7 @@ const validAvatar = (a) => validPoint(a) &&
   (a.character===undefined || a.character==="man" || a.character==="woman") &&
   validLook(a.look) &&
   (a.wave===undefined || finite(a.wave,0,9999999999999)) &&
+  (a.jump===undefined || validTime(a.jump)) &&
   (a.emote==null || reactions.has(a.emote.emoji) && finite(a.emote.at,0,9999999999999)) &&
   (a.vx===undefined || finite(a.vx,-8,8)) && (a.vy===undefined || finite(a.vy,-8,8)) &&
   (a.blocked===undefined || typeof a.blocked==="boolean") &&

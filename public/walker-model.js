@@ -1,4 +1,4 @@
-import {FEED_MS, ITEMS, PET_MS} from "./activities.js";
+import {FEED_MS, ITEMS, PET_MS, JUMP_HEIGHT} from "./activities.js";
 
 const TAU = Math.PI * 2;
 const HAIR = ["short", "bob", "long", "bun"];
@@ -586,12 +586,13 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
     }
   }
 
-  function update(model, position, {now,clock,delta=1/60,seat,floor=0,emojiTexture,chatTexture,turnEase=1}) {
+  function update(model, position, {now,clock,delta=1/60,seat,floor=0,jump=0,emojiTexture,chatTexture,turnEase=1}) {
     const {group,pelvis,chest,headJoint,legs,arms,itemPivot,emote} = model;
     const wasVisible = group.visible;
     group.visible = true;
     const smoothPose = wasVisible ? 1 - Math.exp(-delta*15) : 1;
-    const walking = Boolean(position.stepping && !seat);
+    const airborne = jump/JUMP_HEIGHT;
+    const walking = Boolean(position.stepping && !seat && jump<.06);
     const running = walking && Boolean(position.running);
     const held = position.hand === -1 || position.hand === 1;
     const petAge = clock - position.pet?.at;
@@ -610,7 +611,7 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
     const facing = Math.PI - (seat?.heading ?? position.heading ?? 252) * Math.PI/180;
     const turn = facing - group.rotation.y;
     group.rotation.y += Math.atan2(Math.sin(turn),Math.cos(turn)) * (wasVisible && !seat && !held ? turnEase : 1);
-    group.position.set(wx(seat?.x ?? position.x),seat ? 0 : floor,wz(seat?.y ?? position.y));
+    group.position.set(wx(seat?.x ?? position.x),seat ? 0 : floor+jump,wz(seat?.y ?? position.y));
     const travel = model.lastX === null ? 0 : Math.hypot(position.x-model.lastX,position.y-model.lastY);
     model.lastX = position.x;
     model.lastY = position.y;
@@ -638,8 +639,9 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
     chest.rotation.set(.024 + sprint*.15 + crouch*.40 + seated*.04,pendulum*sway*.085,pendulum*sway*.048);
     headJoint.rotation.set(-.054-sprint*.080+crouch*.24, -pendulum*sway*.044,breath*.022+pendulum*sway*.018);
     model.shadow.visible = !seat;
-    model.shadow.material.opacity = .25 - sprint*bob*1.12;
-    model.shadow.scale.set(1+sprint*.05,1+crouch*.13,1);
+    model.shadow.position.y = .028-jump;
+    model.shadow.material.opacity = .25 - sprint*bob*1.12 - airborne*.09;
+    model.shadow.scale.set(1+sprint*.05-airborne*.18,1+crouch*.13-airborne*.18,1);
 
     const blinkTick = (now + model.offset%4100) % 4120;
     const blushLevel = position.blushUntil > clock ? clamp(Math.trunc(Number(position.blushLevel))||1,1,3) : 0;
@@ -660,9 +662,9 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
       const stroke = footPhase < stance ? stance*.5-footPhase : stance*(smooth(swing)-.5);
       const step = cycleDistance*stroke*stride;
       const lift = (.11+sprint*.12)*Math.sin(Math.PI*swing)*stride;
-      const ankleY = SOLE+lift*(1-seated);
+      const ankleY = SOLE+lift*(1-seated)+airborne*(.15+i*.045);
       leg.target.set(side*(.128+crouch*.033)-pelvis.position.x,ankleY-pelvis.position.y,
-        mix(step+crouch*.09,.425,seated));
+        mix(step+crouch*.09,.425,seated)+airborne*(.10+i*.045));
       solve(leg,leg.target,forward);
       const roll = (footPhase < stance ? 0 : Math.sin(swing*TAU)*.24*stride) * (1-seated);
       pitch.setFromAxisAngle(xAxis,roll+seated*.06);
@@ -679,6 +681,7 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
       let x = side*.299, y = -.036+seated*.118, z = .018+seated*.227;
       z += side*pendulum*sway*(.145+sprint*.10);
       y += sprint*sway*(.050+Math.max(0,side*pendulum)*.12);
+      x += side*airborne*.095; y += airborne*.23; z += airborne*.11;
       pole.set(side*.56,-.12,-1);
       const clasping = held && side === position.hand;
       if (clasping) {
