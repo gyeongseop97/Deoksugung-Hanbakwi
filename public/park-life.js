@@ -1,15 +1,17 @@
-import {clearSegment,palacePaths,route,solidAt,spawn,walkable} from "./layout.js";
+import {clearSegment,solidAt,spawn,walkable} from "./layout.js";
 import {FEED_MS,PET_MS} from "./activities.js";
+import {makeCatRoaming} from "./cat-roaming.js";
+import {createCatSocial} from "./cat-social.js";
 
 const cats=[
-  {id:"cheese",name:"치즈태비",home:spawn,habit:"bench",size:1.04,coat:0xd5914b,mark:0x98521f,paw:0xf0d5aa,eyes:[0xa8a953,0xa8a953],pattern:"tabby"},
-  {id:"angora",name:"터키시 앙고라",home:palacePaths[14].points[0],habit:"bench",size:1.08,coat:0xf5efe4,paw:0xfff6ed,eyes:[0x77adce,0xc9a057],pattern:"white"},
-  {id:"calico",name:"삼색이",home:palacePaths[4].points[5],size:.96,coat:0xf0e6d5,mark:0xc87737,paw:0xf6eee0,eyes:[0x9baf64,0x9baf64],pattern:"calico"},
-  {id:"silver",name:"실버태비",home:route[3],habit:"wall",size:.94,coat:0x8c9297,mark:0x42494f,paw:0xaeb5b7,eyes:[0xb4bf73,0xb4bf73],pattern:"tabby"},
-  {id:"tuxedo",name:"턱시도",home:route[6],size:1.04,coat:0x292e35,paw:0xebe7d8,eyes:[0xbcc878,0xbcc878],pattern:"tuxedo"},
-  {id:"brown",name:"고등어태비",home:palacePaths[20].points[7],size:.99,coat:0x8b765d,mark:0x40362d,paw:0xb2a18b,eyes:[0xadbb70,0xadbb70],pattern:"tabby"},
-  {id:"blue",name:"러시안 블루",home:palacePaths[12].points.at(-1),habit:"wall",size:1.01,coat:0x697c89,paw:0x82949e,eyes:[0x93ba77,0x93ba77],pattern:"solid"},
-  {id:"black",name:"검정 고양이",home:route[9],size:.95,coat:0x33373b,paw:0x42464a,eyes:[0xd5af5a,0xd5af5a],pattern:"solid"}
+  {id:"cheese",name:"치즈태비",size:1.04,coat:0xd5914b,mark:0x98521f,paw:0xf0d5aa,eyes:[0xa8a953,0xa8a953],pattern:"tabby"},
+  {id:"angora",name:"터키시 앙고라",size:1.08,coat:0xf5efe4,paw:0xfff6ed,eyes:[0x77adce,0xc9a057],pattern:"white"},
+  {id:"calico",name:"삼색이",size:.96,coat:0xf0e6d5,mark:0xc87737,paw:0xf6eee0,eyes:[0x9baf64,0x9baf64],pattern:"calico"},
+  {id:"silver",name:"실버태비",size:.94,coat:0x8c9297,mark:0x42494f,paw:0xaeb5b7,eyes:[0xb4bf73,0xb4bf73],pattern:"tabby"},
+  {id:"tuxedo",name:"턱시도",size:1.04,coat:0x292e35,paw:0xebe7d8,eyes:[0xbcc878,0xbcc878],pattern:"tuxedo"},
+  {id:"brown",name:"고등어태비",size:.99,coat:0x8b765d,mark:0x40362d,paw:0xb2a18b,eyes:[0xadbb70,0xadbb70],pattern:"tabby"},
+  {id:"blue",name:"러시안 블루",size:1.01,coat:0x697c89,paw:0x82949e,eyes:[0x93ba77,0x93ba77],pattern:"solid"},
+  {id:"black",name:"검정 고양이",size:.95,coat:0x33373b,paw:0x42464a,eyes:[0xd5af5a,0xd5af5a],pattern:"solid"}
 ];
 
 function randomSequence(seed){
@@ -30,14 +32,29 @@ function findHome(point){
   return null;
 }
 
+function catSeedNumber(seed){
+  let value=2166136261;
+  for(let i=0;i<seed.length;i++)value=Math.imul(value^seed.charCodeAt(i),16777619);
+  return value>>>0;
+}
+
+function shuffled(values,random){
+  const result=[...values];
+  for(let i=result.length-1;i>0;i--){
+    const j=Math.floor(random()*(i+1));
+    [result[i],result[j]]=[result[j],result[i]];
+  }
+  return result;
+}
+
 function jumpHeight(from,to,arc,progress){
   return from+(to-from)*progress+arc*4*progress*(1-progress);
 }
 
 function jumpClear(a,b,arc,bench=false){
   const from=a.height??0,to=b.height??0;
-  for(let step=1;step<=24;step++){
-    const t=step/24,x=a.x+(b.x-a.x)*t,y=a.y+(b.y-a.y)*t;
+  for(let step=1;step<=96;step++){
+    const t=step/96,x=a.x+(b.x-a.x)*t,y=a.y+(b.y-a.y)*t;
     const height=jumpHeight(from,to,arc,t);
     // The player's bench collider includes its backrest. A cat arrives over the front of the seat.
     if(solidAt(x,y,bench?Math.max(1.01,height):height+.02))return false;
@@ -50,7 +67,7 @@ function benchExcursion(origin,benches,used){
   options.sort((a,b)=>Math.hypot(a.x-origin.x,a.y-origin.y)-Math.hypot(b.x-origin.x,b.y-origin.y));
   for(const seat of options){
     const home=seat.approach;
-    if(Math.hypot(home.x-origin.x,home.y-origin.y)>36||!walkable(home.x,home.y)||!jumpClear(home,seat,.39,true))continue;
+    if(Math.hypot(home.x-origin.x,home.y-origin.y)>18||!clearSegment(origin,home,.22)||!jumpClear(home,seat,.39,true))continue;
     used.add(seat);
     const perch={...seat,surface:"bench"};
     return {home,legs:[
@@ -61,12 +78,12 @@ function benchExcursion(origin,benches,used){
   return null;
 }
 
-function wallExcursion(origin,walls,used){
+function wallExcursion(origin,walls,used,cross){
   const options=walls.filter(wall=>!used.has(wall)).map(wall=>({wall,
     distance:Math.hypot((wall.a.x+wall.b.x)/2-origin.x,(wall.a.y+wall.b.y)/2-origin.y)}));
   options.sort((a,b)=>a.distance-b.distance);
   for(const {wall,distance} of options){
-    if(distance>35)break;
+    if(distance>42)break;
     const {a,b,height,sides}=wall,dx=b.x-a.x,dy=b.y-a.y,length=Math.hypot(dx,dy);
     const span=Math.min(4.8,length*.30)/length;
     const cap=t=>({x:a.x+dx*t,y:a.y+dy*t,height,surface:"wall"});
@@ -74,16 +91,27 @@ function wallExcursion(origin,walls,used){
       const start=cap(t),end=cap(t<.5?t+span:t-span);
       if(Array.from({length:13},(_,i)=>i/12).some(k=>
         solidAt(start.x+(end.x-start.x)*k,start.y+(end.y-start.y)*k,height+.02)))continue;
-      for(const side of sides){
-        const reach=height>2?2.05:1.52,arc=height>2?1.70:.79;
-        const home={x:start.x+dy/length*reach*side,y:start.y-dx/length*reach*side};
-        if(!walkable(home.x,home.y)||!jumpClear(home,start,arc))continue;
+      for(const side of cross?[1,-1]:sides){
+        const reach=height>2?2.05:1.52,arc=height>2?1.86:.79;
+        const ground=(point,side,reach)=>({x:point.x+dy/length*reach*side,y:point.y-dx/length*reach*side});
+        const home=ground(start,side,reach);
+        if(Math.hypot(home.x-origin.x,home.y-origin.y)>22||!clearSegment(origin,home,.22)||!jumpClear(home,start,arc))continue;
+        const opposite=ground(end,-side,reach),away=ground(end,-side,reach+2.2);
+        if(cross&&(!walkable(opposite.x,opposite.y)||!jumpClear(opposite,end,arc)))continue;
+        const jumpUp=height>2?1.02:.76,jumpDown=height>2?.94:.74,across=span*length/.63;
+        const otherSide=[];
+        if(cross){
+          otherSide.push({a:end,b:opposite,travel:jumpDown,pause:2.6,arc});
+          if(clearSegment(opposite,away,.22))otherSide.push(
+            {a:opposite,b:away,travel:2.8,pause:3.2},{a:away,b:opposite,travel:3.1,pause:.4});
+          otherSide.push({a:opposite,b:end,travel:jumpUp,pause:1.1,arc});
+        }
         used.add(wall);
         return {home,legs:[
-          {a:home,b:start,travel:height>2?1.02:.76,pause:.85,arc},
-          {a:start,b:end,travel:span*length/.63,pause:1.75},
-          {a:end,b:start,travel:span*length/.63,pause:.6},
-          {a:start,b:home,travel:height>2?.94:.74,pause:1.3,arc}
+          {a:home,b:start,travel:jumpUp,pause:.85,arc},
+          {a:start,b:end,travel:across,pause:1.75},...otherSide,
+          {a:end,b:start,travel:across,pause:.6},
+          {a:start,b:home,travel:jumpDown,pause:1.3,arc}
         ]};
       }
     }
@@ -112,35 +140,42 @@ function treeExcursion(home,kit,used){
   return [];
 }
 
-function makeRoute(home,random,excursion,scratching){
-  const path=[home];
-  for(let stop=0;stop<(excursion?3:8);stop++){
-    const from=path.at(-1);
-    for(let attempt=0;attempt<24;attempt++){
-      const angle=random()*Math.PI*2,radius=2+random()*7.5;
-      const x=from.x+Math.sin(angle)*radius,y=from.y+Math.cos(angle)*radius;
-      if(Math.hypot(x-home.x,y-home.y)>19||!clearSegment(from,{x,y},.22))continue;
-      path.push({x,y});break;
+function makeRoute(ground,random,kit,used,index){
+  const detours=new Map();
+  const stops=shuffled(ground.keys(),random).slice(0,40);
+  function addDetour(getExcursion){
+    for(const stop of stops){
+      if(detours.has(stop))continue;
+      const from=ground[stop].a,excursion=getExcursion(from);
+      if(!excursion)continue;
+      const gap=Math.hypot(excursion.home.x-from.x,excursion.home.y-from.y);
+      const approach=gap?[{a:from,b:excursion.home,travel:gap/.78,pause:.2}]:[];
+      const back=gap?[{a:excursion.home,b:from,travel:gap/.76,pause:.45}]:[];
+      detours.set(stop,[...approach,...excursion.legs,...back]);
+      return true;
     }
+    return false;
   }
-  // Backtrack along known clear legs when a direct return crosses a wall.
-  if(!clearSegment(path.at(-1),home,.22))path.push(...path.slice(1,-1).reverse());
+  if(index%3!==0)addDetour(point=>benchExcursion(point,kit.benches??[],used.benches));
+  if(index%3!==1){
+    const crossed=addDetour(point=>wallExcursion(point,kit.catWalls??[],used.walls,true));
+    if(!crossed)addDetour(point=>wallExcursion(point,kit.catWalls??[],used.walls,false));
+  }
+  addDetour(home=>{
+    const legs=treeExcursion(home,kit,used.trees);
+    return legs.length?{home,legs}:null;
+  });
   const legs=[];
   let duration=0;
-  function addLeg(a,b,travel,pause,arc=0){
+  function addLeg({a,b,travel,pause,arc=0}){
     const dx=b.x-a.x,dy=b.y-a.y,distance=Math.hypot(dx,dy);
     legs.push({a,b,dx,dy,distance,travel,arc,start:duration,end:duration+pause+travel,
       heading:distance?Math.atan2(dx,dy):0});
     duration+=pause+travel;
   }
-  for(let i=0;i<path.length;i++){
-    const a=path[i],b=path[(i+1)%path.length],distance=Math.hypot(b.x-a.x,b.y-a.y);
-    const travel=distance/(.52+random()*.25);
-    const pause=2+random()*4.1;
-    addLeg(a,b,travel,pause);
-  }
-  for(const {a,b,travel,pause,arc} of [...(excursion?.legs??[]),...scratching]){
-    addLeg(a,b,travel,pause,arc);
+  for(const [index,leg] of ground.entries()){
+    for(const detour of detours.get(index)??[])addLeg(detour);
+    addLeg(leg);
   }
   return {legs,duration,offset:random()*duration};
 }
@@ -440,18 +475,41 @@ function fallingLeaves(T,scene,kit){
 
 export function addParkLife(T,scene,kit){
   const meshes=sharedCatMeshes(T),leg=new T.Object3D(),live=[];
-  const perches=new Set(),scratchTrees=new Set();
-  for(const [i,spec] of cats.entries()){
-    const excursion=spec.habit==="wall"?wallExcursion(spec.home,kit.catWalls??[],perches):
-      spec.habit==="bench"?benchExcursion(spec.home,kit.benches??[],perches):null;
-    const home=excursion?.home??findHome(spec.home);
-    if(!home)continue;
-    const scratching=treeExcursion(home,kit,scratchTrees);
-    const path=makeRoute(home,randomSequence(130581+i*7919),excursion,scratching);
-    live.push({...spec,...path,...catModel(T,scene,spec,meshes),x:home.x,y:home.y,
-      routeAt:null,updatedAt:null,petFrom:0,petUntil:0,canPet:true,escape:null,checkAt:0,
-      lure:null,lureCheckAt:0,feeding:null,pose:null});
+  const roam=makeCatRoaming(),social=createCatSocial({walkable,clearSegment});
+  let seed;
+  function setSeed(value){
+    const next=String(value??"preview");
+    if(next===seed)return;
+    seed=next;
+    for(const cat of live){
+      cat.group.traverse(object=>{
+        if(object.isInstancedMesh)object.dispose();
+        else if(object.isMesh&&object!==cat.shadow)object.geometry.dispose();
+      });
+      cat.group.removeFromParent();
+    }
+    live.length=0;
+    social.reset();
+    const hash=catSeedNumber(seed),random=randomSequence(hash);
+    const count=9+Math.floor(random()*4),coats=shuffled(cats,random);
+    coats.push(...shuffled(cats,random).slice(0,count-cats.length));
+    const used={benches:new Set(),walls:new Set(),trees:new Set()};
+    for(const [index,coat] of coats.entries()){
+      const rng=randomSequence(hash^Math.imul(index+1,0x9e3779b1));
+      const home=roam.start(rng,index)??findHome(spawn);
+      if(!home)continue;
+      const ground=roam(home,rng,index);
+      if(!ground.length)continue;
+      const spec=index<cats.length?coat:{...coat,id:coat.id+"-"+(index+1),name:coat.name+" "+(index-cats.length+2),
+        size:coat.size*(.88+rng()*.11)};
+      const path=makeRoute(ground,rng,kit,used,index);
+      const model=catModel(T,scene,spec,meshes);
+      live.push({...spec,...path,...model,x:home.x,y:home.y,
+        routeAt:null,updatedAt:null,petFrom:0,petUntil:0,petPose:null,canPet:false,escape:null,checkAt:0,
+        lure:null,lureCheckAt:0,feeding:null,pose:null,social:null,rejoin:null,frame:{}});
+    }
   }
+  setSeed(kit.catSeed);
   const leaves=fallingLeaves(T,scene,kit);
   const heightAt=point=>point.height??kit.floorHeight?.(point)??0;
   function update(now,anchor,walkers=[]){
@@ -465,7 +523,7 @@ export function addParkLife(T,scene,kit){
       const held=Math.max(0,Math.min(time,cat.petUntil)-Math.max(previousTime,cat.petFrom));
       const elapsed=time-previousTime-held;
       // Hold the shared route during interactions, then regain its phase without jumping.
-      if(!cat.escape&&!cat.lure&&!feeding)cat.routeAt=Math.min(time,(cat.routeAt??time)+elapsed*1.28);
+      if(!cat.escape&&!cat.lure&&!feeding&&!cat.social&&!cat.rejoin)cat.routeAt=Math.min(time,(cat.routeAt??time)+elapsed*1.28);
       cat.routeAt??=time;
       cat.updatedAt=time;
       const paused=time>=cat.petFrom&&time<cat.petUntil;
@@ -492,9 +550,10 @@ export function addParkLife(T,scene,kit){
         jump:jumping?{from:current.a,to:current.b,arc:current.arc,progress}:null
       };
       const reachable=!jumping&&surface.surface!=="wall";
+      const reaction=cat.social?cat.pose:patrol;
       if(!cat.escape&&reachable&&!feeding&&!paused&&runners.length&&time>=cat.checkAt){
         cat.checkAt=time+110;
-        const point=cat.lure?.point??patrol;
+        const point=cat.lure?.point??reaction;
         const runner=approachingRunner(point,runners);
         if(runner){
           cat.escape=scareFrom(point,runner,time);
@@ -506,6 +565,7 @@ export function addParkLife(T,scene,kit){
       }
       const retreat=cat.escape?retreatPose(cat.escape,time,runners):null;
       if(cat.escape&&!retreat){
+        cat.rejoin={from:cat.escape.origin,at:time};
         cat.escape=null;
         cat.checkAt=time+400;
       }
@@ -513,13 +573,16 @@ export function addParkLife(T,scene,kit){
       if(!retreat&&!feeding&&reachable&&!onBench){
         if(!cat.lure&&!paused&&holders.length&&time>=cat.lureCheckAt){
           cat.lureCheckAt=time+165;
-          const holder=nearbyChuru(patrol,holders);
-          if(holder)cat.lure=beginLure(patrol,holder);
+          const holder=nearbyChuru(reaction,holders);
+          if(holder)cat.lure=beginLure(reaction,holder);
         }
         if(cat.lure){
           const holder=holders.find(actor=>actor.id===cat.lure.playerId);
           lured=lurePose(cat.lure,holder,elapsed);
-          if(!lured){cat.lure=null;cat.lureCheckAt=time+400;}
+          if(!lured){
+            cat.rejoin={from:cat.lure.trail[0],at:time};
+            cat.lure=null;cat.lureCheckAt=time+400;
+          }
         }
       }
       const eater=feeding&&walkers.find(actor=>actor.id===feeding.playerId);
@@ -528,11 +591,32 @@ export function addParkLife(T,scene,kit){
         heading:eater?shortestTurn(feeding.pose.heading,Math.atan2(eater.x-feeding.pose.x,eater.y-feeding.pose.y),
           Math.min(1,(time-feeding.at)/275)):feeding.pose.heading
       };
-      const pose=serving||retreat||lured||patrol;
+      if(!paused&&cat.petPose){
+        cat.rejoin={from:cat.petPose,at:time};cat.petPose=null;
+      }
+      let rejoining=null;
+      if(cat.rejoin&&!retreat&&!lured&&!serving){
+        const {from,at}=cat.rejoin,distance=Math.hypot(patrol.x-from.x,patrol.y-from.y);
+        if(distance>.025&&clearSegment(from,patrol,.22)){
+          const progress=Math.min(1,(time-at)/Math.max(300,distance*630));
+          if(progress<1)rejoining=retreatLeg(from,patrol,progress,from.heading);
+        }
+        if(!rejoining)cat.rejoin=null;
+      }
+      cat.pose=serving||retreat||lured||cat.petPose||rejoining||patrol;
+      cat.available=reachable&&!onBench&&!atTree&&!serving&&!retreat&&!lured&&!paused&&!rejoining;
+      Object.assign(cat.frame,{time,feeding,paused,onBench,atTree,landTime,seconds,current,patrol,retreat});
+      cat.canPet=reachable&&!retreat&&!feeding;
+      cat.feedable=Boolean(cat.lure&&!cat.lure.returning&&lured&&!paused&&!feeding);
+    }
+    const encounters=social.update(live,now);
+    for(const cat of live){
+      const {time,feeding,paused,onBench,atTree,landTime,seconds,current,patrol,retreat}=cat.frame;
+      cat.social=encounters.get(cat.id)??null;
+      const pose=cat.social?{...cat.pose,...cat.social}:cat.pose;
       const {x,y,heading,stride,jump,leap,moving,sprint}=pose;
       cat.pose=pose;
-      cat.x=x;cat.y=y;cat.canPet=reachable&&!retreat&&!feeding;
-      cat.feedable=Boolean(cat.lure&&!cat.lure.returning&&lured&&!paused&&!feeding);
+      cat.x=x;cat.y=y;
       cat.approach=pose.approach??null;
       cat.group.visible=Boolean(anchor&&Math.hypot(anchor.x-x,anchor.y-y)<39);
       if(!cat.group.visible)continue;
@@ -546,21 +630,28 @@ export function addParkLife(T,scene,kit){
       const scratch=atTree&&!paused&&pose===patrol?
         Math.max(0,Math.min(1,(landTime-.20)/.38,(current.end-seconds)/.34)):0;
       const eating=feeding?Math.min(1,(time-feeding.at)/220,(feeding.until-time)/260):0;
+      const greeting=cat.social?.stage==="interact"&&cat.social.kind!=="play"?
+        Math.sin(cat.social.phase*Math.PI):0;
+      const play=cat.social?.stage==="interact"&&cat.social.kind==="play"?
+        Math.sin(cat.social.phase*Math.PI):0;
+      const nuzzle=greeting*(cat.social?.kind==="rub"&&cat.social.initiator?1:.48);
+      const swat=play*(cat.social?.initiator?1:.46)*Math.max(0,Math.sin((cat.social?.phase??0)*Math.PI*3));
       const tuck=Math.max(loaf,leap*.72);
       cat.upper.position.set(0,Math.sin(stride*2)*.009*gait+breath*.005+petting*.023-loaf*.165+
-        scratch*.20-eating*.033,scratch*.26);
+        scratch*.20-eating*.033+nuzzle*.03+swat*.055,scratch*.26);
       cat.upper.scale.set(1+loaf*.05,1-loaf*.07,1);
       cat.upper.rotation.x=jump?leap*(heightAt(jump.to)>heightAt(jump.from)?-.34:.32):
-        (sprint?.075:0)-scratch*.90;
+        (sprint?.075:0)-scratch*.90-swat*.24;
+      cat.upper.rotation.z=nuzzle*(cat.social?.side??0)*.23-swat*(cat.social?.side??0)*.16;
       cat.head.rotation.x=petting*(-.27+Math.sin(time*.007)*.07)+(moving?.030:breath*.032)+
-        eating*(.29+.12*Math.sin(time*.018));
-      cat.head.rotation.z=petting*.16;
-      cat.eyes.scale.y=1-Math.max(petting*.89,loaf*.58,eating*.64);
+        eating*(.29+.12*Math.sin(time*.018))+greeting*.19-swat*.11;
+      cat.head.rotation.z=petting*.16+nuzzle*(cat.social?.side??0)*.22;
+      cat.eyes.scale.y=1-Math.max(petting*.89,loaf*.58,eating*.64,greeting*.55);
       const wag=Math.sin(time*.005+cat.offset)*(.25+petting*.12-loaf*.17);
       const lift=-.06+Math.cos(time*.004)*.08+petting*.14-loaf*.99;
       cat.tail.position.set(loaf*.08,.312,-.240+loaf*.08);
       cat.tail.scale.setScalar(1-loaf*.27);
-      cat.tail.rotation.set(lift,wag+loaf*2.45,0,"YXZ");
+      cat.tail.rotation.set(lift-greeting*.44,wag+loaf*2.45+play*Math.sin(time*.022)*.35,0,"YXZ");
       cat.shadow.visible=!jump&&(!onBench||Boolean(retreat));
       cat.paws.visible=loaf<.96;
       if(!cat.paws.visible)continue;
@@ -568,7 +659,8 @@ export function addParkLife(T,scene,kit){
         const side=i%2===0?-1:1,front=i<2,angle=stride+((front&&side<0)||(!front&&side>0)?Math.PI:0);
         const swing=Math.sin(angle)*.085*gait,lift=Math.max(0,Math.cos(angle))*.043*gait;
         const x=side*.104,z=front?.157:-.160;
-        const claw=front?scratch:0,stroke=Math.sin(time*.018+side*1.5)*.075*claw;
+        const claw=front?scratch+(side===(cat.social?.side??0)?swat*.57:0):0;
+        const stroke=Math.sin(time*.018+side*1.5)*.075*claw;
         leg.rotation.set(-swing*2+tuck*.47+claw*.49,0,0);
         leg.position.set(x,.164+lift*.46-tuck*.035+claw*.23+stroke*.52,z+swing*.47+claw*.07);
         leg.scale.set(.048,.116-tuck*.062+claw*.052,.055);
@@ -605,6 +697,7 @@ export function addParkLife(T,scene,kit){
     const cat=live.find(candidate=>candidate.id===id);
     const until=at+PET_MS;
     if(!cat?.canPet||!Number.isFinite(at)||until<cat.petFrom)return;
+    if(cat.social&&!cat.petPose)cat.petPose={...cat.pose,moving:false};
     cat.petFrom=at>cat.petUntil?at:Math.min(cat.petFrom,at);
     cat.petUntil=Math.max(cat.petUntil,until);
   }
@@ -622,13 +715,14 @@ export function addParkLife(T,scene,kit){
     return true;
   }
   function resetInteractions(){
+    social.reset();
     for(const cat of live){
       cat.routeAt=null;cat.updatedAt=null;
       cat.petFrom=0;cat.petUntil=0;cat.canPet=false;
       cat.escape=null;cat.checkAt=0;
       cat.lure=null;cat.lureCheckAt=0;cat.feedable=false;
-      cat.feeding=null;cat.pose=null;cat.approach=null;
+      cat.feeding=null;cat.pose=null;cat.approach=null;cat.social=null;cat.petPose=null;cat.rejoin=null;
     }
   }
-  return {update,nearestCat,nearestFeedCat,pet,feed,resetInteractions};
+  return {update,nearestCat,nearestFeedCat,pet,feed,resetInteractions,setSeed};
 }
