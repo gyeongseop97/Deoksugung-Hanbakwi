@@ -16,7 +16,9 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
   renderer.toneMapping=T.ACESFilmicToneMapping;
   renderer.toneMappingExposure=1.07;
   renderer.setPixelRatio(Math.min(devicePixelRatio,1.45));
-  container.append(renderer.domElement);
+  const selfEmote=document.createElement("span");
+  selfEmote.className="self-emote";selfEmote.hidden=true;selfEmote.setAttribute("aria-hidden","true");
+  container.append(renderer.domElement,selfEmote);
   const resize=()=>{
     if(!container.clientWidth||!container.clientHeight)return;
     camera.aspect=container.clientWidth/container.clientHeight;
@@ -199,7 +201,11 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
       ctx.beginPath();ctx.arc(56,56,52,0,Math.PI*2);
       ctx.fillStyle="rgba(246,229,188,.94)";ctx.fill();ctx.strokeStyle="#795c38";ctx.lineWidth=3;ctx.stroke();
       ctx.font='69px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
-      ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(emoji,56,60);
+      ctx.textAlign="left";ctx.textBaseline="alphabetic";
+      const bounds=ctx.measureText(emoji);
+      const x=56+(bounds.actualBoundingBoxLeft-bounds.actualBoundingBoxRight)/2;
+      const y=56+(bounds.actualBoundingBoxAscent-bounds.actualBoundingBoxDescent)/2;
+      ctx.fillText(emoji,Number.isFinite(x)?x:56-bounds.width/2,Number.isFinite(y)?y:79);
       const texture=new T.CanvasTexture(canvas);texture.colorSpace=T.SRGBColorSpace;emojiMaps.set(emoji,texture);
     }
     return emojiMaps.get(emoji);
@@ -258,17 +264,18 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
   const ring=new T.Mesh(new T.RingGeometry(.18,.25,28),new T.MeshBasicMaterial({color:0xffcf70,side:T.DoubleSide}));
   ring.rotation.x=-Math.PI/2;ring.visible=false;scene.add(ring);
   const pivot=new T.Vector3(),anchorPoint=new T.Vector3(),arm=new T.Vector3(),gaze=new T.Vector3();
+  const emoteScreen=new T.Vector3();
   let cameraAnchor=null,cameraDistance=0,prevTime=0;
   function render(state,now){
     if(container.hidden)return;
-    const {me,peers,view,focus,firstPerson,clock=Date.now()}=state,delta=Math.min(.064,(now-(prevTime||now))/1000);
+    const {me,peers,view,firstPerson,clock=Date.now()}=state,delta=Math.min(.064,(now-(prevTime||now))/1000);
     prevTime=now;
     night+=(Number(Boolean(view.night))-night)*Math.min(1,delta*4.2);
     skyUniforms.horizon.value.copy(dayHorizon).lerp(nightHorizon,night);
     skyUniforms.zenith.value.copy(dayZenith).lerp(nightZenith,night);
     scene.fog.color.copy(dayFog).lerp(nightFog,night);
     hemi.color.copy(ambientDay).lerp(ambientNight,night);
-    const anchor=focus||me,angle=view.pan*Math.PI/180,indoors=museum.isInside(anchor.x,anchor.y);
+    const anchor=me,angle=view.pan*Math.PI/180,indoors=museum.isInside(anchor.x,anchor.y);
     outdoors.visible=!indoors;museum.setVisible(indoors);
     guideMarker.visible=!indoors&&Math.hypot(anchor.x-ticketGuide.x,anchor.y-ticketGuide.y)<22;
     if(guideMarker.visible){
@@ -330,6 +337,19 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     }
     const anchorModel=models.get(anchor.id);
     if(anchorModel&&cameraDistance<1.08)anchorModel.group.visible=false;
+    const badge=anchorModel?.emote;
+    let showSelfEmote=false;
+    if(badge?.visible){
+      camera.updateMatrixWorld();
+      badge.getWorldPosition(emoteScreen).project(camera);
+      showSelfEmote=!anchorModel.group.visible||Math.abs(emoteScreen.x)>.88||Math.abs(emoteScreen.y)>.88||Math.abs(emoteScreen.z)>1;
+      if(showSelfEmote){
+        badge.visible=false;
+        if(selfEmote.textContent!==me.emote.emoji)selfEmote.textContent=me.emote.emoji;
+        selfEmote.style.opacity=badge.material.opacity;
+      }
+    }
+    selfEmote.hidden=!showSelfEmote;
     for(const player of roster){
       if(player.id===anchor.id)continue;
       const group=models.get(player.id)?.group;

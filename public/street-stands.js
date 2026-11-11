@@ -14,6 +14,21 @@ const shops=[
     walls:0x92634d,base:0x694e40,frame:0x3c493f,roof:0x393b38,glass:0x9b784f,
     shade:0x69553f,stripe:0xc4965b,ink:"#f5cf83",sign:"#302c24"}
 ];
+const shopPlots=shops.map(shop=>{
+  const a=route[shop.segment],b=route[shop.segment+1];
+  const dx=b.x-a.x,dy=b.y-a.y,length=Math.hypot(dx,dy);
+  const sideX=dy/length,sideY=-dx/length,offset=5.46+shop.depth/2;
+  const x=a.x+dx*shop.t,y=a.y+dy*shop.t;
+  return {shop,x,y,sideX,sideY,angle:-Math.atan2(dy,dx),centerX:x+sideX*offset,centerY:y+sideY*offset};
+});
+const sparklerStand={x:stoneFountain.x+8.1,y:stoneFountain.y+9.8};
+// Include the roof trim, sidewalk platform and awning over the shop's front.
+export const standPlantingFootprints=[
+  ...shopPlots.map(({shop,centerX,centerY,sideX,sideY,angle})=>({
+    x:centerX-sideX*.49,y:centerY-sideY*.49,w:shop.width+.55,d:shop.depth+1.42,h:shop.height+.44,angle
+  })),
+  {...sparklerStand,w:4.3,d:3.4,h:2.62,angle:Math.PI}
+];
 
 function makeCrepeModel(T){
   const group=new T.Group();
@@ -191,12 +206,7 @@ export function addStands(T,scene,{wx,wz,box,cylinder}){
       box(roof,w*.33,h+1.09,-d*.24,.72,.16,.72,group);
     }
   }
-  for(const shop of shops){
-    const a=route[shop.segment],b=route[shop.segment+1];
-    const dx=b.x-a.x,dy=b.y-a.y,length=Math.hypot(dx,dy),angle=-Math.atan2(dy,dx);
-    const sideX=dy/length,sideY=-dx/length,frontOffset=5.46,centerOffset=frontOffset+shop.depth/2;
-    const x=a.x+dx*shop.t,y=a.y+dy*shop.t;
-    const centerX=x+sideX*centerOffset,centerY=y+sideY*centerOffset;
+  for(const {shop,x,y,sideX,sideY,angle,centerX,centerY} of shopPlots){
     const group=new T.Group();group.position.set(wx(centerX),0,wz(centerY));group.rotation.y=angle;scene.add(group);
     if(shop.kind==="churu")convenienceStore(shop,group);
     else shopModel(shop,group);
@@ -212,7 +222,7 @@ export function addStands(T,scene,{wx,wz,box,cylinder}){
     stations.push({kind:shop.kind,name:shop.name,x:x+sideX*approach,y:y+sideY*approach});
   }
 
-  const x=stoneFountain.x+8.1,y=stoneFountain.y+9.8;
+  const {x,y}=sparklerStand;
   const stand=new T.Group();stand.position.set(wx(x),0,wz(y));stand.rotation.y=Math.PI;scene.add(stand);
   box(0xbcb6a3,0,.043,0,4.3,.085,3.4,stand);
   box(0x425847,0,.49,0,2.95,.97,1.32,stand);

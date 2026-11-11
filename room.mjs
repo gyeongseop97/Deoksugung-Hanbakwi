@@ -1,12 +1,13 @@
 import {validWishArt, WISH_FLIGHT_MS} from "./public/wish-art.js";
 import {FEED_MS, ITEMS} from "./public/activities.js";
+import {isInsideMuseum} from "./public/visit-layout.js";
 
 const json = (data, status = 200) => Response.json(data,{status,headers:{"Cache-Control":"no-store"}});
 const validId = (value) => typeof value==="string" && /^[a-f0-9]{32}$/.test(value);
 const finite = (value,min,max) => typeof value==="number" && value>=min && value<=max;
 const validPoint = (point) => point && finite(point.x,0,600) && finite(point.y,0,450);
 const validTime = (value) => finite(value,0,9999999999999);
-const reactions = new Set(["😊","❤️","👍","😮","😢","😠","✨"]);
+const reactions = new Set(["😊","😂","❤️","👍","😮","😢","😠","✨"]);
 const hairStyles = new Set(["short","bob","long","bun"]);
 const eyeStyles = new Set(["round","soft","bright"]);
 const outfitStyles = new Set(["coat","hoodie","puffer","tee","hanbok"]);
@@ -34,6 +35,10 @@ const validAvatar = (a) => validPoint(a) &&
   (a.pet==null || typeof a.pet.id==="string" && /^[a-z0-9-]{1,32}$/.test(a.pet.id) && validTime(a.pet.at));
 const validView = (v) => v && finite(v.pan,-720,720) && finite(v.tilt,-90,90) &&
   finite(v.zoom,-3,3) && (v.night===undefined || typeof v.night==="boolean");
+const validSignal = (signal,self) => validId(signal?.id) && (signal.audience===undefined?
+  validView(signal.view)&&(signal.point===undefined||validPoint(signal.point)):
+  validPoint(signal.point)&&(signal.audience==="nearby"||signal.audience==="room"||
+    signal.audience==="person"&&validId(signal.target)&&signal.target!==self));
 const validHand = (h) => h && validId(h.id) && (h.action==="release" ||
   (h.side===-1 || h.side===1) && (h.action==="accept" || h.action==="offer" && validId(h.peer)));
 const validFeed = (feed) => feed && validId(feed.claim) && validTime(feed.at) &&
@@ -41,6 +46,7 @@ const validFeed = (feed) => feed && validId(feed.claim) && validTime(feed.at) &&
 
 const codeAlphabet="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const openRoomId="00000000000000000000000000000001";
+const lookPingLifetime=5000,lookPingDistance=40;
 const clothes=[
   0xb85545,0x308070,0x5f75bb,0xb77934,0xa2548c,0x6d8647,0x3084a2,0xb34762,
   0x9474bb,0x33716b,0xcc9250,0x5568a3,0x917249,0x8d4844,0x4f8858,0x8358a1,
@@ -107,7 +113,7 @@ async function enterRoom(db,body){
   return json({room:target.id,code:target.code,mode:action==="open"?"open":"private",profile:results[0],serverTime:now});
 }
 
-function avatarUpdate(db,room,id,key,avatar,view,signal,now,active,pendingFeed=""){
+function avatarUpdate(db,room,id,key,avatar,view,now,active,pendingFeed=""){
   const {feed,...snapshotData}=avatar;
   const snapshot=JSON.stringify(snapshotData);
   const inheritWish=avatar.wishArt===undefined&&avatar.wish>now-WISH_FLIGHT_MS?avatar.wish:null;
@@ -120,13 +126,12 @@ function avatarUpdate(db,room,id,key,avatar,view,signal,now,active,pendingFeed="
         THEN json_object('feed',json_extract(avatar,'$.feed'),'item',json_extract(avatar,'$.item'))
         ELSE json_object('feed',json_extract(avatar,'$.feed')) END
       ELSE '{}' END)`;
-  const signalJson=signal?JSON.stringify({...signal,receivedAt:now}):null;
   if(avatar.seat==null){
     return db.prepare(`
-      UPDATE walkers SET updated=?, avatar=json_patch(?, ${snapshotPatch}), view=?, signal=COALESCE(?, CASE WHEN updated>=? THEN signal END)
+      UPDATE walkers SET updated=?, avatar=json_patch(?, ${snapshotPatch}), view=?
       WHERE room=? AND id=? AND player_key IS ?
         AND json_extract(avatar,'$.feed.claim') IS NOT ?
-    `).bind(now,snapshot,inheritWish,acknowledgedFeed,JSON.stringify(view),signalJson,active,room,id,key,pendingFeed);
+    `).bind(now,snapshot,inheritWish,acknowledgedFeed,JSON.stringify(view),room,id,key,pendingFeed);
   }
   const preferred=avatar.seatSide??0;
   return db.prepare(`
@@ -139,11 +144,43 @@ function avatarUpdate(db,room,id,key,avatar,view,signal,now,active,pendingFeed="
         AND COALESCE(json_extract(peer.avatar,'$.seatSide'),0)=slot
       ) ORDER BY slot=? DESC LIMIT 1
     ), json_set(?, '$.seat', NULL, '$.seatSide', NULL)), ${snapshotPatch}),
-    view=?, signal=COALESCE(?, CASE WHEN updated>=? THEN signal END)
+    view=?
     WHERE room=? AND id=? AND player_key IS ?
       AND json_extract(avatar,'$.feed.claim') IS NOT ?
   `).bind(now,snapshot,preferred,1-preferred,room,id,active,avatar.seat,preferred,snapshot,inheritWish,acknowledgedFeed,
-    JSON.stringify(view),signalJson,active,room,id,key,pendingFeed);
+    JSON.stringify(view),room,id,key,pendingFeed);
+}
+
+function signalUpdate(db,room,id,key,signal,avatar,now,active){
+  const location={x:avatar.x,y:avatar.y};
+  const point=signal.point?{x:signal.point.x,y:signal.point.y}:location;
+  const sameArea=isInsideMuseum(point.x,point.y)===isInsideMuseum(location.x,location.y);
+  const payload={id:signal.id,point:sameArea&&Math.hypot(point.x-location.x,point.y-location.y)<=5?point:location,
+    receivedAt:now};
+  if(signal.audience===undefined)payload.view=signal.view;
+  else{
+    payload.audience=signal.audience;
+    if(signal.audience==="person")payload.target=signal.target;
+  }
+  return db.prepare(`
+    UPDATE walkers SET signal=? WHERE room=? AND id=? AND player_key IS ? AND updated>=?
+      AND json_extract(signal,'$.id') IS NOT ?
+  `).bind(JSON.stringify(payload),room,id,key,active,signal.id);
+}
+
+function visibleSignal(row,avatar,receiver,lookPings,room,now){
+  if(!row.signal||row.id===receiver.id)return null;
+  const signal=JSON.parse(row.signal);
+  if(!signal?.receivedAt||now-signal.receivedAt>=lookPingLifetime)return null;
+  // A cached client still changes camera for old broadcasts. Map pings are opt-in.
+  if(!lookPings)return signal.audience===undefined?signal:null;
+  const point=signal.point??{x:avatar.x,y:avatar.y};
+  const audience=signal.audience??(room===openRoomId?"nearby":"room");
+  if(audience==="person"&&signal.target!==receiver.id)return null;
+  if(audience==="nearby"&&(
+    isInsideMuseum(point.x,point.y)!==isInsideMuseum(receiver.avatar.x,receiver.avatar.y)||
+    Math.hypot(point.x-receiver.avatar.x,point.y-receiver.avatar.y)>lookPingDistance))return null;
+  return {id:signal.id,point,receivedAt:signal.receivedAt};
 }
 
 function feedUpdate(db,room,id,key,feed,now){
@@ -224,7 +261,7 @@ export async function api(request,env){
   if(!validId(body?.room)||!validId(body.id)||(body.key!==undefined&&!validId(body.key))){
     return json({error:"잘못된 산책방 정보예요."},400);
   }
-  const {room,id,key=null,avatar,view,signal,hand,feed,leave}=body;
+  const {room,id,key=null,avatar,view,signal,hand,feed,leave,lookPings}=body;
   if(leave===true){
     await db.batch([
       db.prepare(`
@@ -237,15 +274,16 @@ export async function api(request,env){
   }
   if(hand!=null&&(!key||!validHand(hand)))return json({error:"손잡기 요청을 읽을 수 없어요."},400);
   if(feed!=null&&(!key||avatar===undefined||!validFeed(feed)))return json({error:"간식 주기 요청을 읽을 수 없어요."},400);
+  if(signal!=null&&(avatar===undefined||!validSignal(signal,id)))return json({error:"‘여기 봐’ 위치를 읽을 수 없어요."},400);
   const now=Date.now(),active=now-18000,online=now-9000;
   const currentFeed=feed&&feed.at>=now-FEED_MS&&feed.at<=now+1500;
   const operations=[];
   if(avatar!==undefined){
-    if(!validAvatar(avatar)||!validView(view)||(signal&&(!validId(signal.id)||!validView(signal.view)||
-        (signal.point!==undefined&&!validPoint(signal.point))))){
+    if(!validAvatar(avatar)||!validView(view)){
       return json({error:"산책 위치를 읽을 수 없어요."},400);
     }
-    if(!feed||currentFeed)operations.push(avatarUpdate(db,room,id,key,avatar,view,signal,now,active,feed?.claim));
+    if(!feed||currentFeed)operations.push(avatarUpdate(db,room,id,key,avatar,view,now,active,feed?.claim));
+    if(signal)operations.push(signalUpdate(db,room,id,key,signal,avatar,now,active));
     if(Math.random()<.004){
       operations.push(db.prepare("DELETE FROM walkers WHERE updated < ?").bind(now-86400000));
       operations.push(db.prepare(`
@@ -269,16 +307,19 @@ export async function api(request,env){
   `.trimStart()).bind(room,now-15000,online,online));
   const results=await db.batch(operations);
   const rows=results.at(-2).results;
-  if(!rows.some(row=>row.id===id&&row.player_key===key))return json({error:"산책방에 다시 입장해 주세요."},409);
+  const ownRow=rows.find(row=>row.id===id&&row.player_key===key);
+  if(!ownRow)return json({error:"산책방에 다시 입장해 주세요."},409);
+  const receiver={id,avatar:JSON.parse(ownRow.avatar)};
   return json({
     serverTime:now,
     handholds:results.at(-1).results.map(link=>({
       id:link.id,leader:link.leader,follower:link.follower,side:link.side,active:link.accepted!==null
     })),
     walkers:rows.map(row=>{
-      const avatar=JSON.parse(row.avatar);
+      const avatar=row===ownRow?receiver.avatar:JSON.parse(row.avatar);
       if(row.id===id||now-avatar.wish>=WISH_FLIGHT_MS)delete avatar.wishArt;
-      return {id:row.id,updated:row.updated,avatar,view:JSON.parse(row.view),signal:row.signal&&JSON.parse(row.signal),
+      return {id:row.id,updated:row.updated,avatar,view:JSON.parse(row.view),
+        signal:visibleSignal(row,avatar,receiver,lookPings===true,room,now),
         nickname:row.nickname||"동행",coat:row.coat??0x397e70,handholdAvailable:Boolean(row.player_key)};
     })
   });

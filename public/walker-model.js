@@ -481,6 +481,7 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
   const down = new T.Vector3(0,-1,0), forward = new T.Vector3(0,0,1);
   const target = new T.Vector3(), direction = new T.Vector3(), elbow = new T.Vector3(), bend = new T.Vector3();
   const pole = new T.Vector3(), clasp = new T.Vector3(), globalLower = new T.Quaternion();
+  const emoteAnchor = new T.Vector3();
   const pitch = new T.Quaternion(), inverseChest = new T.Quaternion();
   const xAxis = new T.Vector3(1,0,0);
 
@@ -548,7 +549,7 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
     group.visible = true;
     const smoothPose = wasVisible ? 1 - Math.exp(-delta*15) : 1;
     const walking = Boolean(position.stepping && !seat);
-    const running = walking && position.running;
+    const running = walking && Boolean(position.running);
     const held = position.hand === -1 || position.hand === 1;
     const petAge = clock - position.pet?.at;
     const waveAge = (clock - position.wave) / 1000;
@@ -674,13 +675,15 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
     model.itemProp(carrying?item.kind:null,feeding?feedAge/1000:spark&&item.started?itemAge/1000:-1);
 
     const reaction = position.emote, age = (clock-reaction?.at)/1000;
-    emote.visible = age >= 0 && age < 3.15 && Boolean(emojiTexture);
+    emote.visible = age >= -.3 && age < 3.15 && Boolean(emojiTexture);
     const labelY = (model.pin.visible ? 2.40 : 2.26)-seated*.145-crouch*.235;
     if (model.label) model.label.position.y = labelY;
     if (emote.visible) {
       const map = emojiTexture(reaction.emoji);
       if (emote.material.map !== map) { emote.material.map = map; emote.material.needsUpdate = true; }
-      emote.position.y = labelY+.49+.058*Math.sin(now*.009);
+      model.faceMesh.getWorldPosition(emoteAnchor);
+      group.worldToLocal(emoteAnchor);
+      emote.position.set(emoteAnchor.x,labelY+.49+.036*Math.sin(now*.009),emoteAnchor.z);
       emote.material.opacity = Math.min(1,(3.15-age)*4);
     }
   }

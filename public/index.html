@@ -96,7 +96,7 @@
           <div id="game" tabindex="0" role="group" aria-label="3D 산책. 조이스틱이나 방향키로 화면 기준 이동, 화면 드래그로 시야 회전">
             <p id="loading-game">산책길을 열고 있어요.</p>
             <div class="game-place"><span>정동의 가을</span><strong id="game-place">매표소 앞</strong><small>화면 기준으로 이동 · 드래그로 시야 돌리기</small></div>
-            <span id="game-presence" class="game-presence">방을 선택해 주세요</span>
+            <button id="game-presence" class="game-presence" type="button" aria-label="접속자 목록 열기" aria-haspopup="dialog" aria-controls="roster-dialog">접속자</button>
             <div id="cat-run-tip" class="cat-run-tip" aria-label="고양이 안내" hidden>
               <p role="status">고양이에게 뛰어가면 놀라서 도망가요!</p>
               <button id="cat-run-tip-dismiss" class="quiet" type="button">다시 보지 않기</button>
@@ -104,7 +104,8 @@
             <button id="map-toggle" class="minimap" type="button" aria-label="미니맵, 큰 지도 열기" aria-controls="map-panel" aria-expanded="false">
               <svg id="mini-world" viewBox="425 259 84 70" aria-hidden="true">
                 <g id="mini-landscape"></g><g id="mini-people"></g>
-                <circle id="mini-pin" r="3.6" fill="#ffe2a0" stroke="#3b2e1a" stroke-width=".8" visibility="hidden"/>
+                <g id="mini-look-pins"></g>
+                <g id="mini-track-pin" class="track-map-pin" visibility="hidden"><circle/><circle/></g>
                 <path id="mini-my" d="M0 -4.8 3.4 3 0 1.6 -3.4 3Z" fill="#e5b672" stroke="#fff4da" stroke-width=".75"/>
               </svg>
               <span class="mini-north" aria-hidden="true">↑ N</span><span class="mini-label" aria-hidden="true">지도 확대</span>
@@ -125,15 +126,6 @@
                 <button id="wave" type="button" class="quiet">인사하기</button>
                 <button id="run" type="button" class="quiet" aria-pressed="false">달리기 <kbd>Shift</kbd></button>
               </div>
-              <div id="emote-menu" class="emote-menu" role="group" aria-label="감정 이모지" hidden>
-                <button type="button" data-emoji="😊" aria-label="미소">😊</button>
-                <button type="button" data-emoji="❤️" aria-label="하트">❤️</button>
-                <button type="button" data-emoji="👍" aria-label="좋아요">👍</button>
-                <button type="button" data-emoji="😮" aria-label="놀람">😮</button>
-                <button type="button" data-emoji="😢" aria-label="슬픔">😢</button>
-                <button type="button" data-emoji="😠" aria-label="화남">😠</button>
-                <button type="button" data-emoji="✨" aria-label="반짝임">✨</button>
-              </div>
               <div class="pad game-pad" aria-label="3D 이동 버튼">
                 <button type="button" data-key="ArrowUp" aria-label="앞으로">↑</button>
                 <button type="button" data-key="ArrowLeft" aria-label="왼쪽으로">←</button>
@@ -141,30 +133,46 @@
                 <button type="button" data-key="ArrowRight" aria-label="오른쪽으로">→</button>
               </div>
             </div>
+            <div id="emote-menu" class="emote-menu" role="group" aria-label="감정 이모지" hidden>
+              <button type="button" data-emoji="😊" aria-label="미소">😊</button>
+              <button type="button" data-emoji="😂" aria-label="웃겨서 눈물">😂</button>
+              <button type="button" data-emoji="❤️" aria-label="하트">❤️</button>
+              <button type="button" data-emoji="👍" aria-label="좋아요">👍</button>
+              <button type="button" data-emoji="😮" aria-label="놀람">😮</button>
+              <button type="button" data-emoji="😢" aria-label="슬픔">😢</button>
+              <button type="button" data-emoji="😠" aria-label="화남">😠</button>
+              <button type="button" data-emoji="✨" aria-label="반짝임">✨</button>
+            </div>
           </div>
-          <div class="follow-cover" id="follow-cover" hidden></div>
           <div id="hand-status" class="hand-status" role="status" hidden></div>
           <div id="hand-offer" class="hand-offer" role="group" aria-label="손잡기 요청" hidden>
             <p id="hand-message" role="status"></p>
             <div><button id="hand-decline" type="button" class="quiet">거절</button><button id="hand-accept" type="button" class="primary">수락</button></div>
           </div>
-          <div class="look-direction" id="look-direction" role="status" hidden>
-            <span class="look-arrow" id="look-arrow" aria-hidden="true">↑</span>
-            <div><strong>동행이 ‘여기 봐’를 보냈어요</strong><small id="look-distance"></small></div>
+          <div class="location-guides">
+            <div class="look-direction" id="look-direction" hidden>
+              <span class="guidance-arrow" id="look-arrow" aria-hidden="true">↑</span>
+              <div class="guidance-copy"><strong id="look-title" role="status"></strong><small id="look-distance"></small></div>
+            </div>
+            <div class="tracked-direction" id="tracked-direction" hidden>
+              <span class="guidance-arrow" id="track-arrow" aria-hidden="true">↑</span>
+              <div class="guidance-copy"><strong id="track-title" role="status"></strong><small id="track-distance"></small></div>
+              <button id="clear-tracking" class="quiet" type="button" aria-label="동행 위치 표시 끄기">×</button>
+            </div>
           </div>
         </div>
         <div class="scene-controls">
-          <div class="camera"><span class="view-icon" aria-hidden="true">◎</span><span><strong id="camera">내 시점</strong><small id="camera-hint">‘여기 봐’로 이 풍경을 건네세요</small></span></div>
+          <small class="look-hint" id="look-hint">내 위치를 지도에 5초 동안 표시해요.</small>
           <div class="camera-actions">
-            <button id="follow" class="quiet" type="button" disabled>동행 보기</button>
-            <button id="look" class="primary" type="button" disabled><span aria-hidden="true">✦</span> 여기 봐</button>
+            <button id="look" class="primary" type="button" aria-describedby="look-hint" disabled><span aria-hidden="true">✦</span> 여기 봐</button>
+            <button id="look-target" class="quiet" type="button" aria-haspopup="dialog" aria-controls="look-target-dialog" disabled>보낼 대상</button>
           </div>
         </div>
       </article>
       <article class="panel map-panel" id="map-panel">
         <div class="panel-head">
           <div><span class="tag">02 / WALK MAP</span><h2>산책 지도</h2></div>
-          <div class="top-actions"><span class="pill" id="presence"><i></i><span>연결 중</span></span><button id="close-map" class="quiet" type="button" aria-label="지도 닫기">×</button></div>
+          <div class="top-actions"><button class="pill" id="presence" type="button" aria-label="접속자 목록 열기" aria-haspopup="dialog" aria-controls="roster-dialog"><i aria-hidden="true"></i><span>접속자</span></button><button id="close-map" class="quiet" type="button" aria-label="지도 닫기">×</button></div>
         </div>
         <div class="map-wrap">
           <svg id="world" viewBox="58 28 520 397" role="group" tabindex="0" aria-label="덕수궁 산책 지도. 방향키 또는 W A S D로 이동">
@@ -174,8 +182,9 @@
               <g id="tree"><circle cx="2" cy="4" r="14" fill="#101c18"/><circle r="14" fill="#31493a" stroke="#6c8060" stroke-width="1"/><circle r="6" fill="#435a45"/><circle cx="-3" cy="-4" r="2" fill="#76825b"/></g>
             </defs>
             <g id="map-landscape" aria-hidden="true"></g>
-            <g id="look-pin" aria-hidden="true" visibility="hidden"><circle r="19"/><circle r="4"/></g>
             <g id="map-people" aria-hidden="true"></g>
+            <g id="look-pins" aria-hidden="true"></g>
+            <g id="track-pin" class="track-map-pin" aria-hidden="true" visibility="hidden"><circle/><circle/></g>
             <g id="my-avatar" class="avatar me"><ellipse cy="11" rx="16" ry="6"/><circle r="14"/><path d="M-7 7a8 8 0 0 1 14 0" class="shoulders"/><circle cy="-3" r="4" class="face"/><text y="-21" text-anchor="middle">나</text></g>
           </svg>
             <div class="map-location"><span>현재 위치</span><strong id="location">매표소 앞</strong></div>
@@ -186,13 +195,25 @@
             <button type="button" data-key="ArrowRight" aria-label="오른쪽으로">→</button>
           </div>
         </div>
-        <div class="map-footer"><span><i class="dot mine"></i>나 <i class="dot theirs"></i>동행</span><div class="map-links"><button id="model-credits" class="quiet" type="button" aria-haspopup="dialog">자료 출처</button><button id="entrance-target" class="quiet" type="button">매표소 ↗</button><button id="palace-target" class="quiet" type="button">중화전 ↗</button><button id="museum-target" class="quiet" type="button">전시관 ↗</button></div></div>
+        <div class="map-footer"><span><i class="dot mine"></i>나 <i class="dot theirs"></i>동행</span><div class="map-links"><button id="model-credits" class="quiet" type="button" aria-haspopup="dialog">자료 출처</button><button id="entrance-target" class="quiet" type="button" aria-label="매표소로 순간이동">매표소</button><button id="fountain-target" class="quiet" type="button" aria-label="석조전 분수대로 순간이동">분수대</button><button id="palace-target" class="quiet" type="button" aria-label="중화전으로 순간이동">중화전</button></div></div>
       </article>
     </section>
     <footer><span>✦ &nbsp; 덕수궁 한바퀴</span><span>덕수궁 돌담길을 바탕으로 만든 3D 산책 공간</span></footer>
   </main>
   </div>
   <div id="toast" role="status" hidden></div>
+  <dialog id="look-target-dialog" aria-labelledby="look-target-title">
+    <div class="dialog-top">
+      <h2 id="look-target-title">‘여기 봐’ 보낼 대상</h2>
+      <button class="quiet close" type="button" aria-label="닫기">×</button>
+    </div>
+    <p>선택한 대상의 지도에 내 위치가 5초 동안 표시돼요.</p>
+    <div class="look-target-options">
+      <button class="quiet" type="button" data-look-audience="nearby">근처 사람</button>
+      <button class="quiet" type="button" data-look-audience="room">방 전체</button>
+    </div>
+    <ul id="look-target-people" aria-label="한 사람에게 보내기"></ul>
+  </dialog>
   <dialog id="wish-drawing" aria-labelledby="wish-drawing-title">
     <div class="dialog-top">
       <h2 id="wish-drawing-title">소원등 꾸미기</h2>
@@ -243,7 +264,7 @@
       <li><a href="https://www.data.go.kr/data/15104840/fileData.do" target="_blank" rel="noopener">함녕전 3D 자료</a></li>
       <li><a href="https://www.data.go.kr/data/15104853/fileData.do" target="_blank" rel="noopener">석어당 3D 자료</a></li>
     </ul>
-    <p>경내 배치와 나머지 외관은 첨부 지도, 네이버 지도 거리뷰와 <a href="https://royal.khs.go.kr/ROYAL/contents/R701000000.do?schGroupCode=dsg" target="_blank" rel="noopener">궁능유적본부 관람 자료</a>를 참고해 재현했습니다.</p>
+    <p>경내 배치와 외관은 <a href="https://royal.khs.go.kr/ROYAL/contents/R701000000.do?schGroupCode=dsg" target="_blank" rel="noopener">궁능유적본부 관람 지도</a>와 <a href="https://look360.kr/vr/deoksugung_go_kr/deoksugung_go_kr/4736" target="_blank" rel="noopener">덕수궁 360도 파노라마</a>, 첨부 지도와 네이버 지도 거리뷰를 참고해 재현했습니다.</p>
     <p>전시 이미지와 확대 재현한 유물의 출처입니다.</p>
     <ul id="exhibit-credits" class="credits"></ul>
   </dialog>
@@ -298,6 +319,12 @@
         </div></fieldset>
       </div>
     </div>
+  </dialog>
+  <dialog id="roster-dialog" aria-labelledby="roster-title" aria-describedby="roster-hint">
+    <div class="dialog-top"><h2 id="roster-title">접속자 목록</h2><button type="button" class="quiet close" aria-label="닫기">×</button></div>
+    <p id="roster-hint">닉네임을 누르면 그 사람의 위치를 확인할 수 있어요.</p>
+    <p id="roster-count" class="roster-count"></p>
+    <ul id="roster-list" class="roster-list"></ul>
   </dialog>
   <dialog id="hand-people" aria-labelledby="hand-title">
     <div class="dialog-top"><span class="tag">WALK TOGETHER</span><button type="button" class="quiet close" aria-label="닫기">×</button></div>
