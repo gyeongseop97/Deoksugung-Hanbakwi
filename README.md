@@ -64,6 +64,12 @@ Vercel이 게임 화면과 방 API를 제공하고, Turso의 **libSQL** 데이�
 
 동기화 지연을 줄이려면 Vercel의 **Settings → Functions → Function Regions**에서 Turso 데이터베이스와 가까운 지역을 선택한 뒤 다시 배포합니다. [Vercel 함수 지역 설정](https://vercel.com/docs/functions/configuring-functions/region)
 
+## 화면 품질과 성능
+
+기기 성능에 맞춰 해상도와 그림자가 자동으로 조절됩니다. 프레임이 떨어지면 해상도를 먼저 낮추고, 여유가 생기면 다시 올립니다. 항상 최고 품질로 보려면 주소 끝에 `?quality=max`를 붙여 주세요.
+
+`vercel.json`은 함수 실행 지역을 서울(`icn1`)로 지정합니다. Turso 데이터베이스도 도쿄 등 가까운 지역에 두면 위치 동기화 지연이 가장 작습니다.
+
 ## 자료 출처
 
 국가유산청 모델과 전시 자료의 이용 조건은 [자료 출처](ASSET-CREDITS.md)에 정리했습니다. 개별 작품의 원본 링크는 게임의 **작품 설명**에서도 볼 수 있습니다.
