@@ -1,15 +1,16 @@
 import {
-  route,entranceWalk,pavilions,city,estateOutline,palacePaths,palaceCourts,palaceGardens,palacePlantings,palacePond,palaceWalls,
+  route,entranceWalk,pavilions,city,estateOutline,stonewallVerge,palacePaths,palaceCourts,palaceGardens,palacePlantings,palacePond,palaceWalls,
   gate,ticket,ticketGuide,bridge,middle,hall,stoneHall,stoneFountain,court,courtAngle,fountain,garden,spawn,addObstacle,solidAt
 } from "./layout.js";
 import {buildWestern} from "./western.js";
 import {fromBuilding,pavilionStairAccess} from "./museum.js";
 import {standPlantingFootprints} from "./street-stands.js";
-import {makePalaceTree} from "./palace-plantings.js";
+import {makePalaceClearance,makePalaceTree} from "./palace-plantings.js";
 
 export function buildJeongdong(T,scene,kit) {
   const {box,cylinder,shape,wx,wz,rand,matte}=kit;
   const benches=[],trees=[],catWalls=[];
+  const treeClearance=makePalaceClearance(T);
   const autumn=[0xe9b940,0xd6a736,0xc99728,0xffcb52,0xba8731,0xe5a943];
   const leaf=new T.IcosahedronGeometry(1,1);
   const branch=new T.CylinderGeometry(.67,1,1,7);
@@ -167,6 +168,7 @@ export function buildJeongdong(T,scene,kit) {
   ribbon(route,2.57,2.65,gold,.020);
   ribbon(entranceWalk,-7.2,7.2,pavingMaterial,.039);
   plot(estateOutline,earthMaterial,.008);
+  plot(stonewallVerge,gardenMaterials.lawn,.010);
   for(const {outline,kind} of palaceGardens)plot(outline,gardenMaterials[kind],.017);
   for(const {name,outline,kind} of palaceCourts)plot(outline,name==="중화전 마당"?courtStoneMaterial:
     kind==="stone"?pavingMaterial:gravelMaterial,.022);
@@ -188,20 +190,20 @@ export function buildJeongdong(T,scene,kit) {
   const plaza=placed(city[0]);
   paved(plaza.x,plaza.z,city[0].w,city[0].d,.032);
 
-  function line(a,b,offset=0){
+  function line(a,b){
     const dx=b.x-a.x,dz=b.y-a.y,len=Math.hypot(dx,dz),angle=-Math.atan2(dz,dx);
-    return {len,angle,at(t,o=offset){return{x:wx(a.x)+dx*t+dz/len*o,z:wz(a.y)+dz*t-dx/len*o};}};
+    return {len,angle,at(t,o=0){return{x:wx(a.x)+dx*t+dz/len*o,z:wz(a.y)+dz*t-dx/len*o};}};
   }
-  function wall(a,b,offset=0,height=3.05,tiles=true,catAccess=false){
-    const segment=line(a,b,offset),mid=segment.at(.5);
-    const wallMesh=flat(new T.BoxGeometry(segment.len+.2,height,.55),stoneMaterial,mid.x,height/2,mid.z);
+  function wall(a,b,height,tiles,catAccess){
+    const segment=line(a,b),mid=segment.at(.5),width=segment.len+(tiles?.46:.24);
+    const wallMesh=flat(new T.BoxGeometry(width,height,.55),stoneMaterial,mid.x,height/2,mid.z);
     uvScale(wallMesh,segment.len/5.1,height/2.55);
     orient(wallMesh,segment.angle);
-    orient(box(0x898678,mid.x,.18,mid.z,segment.len+.28,.35,.72),segment.angle);
-    orient(box(0x39413d,mid.x,height+.08,mid.z,segment.len+.26,.20,.85),segment.angle);
-    orient(box(0x4e5554,mid.x,height+.22,mid.z,segment.len+.27,.13,.62),segment.angle);
+    orient(box(0x898678,mid.x,.18,mid.z,width+.08,.35,.72),segment.angle);
+    orient(box(0x39413d,mid.x,height+.08,mid.z,width+.06,.20,.85),segment.angle);
+    orient(box(0x4e5554,mid.x,height+.22,mid.z,width+.07,.13,.62),segment.angle);
     const capHeight=height+(tiles?.382:.285);
-    block(mid.x,mid.z,segment.len+.2,.62,segment.angle,capHeight);
+    block(mid.x,mid.z,width,.62,segment.angle,capHeight);
     if(catAccess&&segment.len>4){
       const toMap=({x,z})=>({x:x+300,y:z+225});
       catWalls.push({a:toMap(segment.at(0)),b:toMap(segment.at(1)),
@@ -230,10 +232,9 @@ export function buildJeongdong(T,scene,kit) {
     }
     block(mid.x,mid.z,width,.62,segment.angle,height+.30);
   }
-  for(let i=1;i<=9;i++)wall(route[i-1],route[i],-5.47,3.18,true,true);
-  for(const {a,b,height,kind} of palaceWalls){
+  for(const {a,b,height,kind,tiles} of palaceWalls){
     if(kind==="corridor")coveredWall(a,b,height);
-    else wall(a,b,0,height,false,kind==="court");
+    else wall(a,b,height,tiles,tiles||kind==="court");
   }
 
   function shade(x,z,rx,rz){
@@ -250,6 +251,8 @@ export function buildJeongdong(T,scene,kit) {
   function limb(x,y,z,dx,dy,dz,r){
     const axis=new T.Vector3(dx,dy,dz),mesh=shape(branch,0x6c5540,x+dx/2,y+dy/2,z+dz/2);
     mesh.scale.set(r,axis.length(),r);mesh.quaternion.setFromUnitVectors(up,axis.normalize());
+    if(treeClearance.meshFits(mesh)){mesh.name="Tree limb";return true;}
+    mesh.removeFromParent();return false;
   }
   function buildingClear(x,z,radius,base=0){
     return buildingPlots.every(plot=>{
@@ -262,7 +265,7 @@ export function buildJeongdong(T,scene,kit) {
   }
   function treeFits(x,z,height){
     const mapX=x+300,mapY=z+225,clearance=height*.135+.18;
-    if(solidAt(mapX,mapY)||!buildingClear(x,z,clearance+.26)||
+    if(solidAt(mapX,mapY)||!buildingClear(x,z,clearance+.26)||!treeClearance.rootFits(x,z,clearance)||
        trees.some(tree=>Math.hypot(x-tree.x,z-tree.z)<Math.max(4.1,(height+tree.height)*.23)))return false;
     for(let i=0;i<16;i++){
       const angle=i*Math.PI/8,dx=Math.cos(angle)*clearance,dz=Math.sin(angle)*clearance;
@@ -271,9 +274,12 @@ export function buildJeongdong(T,scene,kit) {
     return true;
   }
   function tree(x,z,height,palette=autumn){
+    let sway=(rand()-.5)*.85;
+    if(!limb(x,0,z,sway,height*.73,.12,height*.043)){
+      sway=0;
+      if(!limb(x,0,z,0,height*.73,0,height*.043))return false;
+    }
     trees.push({x,z,height});
-    const sway=(rand()-.5)*.85;
-    limb(x,0,z,sway,height*.73,.12,height*.043);
     block(x,z,height*.092,height*.092,0,height*.73);
     for(let i=0;i<5;i++){
       const a=i*1.256+rand()*.3;
@@ -284,25 +290,29 @@ export function buildJeongdong(T,scene,kit) {
       const dx=Math.cos(a)*r,dz=Math.sin(a)*r;
       if(!buildingClear(x+sway*.65+dx,z+dz,height*.028,from+rise-height*.028)||
          !buildingClear(x+sway*.65+dx*.5,z+dz*.5,height*.028,from+rise*.5-height*.028))continue;
-      limb(x+sway*.65,from,z,dx,rise,dz,height*.020);
+      const supported=limb(x+sway*.65,from,z,dx,rise,dz,height*.020);
       for(let j=0;j<4;j++){
         const a2=a+(j-1.5)*.69,spread=height*(.047+rand()*.075);
         const tx=x+sway*.65+dx+Math.cos(a2)*spread,tz=z+dz+Math.sin(a2)*spread;
         const ty=from+rise+(rand()-.32)*height*.15;
         const size=height*(.107+rand()*.071);
         if(!buildingClear(tx,tz,size*1.28,ty-size*.89))continue;
+        const depth=size*(.91+rand()*.33),pitch=rand()*.45,yaw=rand()*6.28,roll=rand()*.47;
+        if(!supported)continue;
         const crown=shape(leaf,palette[(i*3+j)%palette.length],tx,ty,tz);
-        crown.scale.set(size*1.17,size*.68,size*(.91+rand()*.33));
-        crown.rotation.set(rand()*.45,rand()*6.28,rand()*.47);
+        crown.name="Tree crown";crown.scale.set(size*1.17,size*.68,depth);
+        crown.rotation.set(pitch,yaw,roll);treeClearance.trim(crown);
       }
     }
     for(let j=0;j<5;j++){
       const tx=x+sway+(rand()-.5)*height*.29,ty=height*(.79+rand()*.16),tz=z+(rand()-.5)*height*.25;
       if(!buildingClear(tx,tz,height*.18,ty-height*.117))continue;
       const crown=shape(leaf,palette[j%palette.length],tx,ty,tz);
-      crown.scale.set(height*.18,height*.117,height*.15);crown.rotation.y=rand()*6.28;
+      crown.name="Tree crown";crown.scale.set(height*.18,height*.117,height*.15);crown.rotation.y=rand()*6.28;
+      treeClearance.trim(crown);
     }
     shade(x,z,height*.36,height*.30);
+    return true;
   }
   function contains(points,x,y){
     let inside=false;
@@ -340,7 +350,7 @@ export function buildJeongdong(T,scene,kit) {
             if(t<.04||t>.96)continue;
             const {x,z}=street.at(t,offset);
             if(!pathClear(route,x+300,z+225,5.3)||!awayFromPaths(x+300,z+225,1)||!treeFits(x,z,height))continue;
-            tree(x,z,height,offset<0?ginkgo:autumn);planted=true;break;
+            if(tree(x,z,height,offset<0?ginkgo:autumn)){planted=true;break;}
           }
           if(planted)break;
         }
@@ -349,11 +359,12 @@ export function buildJeongdong(T,scene,kit) {
   }
   function plantGardens(){
     const foliage=[0x64734b,0x7e8c53,0x526740,0x879259];
-    const plant=makePalaceTree(T,shape);
+    const plant=makePalaceTree(T,shape,treeClearance);
     for(const specimen of palacePlantings){
       const {point,height,spread}=specimen,{x,z}=placed(point);
       if(!treeFits(x,z,height)||!awayFromPaths(point.x,point.y,.65))continue;
       const trunkRadius=plant(x,z,specimen);
+      if(!trunkRadius)continue;
       trees.push({x,z,height});
       block(x,z,trunkRadius*2,trunkRadius*2,0,height*.75);
       shade(x,z,spread*.46,spread*.38);
@@ -369,8 +380,7 @@ export function buildJeongdong(T,scene,kit) {
         const height=5.5+rand()*5;
         if(!contains(outline,x,y)||!treeFits(wx(x),wz(y),height)||!awayFromPaths(x,y,1.4)||
            spots.some(spot=>Math.hypot(spot.x-x,spot.y-y)<5))continue;
-        spots.push({x,y});
-        tree(wx(x),wz(y),height,spots.length%3?foliage:autumn);
+        if(tree(wx(x),wz(y),height,(spots.length+1)%3?foliage:autumn))spots.push({x,y});
       }
       if(kind==="parterre"||kind==="grove"){
         for(let i=0;i<outline.length;i++){
@@ -380,7 +390,8 @@ export function buildJeongdong(T,scene,kit) {
             const {x,z}=edge.at((j+.50)/count);
             if(solidAt(x+300,z+225)||!awayFromPaths(x+300,z+225,.47))continue;
             const r=.53+rand()*.45,shrub=shape(leaf,foliage[j%foliage.length],x,r*.38,z);
-            shrub.scale.set(r,r*.62,r*.83);shrub.rotation.y=rand()*6.28;
+            shrub.name="Garden shrub";shrub.scale.set(r,r*.62,r*.83);shrub.rotation.y=rand()*6.28;
+            treeClearance.trim(shrub);
           }
         }
       }
@@ -847,6 +858,16 @@ export function buildJeongdong(T,scene,kit) {
     const a=i*Math.PI/3;
     lamp(fp.x+Math.cos(a)*7.8,fp.z+Math.sin(a)*7.8,2.73);
   }
+  const westernBuildings=new Set(pavilions.filter(spec=>["redBrick","western","westernAnnex"].includes(spec.kind)).map(spec=>spec.name));
+  const builtPalaces=[gateGroup,kiosk,middleModel,hallModel,classical,
+    ...[...pavilionModels.values()].flatMap(entry=>entry.groups),...scene.children.filter(group=>westernBuildings.has(group.name))];
+  for(const group of builtPalaces)treeClearance.addModel(group);
+  const surveySites=[["junghwamun",middle,courtAngle],["junghwajeon",hall,courtAngle],["seokjojeon",stoneHall,0]];
+  for(const [file,name] of [["jeonggwanheon","정관헌"],["hamnyeongjeon","함녕전"],["seogeodang","석어당"]]){
+    const {spec}=pavilionModels.get(name);
+    surveySites.push([file,spec,spec.angle]);
+  }
+  for(const [name,point,angle] of surveySites)treeClearance.addSurvey(name,wx(point.x),wz(point.y),angle);
   plantAvenue();
   plantGardens();
   for(let i=0;i<9;i++){
@@ -855,7 +876,7 @@ export function buildJeongdong(T,scene,kit) {
     for(const [dx,dz] of [[7,3],[8,6],[4,8],[8,-1],[3,10],[11,3]]){
       const x=at.x+dx,z=at.z+dz;
       if(!awayFromPaths(x+300,z+225,1)||!treeFits(x,z,height))continue;
-      tree(x,z,height,[0x7f9458,0xb4a349,0x8f934d,0xb39c3e]);break;
+      if(tree(x,z,height,[0x7f9458,0xb4a349,0x8f934d,0xb39c3e]))break;
     }
   }
   return {benches,trees,catWalls,fountains:[{x:fp.x,z:fp.z,radius:2.32},{x:sf.x,z:sf.z,radius:4.2,scalloped:true}],
