@@ -22,6 +22,7 @@ const validAvatar = (a) => validPoint(a) &&
   (a.emote==null || reactions.has(a.emote.emoji) && finite(a.emote.at,0,9999999999999)) &&
   (a.vx===undefined || finite(a.vx,-8,8)) && (a.vy===undefined || finite(a.vy,-8,8)) &&
   (a.blocked===undefined || typeof a.blocked==="boolean") &&
+  (a.up===undefined || typeof a.up==="boolean") &&
   (a.heading===undefined || finite(a.heading,0,360)) &&
   (a.seat==null || Number.isInteger(a.seat) && finite(a.seat,0,80)) &&
   (a.seatSide==null || (a.seatSide===0 || a.seatSide===1) && a.seat!=null) &&
