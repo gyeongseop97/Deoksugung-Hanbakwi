@@ -75,7 +75,7 @@ dialog h2{font-size:26px;margin-top:8px}
 dialog p{color:#cad0bd}
 dialog a{color:#f5d297;text-underline-offset:3px}
 .credits{padding-left:20px;line-height:1.9}
-#credits-dialog,#exhibit-dialog,#visitor-guide-dialog{max-height:calc(100dvh - 24px);overflow:auto}
+#credits-dialog,#exhibit-dialog,#visitor-guide-dialog,#landmark-guide-dialog{max-height:calc(100dvh - 24px);overflow:auto}
 #exhibit-dialog{max-width:min(550px,calc(100vw - 24px))}
 #visitor-guide-dialog{max-width:min(580px,calc(100vw - 24px));overscroll-behavior:contain}
 #visitor-guide-dialog h2{margin:0}
@@ -132,8 +132,12 @@ dialog input,dialog code{display:block;width:100%;padding:9px;border-radius:7px;
 .game-place span{color:#ecd39d;font-size:10px;letter-spacing:.14em}
 .game-place strong{font-size:20px;margin-block:2px}
 .game-place small{color:#dedfcb;font-size:11px}
-.look-actions{display:flex;align-items:center;gap:5px;max-width:100%}
+.look-actions{display:flex;align-items:center;flex-wrap:wrap;gap:5px;max-width:100%}
 .look-actions button{min-height:36px;padding:5px 8px;font-size:12px;pointer-events:auto}
+.zoom-tools{display:flex;gap:3px}
+.look-actions .zoom-tools button{min-width:36px;padding:0;font-size:21px;line-height:1}
+#landmark-guide-dialog h2{margin:0}
+#landmark-guide-description{margin:12px 0 16px;line-height:1.62}
 .game-hud{position:absolute;z-index:1;right:16px;bottom:16px;display:flex;align-items:end;gap:10px}
 .game-hud .game-pad{position:static;display:grid;grid-template-columns:repeat(3,40px)}
 .game-pad button{min-height:39px;background:#15231bd9}
@@ -186,6 +190,8 @@ dialog input,dialog code{display:block;width:100%;padding:9px;border-radius:7px;
   .game-place strong{font-size:17px}
   .game-place small{font-size:10px}
   .look-actions button{min-height:44px;font-size:11px}
+  .look-actions .zoom-tools button{min-width:44px}
+  #jump kbd{display:none}
   .game-presence{
     position:absolute;z-index:3;top:10px;right:8px;display:block;min-height:40px;
     padding:5px 9px;border:1px solid #dddbb77a;border-radius:12px;background:#15221ada;color:#ead9b2;font-size:11px;
