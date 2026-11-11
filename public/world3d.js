@@ -18,7 +18,9 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
   renderer.setPixelRatio(Math.min(devicePixelRatio,1.45));
   const selfEmote=document.createElement("span");
   selfEmote.className="self-emote";selfEmote.hidden=true;selfEmote.setAttribute("aria-hidden","true");
-  container.append(renderer.domElement,selfEmote);
+  const selfChat=document.createElement("span");
+  selfChat.className="self-chat";selfChat.hidden=true;selfChat.setAttribute("aria-hidden","true");
+  container.append(renderer.domElement,selfEmote,selfChat);
   const resize=()=>{
     if(!container.clientWidth||!container.clientHeight)return;
     camera.aspect=container.clientWidth/container.clientHeight;
@@ -210,6 +212,38 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     }
     return emojiMaps.get(emoji);
   }
+  const chatFont='600 28px "Segoe UI","Malgun Gothic","Apple SD Gothic Neo","Apple Color Emoji","Segoe UI Emoji",sans-serif';
+  const chatGraphemes=typeof Intl.Segmenter==="function"?new Intl.Segmenter("ko",{granularity:"grapheme"}):null;
+  const chatText=text=>[...text].slice(0,80).join("").replace(/\s+/gu," ").trim();
+  function chatTexture(message){
+    const text=chatText(message);
+    if(!text)return null;
+    const canvas=document.createElement("canvas"),ctx=canvas.getContext("2d"),lines=[];
+    if(!ctx)return null;
+    const units=chatGraphemes?Array.from(chatGraphemes.segment(text),part=>part.segment):Array.from(text);
+    const maxWidth=392,lineHeight=36,padding=16;
+    ctx.font=chatFont;
+    let line="";
+    for(const unit of units){
+      if(line&&ctx.measureText(line+unit).width>maxWidth){
+        const space=line.lastIndexOf(" ");
+        if(space>line.length*.55){lines.push(line.slice(0,space));line=line.slice(space+1)+unit;}
+        else{lines.push(line.trimEnd());line=unit.trimStart();}
+      }else line+=unit;
+    }
+    if(line.trim())lines.push(line.trim());
+    canvas.width=Math.ceil(Math.min(maxWidth,Math.max(...lines.map(row=>ctx.measureText(row).width)))+padding*2);
+    const boxHeight=lines.length*lineHeight+padding*2,mid=canvas.width/2;
+    canvas.height=boxHeight+13;
+    ctx.fillStyle="#f7edda";ctx.strokeStyle="#504633";ctx.lineWidth=3;
+    ctx.beginPath();ctx.roundRect(1.5,1.5,canvas.width-3,boxHeight-3,15);ctx.fill();ctx.stroke();
+    ctx.beginPath();ctx.moveTo(mid-10,boxHeight-2);ctx.lineTo(mid,boxHeight+9);ctx.lineTo(mid+10,boxHeight-2);ctx.fill();ctx.stroke();
+    ctx.fillRect(mid-8,boxHeight-4,16,4);
+    ctx.fillStyle="#25352a";ctx.font=chatFont;ctx.textAlign="center";ctx.textBaseline="middle";
+    lines.forEach((row,index)=>ctx.fillText(row,mid,padding+lineHeight*(index+.5),maxWidth));
+    const map=new T.CanvasTexture(canvas);map.colorSpace=T.SRGBColorSpace;
+    return map;
+  }
   let walkerPreview;
   function previewWalker(canvas,appearance){
     const context=canvas.getContext("2d");
@@ -264,7 +298,28 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
   const ring=new T.Mesh(new T.RingGeometry(.18,.25,28),new T.MeshBasicMaterial({color:0xffcf70,side:T.DoubleSide}));
   ring.rotation.x=-Math.PI/2;ring.visible=false;scene.add(ring);
   const pivot=new T.Vector3(),anchorPoint=new T.Vector3(),arm=new T.Vector3(),gaze=new T.Vector3();
-  const emoteScreen=new T.Vector3();
+  const spriteScreen=new T.Vector3(),cameraUp=new T.Vector3();
+  function spriteClipped(sprite){
+    sprite.getWorldPosition(spriteScreen).applyMatrix4(camera.matrixWorldInverse);
+    const depth=-spriteScreen.z;
+    if(depth<=camera.near)return true;
+    spriteScreen.applyMatrix4(camera.projectionMatrix);
+    const width=sprite.scale.x*camera.projectionMatrix.elements[0]/depth;
+    const height=sprite.scale.y*camera.projectionMatrix.elements[5]/depth;
+    return spriteScreen.x-width*sprite.center.x<-.98||spriteScreen.x+width*(1-sprite.center.x)>.98||
+      spriteScreen.y-height*sprite.center.y<-.98||spriteScreen.y+height*(1-sprite.center.y)>.98||spriteScreen.z>1;
+  }
+  function showLocalSprite(model,sprite,element,text){
+    const show=Boolean(sprite?.visible&&(!model.group.visible||spriteClipped(sprite)));
+    if(show){
+      sprite.visible=false;
+      if(element.textContent!==text)element.textContent=text;
+      element.style.opacity=sprite.material.opacity;
+    }else if(element.textContent){
+      element.textContent="";
+    }
+    if(element.hidden===show)element.hidden=!show;
+  }
   let cameraAnchor=null,cameraDistance=0,prevTime=0;
   function render(state,now){
     if(container.hidden)return;
@@ -300,9 +355,9 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     roster.forEach(player=>{
       let model=models.get(player.id);
       const visible=museum.isInside(player.x,player.y)===indoors&&Math.hypot(player.x-anchor.x,player.y-anchor.y)<135;
-      if(!visible){if(model)model.group.visible=false;return;}
+      if(!visible){if(model){model.group.visible=false;walkerModels.clearChat(model);}return;}
       if(!model){model=walkerModels.create(player.coat??0xab5947,player.nickname,labelSprite);models.set(player.id,model);}
-      walkerModels.update(model,player,{now,clock,delta,seat:seatAt(player),floor:floorHeight(player),emojiTexture,
+      walkerModels.update(model,player,{now,clock,delta,seat:seatAt(player),floor:floorHeight(player),emojiTexture,chatTexture,
         turnEase:player===me?1-Math.exp(-delta*22):1});
     });
     const seat=seatAt(anchor);
@@ -335,21 +390,13 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
       camera.position.copy(pivot).addScaledVector(arm,cameraDistance);
       camera.lookAt(pivot);
     }
+    cameraUp.set(0,1,0).applyQuaternion(camera.quaternion);
+    for(const model of models.values())if(model.group.visible&&model.chatSprite)walkerModels.placeChat(model,cameraUp);
     const anchorModel=models.get(anchor.id);
     if(anchorModel&&cameraDistance<1.08)anchorModel.group.visible=false;
-    const badge=anchorModel?.emote;
-    let showSelfEmote=false;
-    if(badge?.visible){
-      camera.updateMatrixWorld();
-      badge.getWorldPosition(emoteScreen).project(camera);
-      showSelfEmote=!anchorModel.group.visible||Math.abs(emoteScreen.x)>.88||Math.abs(emoteScreen.y)>.88||Math.abs(emoteScreen.z)>1;
-      if(showSelfEmote){
-        badge.visible=false;
-        if(selfEmote.textContent!==me.emote.emoji)selfEmote.textContent=me.emote.emoji;
-        selfEmote.style.opacity=badge.material.opacity;
-      }
-    }
-    selfEmote.hidden=!showSelfEmote;
+    if(anchorModel?.emote.visible||anchorModel?.chatSprite)camera.updateMatrixWorld();
+    showLocalSprite(anchorModel,anchorModel?.emote,selfEmote,me.emote?.emoji);
+    showLocalSprite(anchorModel,anchorModel?.chatSprite,selfChat,anchorModel?.chatSprite?chatText(me.chat.text):"");
     for(const player of roster){
       if(player.id===anchor.id)continue;
       const group=models.get(player.id)?.group;
@@ -419,7 +466,11 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     }
     return {x:hit.x+300,y:hit.z+225};
   }
-  return {render,pick,previewWalker,benches,stations,parkLife,museum};
+  function clearChat(){
+    for(const model of models.values())walkerModels.clearChat(model);
+    selfChat.hidden=true;selfChat.textContent="";
+  }
+  return {render,pick,previewWalker,clearChat,benches,stations,parkLife,museum};
 }
 
 function makeGuideMarker(){
