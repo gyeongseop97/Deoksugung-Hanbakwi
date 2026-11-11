@@ -10,7 +10,7 @@ import {addLandmarks,addZone,addLoft,spawn} from "./layout.js";
 // rounded from survey figures and photographs; heights are approximate.
 export const gwanghwamun={x:1700,y:930};
 export const at=(east,north,name="")=>({name,x:gwanghwamun.x+east,y:gwanghwamun.y-north});
-export const gbBounds={minX:1400,maxX:2000,minY:30,maxY:1010};
+export const gbBounds={minX:1400,maxX:2000,minY:30,maxY:1100};
 export const inGyeongbok=(x,y)=>x>=gbBounds.minX;
 
 export const wallHalf=250,wallNorth=875;
@@ -65,20 +65,26 @@ export const gbStation={
   name:"경복궁역 5번 출구",...at(-104,36,"경복궁역 5번 출구"),angle:Math.PI/2,
   door:at(-100.4,36),arrive:{...at(-96.5,36),heading:60}
 };
-// City Hall station exit 2 stands just south of Daehanmun, on the avenue pavement where the
-// stonewall road begins; the Deoksugung bus stop is on the kerb beside it.
+// City Hall station exit 2 is on the avenue pavement outside the east wall, level with the
+// palace pond and about ninety metres north of Daehanmun; the Deoksugung bus stops line the
+// same pavement between exits 2 and 3.
 export const cityHallStation={
-  name:"시청역 2번 출구",x:463.6,y:333.2,angle:Math.PI,
-  door:{x:463.6,y:329.6},arrive:{x:462.4,y:327.2,heading:350}
+  name:"시청역 2번 출구",x:472.0,y:233,angle:0,
+  door:{x:472.0,y:236.6},arrive:{x:473.4,y:239.4,heading:180}
 };
-// Bus stops: one by the station exit, one on the road in front of the Gwanghwamun terrace.
 export const cityHallBusStop={
-  name:"시청앞·덕수궁 정류장",x:466.2,y:320.6,angle:Math.PI/2,
-  door:{x:464.4,y:320.6},arrive:{x:463.4,y:319.4,heading:320}
+  name:"시청앞·덕수궁 정류장",x:476.4,y:205,angle:Math.PI/2,
+  door:{x:474.6,y:205},arrive:{x:474.2,y:207.4,heading:180}
 };
+// Across the road from Gwanghwamun: the Uijeongbu site plaza, the pedestrian crossings and
+// the traffic island by Dongsipjagak where the Gyeongbokgung bus stop stands.
+export const gbUijeongbu={west:36,east:156,south:-165,north:-93};
+export const gbBusIsland={west:163,east:187,south:-106,north:-78};
+// Each crossing overlaps the pavements it joins by a step, so routes can be planned across.
+export const gbCrossings=[{west:43,east:53,south:-94.5,north:-54.5},{west:154.5,east:164.5,south:-103,north:-95}];
 export const gbBusStop={
-  name:"경복궁 정류장",...at(31,-55.6,"경복궁 정류장"),angle:0,
-  door:at(31,-53.9),arrive:{...at(27.5,-51.5),heading:335}
+  name:"경복궁 정류장",...at(175,-80.6,"경복궁 정류장"),angle:Math.PI,
+  door:at(175,-82.5),arrive:{...at(172.5,-86),heading:250}
 };
 export const subwayStops=[
   {...cityHallStation,id:"city-hall",mode:"subway",to:"gyeongbokgung",destination:"경복궁역",line:"시청역 → 경복궁역"},
@@ -157,7 +163,7 @@ export const gbPlazaCatTrails=[
 ].map(trail);
 // Places where flocks of pigeons and magpies gather.
 export const gbBirdGrounds=[
-  [40,-30],[0,70],[-30,160],[30,206],[0,256],[-36,300],[36,300],[-58,446],[-120,300],[0,436],
+  [40,-30],[100,-122],[0,70],[-30,160],[30,206],[0,256],[-36,300],[36,300],[-58,446],[-120,300],[0,436],
   [100,280],[150,180],[-150,160],[0,540],[12,772],[-64,700],[84,700],[-90,56],[-150,236],[60,560],
   [-128,494],[-200,400],[120,470],[0,846],[-150,780],[150,790]
 ].map(([east,north])=>at(east,north));
@@ -185,7 +191,11 @@ export const gbShortcuts=[
 export function gyeongbokWalkable(x,y){
   const east=x-gwanghwamun.x,north=gwanghwamun.y-y;
   // The square in front of Gwanghwamun, then everything inside the palace wall.
-  if(north<1.2)return north>-56&&Math.abs(east)<92;
+  if(north<1.2){
+    if(north>-56&&Math.abs(east)<92)return true;
+    const inside=area=>east>area.west&&east<area.east&&north>area.south&&north<area.north;
+    return inside(gbUijeongbu)||inside(gbBusIsland)||gbCrossings.some(inside);
+  }
   if(north>wallNorth-1.6||Math.abs(east)>wallHalf-1.6)return false;
   return !inLake(east,north)&&!inPond(east,north);
 }
@@ -225,11 +235,11 @@ export function gyeongbokWater(x,y){
 }
 addZone({
   name:"경복궁",contains:inGyeongbok,walkable:gyeongbokWalkable,water:gyeongbokWater,
-  grid:{ox:gbBounds.minX,oy:gbBounds.minY,cols:301,rows:491}
+  grid:{ox:gbBounds.minX,oy:gbBounds.minY,cols:301,rows:536}
 });
 addLandmarks([
   ...gbSites,gbStation,cityHallStation,cityHallBusStop,gbBusStop,
-  at(0,-28,"광화문 월대"),at(-50,-36,"광화문 광장"),at(50,-36,"광화문 광장"),at(0,70,"흥례문 앞마당"),at(0,180,"영제교"),at(0,262,"근정전 마당"),
+  at(0,-28,"광화문 월대"),at(96,-128,"의정부지 역사유적광장"),at(48,-74,"광화문 앞 횡단보도"),at(-50,-36,"광화문 광장"),at(50,-36,"광화문 광장"),at(0,70,"흥례문 앞마당"),at(0,180,"영제교"),at(0,262,"근정전 마당"),
   at(-128,428,"경회루 연못"),at(12,706,"향원정"),at(0,480,"아미산"),
   ...gbPaths.flatMap(path=>path.points.slice(1,-1).map(point=>({...point,name:path.name})))
 ]);

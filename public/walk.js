@@ -1385,7 +1385,7 @@ function drawGyeongbok(base,mini){
       ...(mini||big?{}:{style:"font-size:8.5px;stroke-width:2.2px"})},mini?(stop.mode==="bus"?"버스":"지하철"):stop.name);
   }
 }
-const gyeongbokViewBox=[gbBounds.minX+18,gbBounds.minY-24,564,1016].join(" ");
+const gyeongbokViewBox=[gbBounds.minX+18,gbBounds.minY-24,564,1098].join(" ");
 function attr(node,key,value){if(node.getAttribute(key)!==String(value))node.setAttribute(key,value);}
 function drawDestinations(world){
   const layer=$("map-landscape");

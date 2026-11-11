@@ -1,6 +1,6 @@
 import {
   gwanghwamun,gbSites,gbSite,gbCourts,gbLake,gbPond,gbPaths,gbLawns,gbStation,cityHallStation,cityHallBusStop,gbBusStop,subwayStops,
-  gbWoldae,gbHaetae,gbPhotoZone,gbRoyalPavilion,wallHalf,wallNorth,at
+  gbWoldae,gbHaetae,gbPhotoZone,gbRoyalPavilion,gbUijeongbu,gbBusIsland,gbCrossings,wallHalf,wallNorth,at
 } from "./gyeongbok-layout.js";
 import {solidAt} from "./layout.js";
 
@@ -770,6 +770,77 @@ export function buildGyeongbok(T,scene,kit,tools){
   for(const [east,north,turn] of [[-88,48,Math.PI/2],[-30,104,0],[30,104,0],[-62,470,-Math.PI/2],[-30,690,0],[52,690,0]]){
     const p=world(east,north);
     if(!solidAt(p.x+300,p.z+225))bench(p.x,p.z,turn);
+  }
+  // ---- Uijeongbu site plaza -----------------------------------------------------------------
+  // The site of Joseon's highest government office, shown as it is today: open lawns, the
+  // footprints of Hyeopseondang, Jeongbondang and Seokhoekdang marked by foundation stones in
+  // a row, the L-shaped inner corridor by the avenue, a round well, and the pond and pavilion
+  // sites behind the main hall, with garden paths and benches round them.
+  {
+    const {west,east,south,north}=gbUijeongbu,stone=0xb3ad9d;
+    plot(rect(18,206,-186,-89),materials.road,.011);
+    plot(rect(west,east,south,north),materials.garden.lawn,.02);
+    const walk=(w,e,s,n)=>plot(rect(w,e,s,n),materials.paving,.027);
+    walk(west,east,north-4.5,north);walk(west,west+6,south,north);walk(east-4.5,east,south,north);walk(west,east,south,south+4.5);
+    walk(west,east,-131,-127.5);walk(92,95.5,south,north);
+    const island=gbBusIsland;
+    plot(rect(island.west,island.east,island.south,island.north),materials.paving,.03);
+    const [front,side]=gbCrossings;
+    for(let n=front.south+.6;n<front.north-2;n+=1.15)slab(0xf1ede2,(front.west+front.east)/2,n,front.east-front.west-1,.55,.012,.04);
+    for(let e=side.west+.5;e<side.east;e+=1.15)slab(0xf1ede2,e,(side.south+side.north)/2,.55,side.north-side.south-1,.012,.04);
+    const sign=(text,e,n,turn=0,wide=2.4)=>{
+      const p=world(e,n),board=new T.Group();
+      board.position.set(p.x,0,p.z);board.rotation.y=turn;scene.add(board);
+      box(0x4b4f52,-wide/2+.1,.5,0,.08,1.0,.08,board);box(0x4b4f52,wide/2-.1,.5,0,.08,1.0,.08,board);
+      box(0x2f3b3a,0,1.15,0,wide,.7,.06,board);
+      nameplate(text,board,0,1.15,.04,wide-.1,.6,"#2f3b3a","#f3ead0");
+      nameplate(text,board,0,1.15,-.04,wide-.1,.6,"#2f3b3a","#f3ead0").rotation.y=Math.PI;
+      block(p.x,p.z,turn?.3:wide,turn?wide:.3,0,1.6);
+    };
+    // A hall footprint: a low paved base, its edge stones and the grid of column bases.
+    const site=(name,e,n,w,d,cols,rows)=>{
+      plot(rect(e-w/2,e+w/2,n-d/2,n+d/2),materials.court,.032);
+      for(const edge of [-1,1]){
+        slab(0xa39d8e,e,n+edge*d/2,w+.4,.3,.14);slab(0xa39d8e,e+edge*w/2,n,.3,d+.4,.14);
+      }
+      for(let i=0;i<cols;i++)for(let j=0;j<rows;j++){
+        const se=e-w/2+1.2+i*(w-2.4)/(cols-1),sn=n-d/2+1.2+j*(d-2.4)/(rows-1);
+        slab(stone,se,sn,.62,.62,.2);slab(0xc4beae,se,sn,.44,.44,.06,.2);
+        solid(se,sn,.62,.62,.2);
+      }
+      sign(name,e-w/2-2.2,n,Math.PI/2,2.0);
+    };
+    site("협선당 터",72,-106,24,9,6,3);site("정본당 터",72,-122.5,28,12.5,7,4);site("석획당 터",72,-139.5,24,9,6,3);
+    // Inner corridor by the avenue, bent like the letter L.
+    for(const [e,n,w,d] of [[45.5,-124,2.6,44],[51,-146.5,13.6,2.6]]){
+      plot(rect(e-w/2,e+w/2,n-d/2,n+d/2),materials.court,.031);
+      const count=Math.round(Math.max(w,d)/3.6);
+      for(let i=0;i<=count;i++){
+        const se=w>d?e-w/2+.6+i*(w-1.2)/count:e,sn=w>d?n:n-d/2+.6+i*(d-1.2)/count;
+        slab(stone,se,sn,.5,.5,.16);solid(se,sn,.5,.5,.16);
+      }
+    }
+    // Round well at the end of Seokhoekdang.
+    const well=world(72,-149.5);
+    cylinder(0xa9a394,well.x,.3,well.z,1.15,.6,18);cylinder(0x2c3436,well.x,.61,well.z,.82,.02,18);
+    solid(72,-149.5,2.2,2.2,.62);
+    // Pond and pavilion sites behind the main hall.
+    plot(rect(104,128,-131,-113),matte(0x6f7a72),.031);
+    for(const edge of [-1,1]){slab(0xa39d8e,116,-122+edge*9,24.6,.5,.26);slab(0xa39d8e,116+edge*12,-122,.5,18.6,.26);}
+    plot(rect(113,119,-125,-119),materials.court,.036);
+    for(const sx of [-1,1])for(const sn of [-1,1]){slab(stone,116+sx*2.2,-122+sn*2.2,.6,.6,.24);solid(116+sx*2.2,-122+sn*2.2,.6,.6,.24);}
+    sign("연지와 정자 터",116,-110.6);
+    sign("의정부지 역사유적광장",40.5,-110,Math.PI/2,4.2);
+    // Memorial tower of the April Revolution at the garden path.
+    const tower=world(146,-158);
+    box(0x8f8a7c,tower.x,.25,tower.z,2.6,.5,2.6);box(0xb9b3a4,tower.x,3.1,tower.z,.9,5.2,.9);box(0xd6d0c1,tower.x,5.85,tower.z,1.2,.3,1.2);
+    block(tower.x,tower.z,2.6,2.6,0,6);
+    for(const [e,n,turn] of [[98,-104,0],[134,-104,0],[150,-124,-Math.PI/2],[150,-146,-Math.PI/2],[110,-160.5,Math.PI],[60,-160.5,Math.PI],[98,-136,0],[132,-136,0]]){
+      const p=world(e,n);bench(p.x,p.z,turn);
+    }
+    for(const [e,n] of [[100,-101],[124,-101],[146,-101],[140,-116],[146,-136],[136,-150],[120,-154],[102,-150],[58,-154],[40,-99],[104,-140],[130,-143]]){
+      plant(e,n,6.5+rand()*4,rand()<.45?{style:"round",palette:"ginkgo"}:treeMix.garden());
+    }
   }
   return {stops:subwayStops,groups};
 }
