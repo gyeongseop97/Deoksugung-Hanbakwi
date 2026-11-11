@@ -25,6 +25,7 @@ const spots=flocks.flatMap(([anchor,members])=>members.map(([dx,dy,kind="pigeon"
 })));
 const drawRangeSquared=130**2;
 const ordinaryArches=[2.5,3.8,5.2,6.6],escapeArches=[5.4,7.6,10.2,12.8];
+const emptyGround=Object.freeze([]);
 const distance=(a,b)=>Math.hypot(b.x-a.x,b.y-a.y);
 const mix=(a,b,t)=>a+(b-a)*t;
 const heading=(from,to)=>Math.atan2(to.x-from.x,to.y-from.y);
@@ -176,7 +177,7 @@ function wingGeometry(T,side){
 }
 
 export function addPalaceBirds(T,parent,kit,{trees=[],walls=[],seed}={}){
-  const perches=perchSites(T,parent,kit,trees,walls),birds=[];
+  const perches=perchSites(T,parent,kit,trees,walls),birds=[],birdsById=new Map();
   const floor=point=>kit.floorHeight?.(point)??0;
   const group=new T.Group();group.name="궁의 까치와 비둘기";parent.add(group);
   const material=new T.MeshStandardMaterial({roughness:.8,flatShading:true});
@@ -192,20 +193,23 @@ export function addPalaceBirds(T,parent,kit,{trees=[],walls=[],seed}={}){
     batch(wingGeometry(T,1),spots.length,"Bird right wings",feather)];
   const batches=[body,bill,...wings],part=new T.Object3D(),root=new T.Object3D(),joint=new T.Object3D();
   const matrix=new T.Matrix4(),attached=new T.Matrix4(),color=new T.Color();
-  let roomSeed,checkAt=0,walkers=[];
+  let roomSeed,checkAt=0,walkers=[],groundAt=-Infinity,groundSnapshot;
 
   function setSeed(value){
     const next=String(value??"preview");
     if(next===roomSeed)return;
-    roomSeed=next;birds.length=0;checkAt=0;walkers=[];
+    roomSeed=next;birds.length=0;birdsById.clear();checkAt=0;walkers=[];
+    groundAt=-Infinity;groundSnapshot=undefined;
     const random=rng(next+":palace birds"),used=new Set();
-    for(const {anchor,dx,dy,kind,cruises} of spots){
+    for(const [index,{anchor,dx,dy,kind,cruises}] of spots.entries()){
       for(let attempt=0;attempt<20;attempt++){
         const radius=attempt?1+attempt*.24:0,angle=random()*Math.PI*2;
         const x=anchor.x+dx+Math.cos(angle)*radius,y=anchor.y+dy+Math.sin(angle)*radius;
         if(!ground(x,y)||birds.some(bird=>distance(bird.home,{x,y})<.9))continue;
         const home={x,y,height:floor({x,y})},patrol=makePatrol(home,random,perches,used,kind,floor,cruises);
-        birds.push({kind,home,patrol,offset:random()*patrol.time,size:species[kind].size*(.89+random()*.18),angle:null});
+        const bird={id:`bird-${index}`,kind,home,patrol,offset:random()*patrol.time,
+          size:species[kind].size*(.89+random()*.18),angle:null};
+        birds.push(bird);birdsById.set(bird.id,bird);
         break;
       }
     }
@@ -223,8 +227,8 @@ export function addPalaceBirds(T,parent,kit,{trees=[],walls=[],seed}={}){
     }
     return threat;
   }
-  function scare(bird,position,player,clock,phase){
-    const away=distance(position,player)<.12?position.turn:heading(player,position);
+  function startEscape(bird,position,threat,clock,phase){
+    const away=distance(position,threat)<.12?position.turn:heading(threat,position);
     const candidates=perches.filter(site=>distance(position,site)>=14&&distance(position,site)<=45);
     for(const turn of [0,-.36,.36,-.72,.72,-1.08,1.08,-1.39,1.39])for(const length of [42,34,27,21,16,13]){
       const x=position.x+Math.sin(away+turn)*length,y=position.y+Math.cos(away+turn)*length;
@@ -233,16 +237,34 @@ export function addPalaceBirds(T,parent,kit,{trees=[],walls=[],seed}={}){
     const sine=Math.sin(away),cosine=Math.cos(away);
     const ranked=candidates.map(site=>({site,length:distance(position,site),
       forward:sine*(site.x-position.x)+cosine*(site.y-position.y)})).filter(({site,length,forward})=>
-      forward>length*.24&&distance(site,player)>=14);
+      forward>length*.24&&distance(site,threat)>=14);
     const score=({site,length,forward})=>forward*.68+length*.32+(site.kind==="ground"?0:4);
     ranked.sort((a,b)=>Number(b.length>=20)-Number(a.length>=20)||score(b)-score(a));
     for(const {site} of ranked){
       const outbound=flight(position,site,bird.kind==="magpie"?6.7:7.6,true);
       if(!outbound)continue;
       bird.escape={outbound,site,clock,phase,returnAt:clock+outbound.time+(site.kind==="ground"?6200:8600)};
-      return;
+      return true;
     }
     bird.calmUntil=clock+650;
+    return false;
+  }
+  function recentGround(clock){return parent.visible&&Math.abs(clock-groundAt)<=250;}
+  function groundTargets(clock=groundAt){
+    if(!recentGround(clock))return emptyGround;
+    if(!groundSnapshot)groundSnapshot=Object.freeze(birds.filter(bird=>bird.onGround).map(bird=>{
+      const {x,y}=bird.onGround;
+      return Object.freeze({id:bird.id,x,y,kind:bird.kind});
+    }));
+    return groundSnapshot;
+  }
+  function scare(id,clock,threat){
+    const bird=birdsById.get(id),pose=bird?.onGround;
+    if(!pose||bird.escape||!recentGround(clock)||!ground(threat?.x,threat?.y)||
+       distance(pose,threat)>2.2||!clearSegment(threat,pose,.24))return false;
+    if(!startEscape(bird,pose,threat,clock,bird.groundPhase))return false;
+    bird.onGround=null;groundSnapshot=undefined;
+    return true;
   }
   function escapePose(bird,clock){
     const {outbound,site,clock:start,phase}=bird.escape;
@@ -311,6 +333,7 @@ export function addPalaceBirds(T,parent,kit,{trees=[],walls=[],seed}={}){
 
   function update(clock,seconds,actors=[]){
     if(!parent.visible)return;
+    groundAt=clock;groundSnapshot=undefined;
     const viewer=actors[0],check=clock>=checkAt;
     if(check){
       checkAt=clock+135;
@@ -319,6 +342,7 @@ export function addPalaceBirds(T,parent,kit,{trees=[],walls=[],seed}={}){
     }
     for(const mesh of batches)mesh.count=0;
     for(const bird of birds){
+      bird.onGround=null;
       let pose=bird.escape?escapePose(bird,clock):null;
       if(!pose){
         const phase=modulo(clock+bird.offset,bird.patrol.time);
@@ -326,12 +350,15 @@ export function addPalaceBirds(T,parent,kit,{trees=[],walls=[],seed}={}){
         pose=sample(leg,(phase-leg.start)/leg.time);
         if(check&&pose.mode!=="flight"&&clock>=(bird.calmUntil??0)){
           const player=nearestWalker(pose);
-          if(player)scare(bird,pose,player,clock,phase);
+          if(player)startEscape(bird,pose,player,clock,phase);
+        }
+        if(!bird.escape&&(pose.mode==="walk"||pose.mode==="peck")){
+          bird.onGround=pose;bird.groundPhase=phase;
         }
       }
       if(!viewer||(pose.x-viewer.x)**2+(pose.y-viewer.y)**2<drawRangeSquared)paint(bird,pose,clock,seconds);
     }
     for(const mesh of batches){mesh.instanceMatrix.needsUpdate=true;if(mesh.instanceColor)mesh.instanceColor.needsUpdate=true;}
   }
-  return {update,setSeed};
+  return {update,setSeed,groundTargets,scare};
 }
