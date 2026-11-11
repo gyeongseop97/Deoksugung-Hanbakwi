@@ -7,6 +7,7 @@ import {fromBuilding,pavilionStairAccess} from "./museum.js";
 import {standPlantingFootprints} from "./street-stands.js";
 import {makePalaceClearance} from "./palace-plantings.js";
 import {makeTreeBuilder} from "./lowpoly-trees.js";
+import {buildGyeongbok} from "./gyeongbok.js";
 
 export function buildJeongdong(T,scene,kit) {
   const {box,cylinder,shape,wx,wz,rand,matte}=kit;
@@ -388,6 +389,7 @@ export function buildJeongdong(T,scene,kit) {
       }
     }
   }
+  let waterMaterial;
   function addPond(){
     const {outline,x,y,island}=palacePond;
     const bank=outline.map(p=>{
@@ -396,7 +398,7 @@ export function buildJeongdong(T,scene,kit) {
     });
     plot(bank,matte(0x7e8070),.026);
     const uniforms=T.UniformsUtils.merge([T.UniformsLib.fog,{clock:{value:0},night:{value:0}}]);
-    plot(outline,new T.ShaderMaterial({
+    waterMaterial=new T.ShaderMaterial({
       uniforms,fog:true,
       vertexShader:`
         varying vec2 lake;
@@ -424,7 +426,8 @@ export function buildJeongdong(T,scene,kit) {
           #include <fog_fragment>
         }
       `
-    }),.043);
+    });
+    plot(outline,waterMaterial,.043);
     for(let i=0;i<bank.length;i++){
       const edge=line(bank[i],bank[(i+1)%bank.length]),count=Math.ceil(edge.len/.76);
       for(let j=0;j<count;j++){
@@ -598,16 +601,20 @@ export function buildJeongdong(T,scene,kit) {
     const {w,d,h,bays,angle=0}=spec;
     g.position.set(x,0,z);g.rotation.y=angle;scene.add(g);
     const raised=spec.raised??.39,lo=(n)=>-w/2+n*w/bays;
+    // Buildings that stand on a terrace or gate tower leave the ground below them clear.
+    const solid=!spec.noCollision;
     box(0xb4ae9e,0,raised/2,0,w+1.4,raised,d+1.1,g);
     if(!spec.gate){
       const access=pavilionStairAccess.get(spec.name);
-      if(access){
+      if(!solid){
+      }else if(access){
         const width=w+1.40,depth=d+1.10,sideWidth=(width-access.width)/2;
         for(const side of [-1,1])blockLocal(spec,side*(access.width+sideWidth)/2,0,sideWidth,depth);
         blockLocal(spec,0,(access.front-depth/2)/2,access.width,access.front+depth/2);
       }else block(x,z,w+1.40,d+1.10,angle);
       const veranda=spec.open?.82:0;
-      box(0x864d39,0,raised+h*.47,-veranda*.5,w-.55,h*.92,d-.55-veranda,g);
+      // A pillared pavilion such as Gyeonghoeru has no walls under its upper floor.
+      if(!spec.hollow)box(0x864d39,0,raised+h*.47,-veranda*.5,w-.55,h*.92,d-.55-veranda,g);
     }
     for(const side of [-1,1]){
       for(let i=0;i<=bays;i++){
@@ -616,7 +623,7 @@ export function buildJeongdong(T,scene,kit) {
         box(0xb7ab95,px,raised+.13,pz,.79,.27,.80,g);
         box(0x35664f,px,raised+h-.13,pz,.88,.39,.88,g);
         const c=Math.cos(angle),sin=Math.sin(angle);
-        if(spec.gate)block(x+px*c+pz*sin,z-px*sin+pz*c,rad*2+.15,rad*2+.15,angle,raised+h+.2);
+        if(spec.gate&&solid)block(x+px*c+pz*sin,z-px*sin+pz*c,rad*2+.15,rad*2+.15,angle,raised+h+.2);
       }
       for(let i=0;i<bays;i++){
         const px=(lo(i)+lo(i+1))/2,pz=side*(d*.50);
@@ -650,7 +657,7 @@ export function buildJeongdong(T,scene,kit) {
         box(0x754635,px,raised+h*.42,d*.44,wings,h*.78,.16,g);
         for(let i=0;i<9;i++)box(0x996047,px-wings*.44+i*wings*.11,raised+h*.42,d*.456,.035,h*.76,.035,g);
         for(const frac of [.21,.44,.67])box(0x5f4439,px,raised+h*frac,d*.478,wings,.080,.09,g);
-        block(x+px*Math.cos(angle)+d*.44*Math.sin(angle),z-px*Math.sin(angle)+d*.44*Math.cos(angle),wings,.30,angle,raised+h*.81);
+        if(solid)block(x+px*Math.cos(angle)+d*.44*Math.sin(angle),z-px*Math.sin(angle)+d*.44*Math.cos(angle),wings,.30,angle,raised+h*.81);
       }
     }
     if(spec.stories===2){
@@ -666,7 +673,7 @@ export function buildJeongdong(T,scene,kit) {
       box(0xc1b8a5,0,.29,0,w+5.8,.56,d+5.2,g);
       for(let j=0;j<5;j++)box(0xb9b0a0,0,.075+j*.095,d/2+3.1-j*.47,6.1,.18,.66,g);
     }
-    roof(g,w+(spec.open?3.2:2.5),d+2.36,raised+h+.54,spec.mainHall?3.05:spec.open?2.35:2.04,spec.gate||spec.mainHall);
+    roof(g,w+(spec.open?3.2:2.5),d+2.36,raised+h+.54,spec.rise??(spec.mainHall?3.05:spec.open?2.35:2.04),spec.gate||spec.mainHall||Boolean(spec.hip));
     if(spec.sign||spec.name)nameplate(spec.sign||spec.name,g,0,raised+h-.24,d*.61,Math.min(3.5,w*.25),.79);
     return g;
   }
@@ -871,6 +878,11 @@ export function buildJeongdong(T,scene,kit) {
       if(tree(x,z,height,treeMix.edge()))break;
     }
   }
-  return {benches,trees,catWalls,fountains:[{x:fp.x,z:fp.z,radius:2.32},{x:sf.x,z:sf.z,radius:4.2,scalloped:true}],
+  // The second map: Gyeongbokgung, reached by subway from the ticket plaza.
+  const subwayStations=buildGyeongbok(T,scene,kit,{pavilion,roof,wall,coveredWall,plot,ribbon,paved,tree,treeMix,treeFits,bench,lamp,
+    nameplate,block,flat,uvScale,orient,treeKit,treeClearance,waterMaterial,pathClear,
+    materials:{stone:stoneMaterial,paving:pavingMaterial,gravel:gravelMaterial,court:courtStoneMaterial,earth:earthMaterial,
+      road:roadMaterial,garden:gardenMaterials}});
+  return {subwayStations,benches,trees,catWalls,fountains:[{x:fp.x,z:fp.z,radius:2.32},{x:sf.x,z:sf.z,radius:4.2,scalloped:true}],
     lampMaterial,classical,middleModel,hallModel,drawPond,pavilionModels};
 }

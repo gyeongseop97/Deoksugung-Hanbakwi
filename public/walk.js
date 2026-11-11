@@ -10,6 +10,7 @@ import {isInsideMuseum,museumBounds,museumGalleries,museumGalleryAt,museumHall} 
 import {museumExhibits} from "./museum-catalog.js";
 import {nearbyPalaceGuide} from "./palace-guide.js";
 import {bindSceneTouch} from "./scene-touch.js";
+import {subwayStops,gbSites,gbBounds,gbLake,gbPond,gbPaths,gbCourts,gbLawns,inGyeongbok,wallHalf,wallNorth,at as palaceAt} from "./gyeongbok-layout.js";
 
 const $=id=>document.getElementById(id);
 const token=()=>Array.from(crypto.getRandomValues(new Uint8Array(16)),byte=>byte.toString(16).padStart(2,"0")).join("");
@@ -555,6 +556,7 @@ function returnToLobby(message=""){
   chatInput.value="";composingChat=false;lastChatAt=0;updateChatSend();
   $("invite").disabled=$("look").disabled=$("look-target").disabled=true;
   world?.clearChat();
+  $("transit").hidden=true;riding=false;
   $("lobby-status").textContent=message;
   sessionStorage.removeItem("jeongdong-room-mode");
   sessionStorage.removeItem("jeongdong-room-code");
@@ -835,12 +837,13 @@ const clearSceneTouch=bindSceneTouch($("game"),gameShell,{
 
 // Absolute height of my feet while airborne or perched on a low structure. On plain ground it
 // stays 0 so kerbs, benches and railings block as usual until I jump.
+const stepUp=.19;
 function standingHeight(){return Math.max(world?.groundHeight(me)??0,platformAt(me.x,me.y));}
 function feetHeight(time){
   const lift=jumpLift(me,time),platform=platformAt(me.x,me.y);
-  if(!lift&&!platform)return 0;
   // A jump rises from where it started; landing on something lower or level ends it there.
-  return lift?Math.max(jumpBase+lift,platform):standingHeight();
+  // On foot a walker still climbs anything a step high, which is what makes stone stairs work.
+  return lift?Math.max(jumpBase+lift,platform):platform+stepUp;
 }
 function move(x,y){
   if(!session||(x===me.x&&y===me.y)||!clearSegment(me,{x,y},.36,feetHeight(gameTime())))return false;
@@ -897,6 +900,32 @@ function portalNearby(){
   const door=inside?museum.insideDoor:museum.outsideDoor;
   return near(door,me.x,me.y)<2.25&&clearSegment(me,door)?{inside,museum}:null;
 }
+// Subway exits join the two maps: City Hall beside the Deoksugung ticket office and
+// Gyeongbokgung station inside the palace wall.
+let riding=false;
+function nearbySubway(){
+  if(!world||!session||me.seat!=null)return null;
+  for(const stop of subwayStops){
+    if(near(stop.door,me.x,me.y)<2.9&&clearSegment(me,stop.door))return stop;
+  }
+  return null;
+}
+function rideSubway(){
+  const stop=nearbySubway();
+  if(!stop||riding||myLink()?.active||feedingLocked(gameTime()))return;
+  const target=subwayStops.find(other=>other.id===stop.to);
+  riding=true;resetInput();
+  $("transit-title").textContent=stop.destination;
+  $("transit-line").textContent=stop.line;
+  $("transit").hidden=false;
+  const visit=session;
+  setTimeout(()=>{if(session===visit)movePlayerTo(target.arrive,target.name);},1100);
+  setTimeout(()=>{
+    $("transit").hidden=true;riding=false;
+    if(session===visit){toast(target.name+"에 도착했어요.");focusGame();}
+  },2700);
+}
+$("subway").addEventListener("click",rideSubway);
 function nearbyExhibit(){
   const gallery=museumGalleryAt(me.x,me.y);
   if(!gallery||!world)return null;
@@ -1030,6 +1059,8 @@ function updateActivities(time,guideNearby){
   }else{
     setActivity("use-item",spec?(me.item.kind==="sparkler"?spec.verb:spec.verb+" · "+me.item.remaining+"회"):null,!canUseItem(time));
   }
+  const subway=eligible&&nearbySubway();
+  setActivity("subway",subway?"지하철 타기 · "+subway.destination:null,riding||feeding||Boolean(myLink()?.active));
   const portal=eligible&&portalNearby();
   setActivity("museum-door",portal?(portal.inside?"나가기":"입장하기"):null,feeding||Boolean(myLink()?.active));
   const exhibit=eligible&&nearbyExhibit();
@@ -1139,6 +1170,7 @@ function frame(now){
     setActivity("sit",seatEnabled?seatLabel:null,me.seat==null&&!bench?.choice);
     attr($("sit"),"aria-pressed",me.seat!=null);
     setText($("game-place"),$("location").textContent);
+    setText($("game-season"),inGyeongbok(me.x,me.y)?"경복궁의 가을":"정동의 가을");
     updateHandControls();updateLocationGuides(time);updateMaps(self,others);
   }
   world?.render({me:self,peers:[...others.values()],view:ownView,firstPerson,guideNearby,destination:course.at(-1),clock:time},now);
@@ -1186,6 +1218,7 @@ function drawMap(base,mini=false){
     svg(base,"text",{x:point.x,y:point.y+2.6,class:mini?"mini-landmark":"map-label","text-anchor":"middle",
       ...(mini?{}:{style:"font-size:9px;stroke-width:2.6px"})},point===palacePond?"연못":point.name);
   }
+  drawGyeongbok(base,mini);
   const {minX,maxX,minY,maxY}=museumBounds;
   const interior=svg(base,"g",{visibility:"hidden"});
   museumMaps.push(interior);
@@ -1215,6 +1248,49 @@ function drawMap(base,mini=false){
   }
   svg(base,"text",{x:548,y:94,class:"map-faint","text-anchor":"middle"},"↑ N");
 }
+// The Gyeongbokgung map shares the same drawing; the view box moves there on arrival.
+function drawGyeongbok(base,mini){
+  const box=(west,east,south,north)=>{
+    const a=palaceAt(west,north),b=palaceAt(east,south);
+    return {x:a.x,y:a.y,width:b.x-a.x,height:b.y-a.y};
+  };
+  svg(base,"rect",{...box(-300,300,-80,wallNorth+60),fill:"#23302a"});
+  svg(base,"rect",{...box(-92,92,-58,0),fill:"#766c5a"});
+  svg(base,"rect",{...box(-wallHalf,wallHalf,0,wallNorth),fill:"#465248",stroke:"#929283","stroke-width":2.6});
+  for(const {kind,west,east,south,north} of gbLawns){
+    svg(base,"rect",{...box(west,east,south,north),fill:kind==="grove"?"#314938":"#607651",rx:3});
+  }
+  for(const court of Object.values(gbCourts)){
+    svg(base,"rect",{...box(court.west,court.east,court.south,court.north),fill:"#766c5a",stroke:"#a07d62","stroke-width":1.6});
+  }
+  for(const {points,width,surface} of gbPaths){
+    svg(base,"polyline",{points:outline(points),fill:"none",stroke:surface==="stone"?"#c9b899":"#a29e7d","stroke-opacity":.6,
+      "stroke-width":width,"stroke-linecap":"round","stroke-linejoin":"round"});
+  }
+  svg(base,"rect",{...box(gbLake.west,gbLake.east,gbLake.south,gbLake.north),fill:"#3b777d",stroke:"#739595","stroke-width":1.4});
+  svg(base,"rect",{...box(gbLake.island.west,gbLake.island.east,gbLake.island.south,gbLake.island.north),fill:"#766c5a"});
+  const pond=palaceAt(gbPond.east,gbPond.north);
+  svg(base,"circle",{cx:pond.x,cy:pond.y,r:gbPond.radius,fill:"#3b777d",stroke:"#739595","stroke-width":1.4});
+  svg(base,"circle",{cx:pond.x,cy:pond.y,r:gbPond.island,fill:"#607651"});
+  for(const building of gbSites){
+    svg(base,"rect",{x:building.x-building.w/2,y:building.y-building.d/2,width:building.w,height:building.d,
+      fill:building.kind==="museum"?"#6f7468":"#827659",stroke:"#aa9774","stroke-width":1,rx:2,
+      transform:"rotate("+(-(building.angle||0)*180/Math.PI)+" "+building.x+" "+building.y+")"});
+  }
+  const labels=mini?["광화문","흥례문","근정전","사정전","강녕전","교태전","경회루","수정전","자경전","향원정","건청궁","집옥재","국립고궁박물관"]:
+    ["광화문","흥례문","근정전","강녕전","교태전","경회루","자경전","향원정","건청궁","국립고궁박물관","국립민속박물관"];
+  for(const building of gbSites.filter(spec=>labels.includes(spec.name))){
+    svg(base,"text",{x:building.x,y:building.y+(mini?building.d/2+6:building.d/2+22),class:mini?"mini-landmark":"map-label gyeongbok-label",
+      "text-anchor":"middle"},building.name);
+  }
+  for(const stop of subwayStops){
+    const big=!mini&&inGyeongbok(stop.x,stop.y);
+    svg(base,"circle",{cx:stop.x,cy:stop.y,r:mini?1.9:big?7:3,fill:"#f1d8a6",stroke:"#513e32","stroke-width":mini?.6:big?2:.9});
+    svg(base,"text",{x:stop.x,y:stop.y-(mini?3.2:big?12:5),class:mini?"mini-landmark":big?"map-label gyeongbok-label":"map-label","text-anchor":"middle",
+      ...(mini||big?{}:{style:"font-size:8.5px;stroke-width:2.2px"})},mini?"지하철":stop.name);
+  }
+}
+const gyeongbokViewBox=[gbBounds.minX+18,gbBounds.minY-24,564,1016].join(" ");
 function attr(node,key,value){if(node.getAttribute(key)!==String(value))node.setAttribute(key,value);}
 function drawDestinations(world){
   const layer=$("map-landscape");
@@ -1225,8 +1301,8 @@ function drawDestinations(world){
   }
 }
 function updateMaps(self,others){
-  const indoors=isInsideMuseum(self.x,self.y);
-  attr($("my-avatar"),"transform","translate("+self.x+" "+self.y+")"+(indoors?" scale(.18)":""));
+  const indoors=isInsideMuseum(self.x,self.y),palace=inGyeongbok(self.x,self.y);
+  attr($("my-avatar"),"transform","translate("+self.x+" "+self.y+")"+(indoors?" scale(.18)":palace?" scale(2.2)":""));
   const coat=hexCoat(self.coat??0xe5b672);
   $("my-avatar").querySelector("circle").style.fill=coat;
   attr($("mini-my"),"fill",coat);
@@ -1234,7 +1310,7 @@ function updateMaps(self,others){
   for(const map of museumMaps)attr(map,"visibility",indoors?"visible":"hidden");
   $("world").classList.toggle("museum-map",indoors);
   $("mini-world").classList.toggle("museum-map",indoors);
-  attr($("world"),"viewBox",indoors?museumViewBox:"58 28 520 397");
+  attr($("world"),"viewBox",indoors?museumViewBox:palace?gyeongbokViewBox:"58 28 520 397");
   attr($("mini-world"),"viewBox",indoors?museumViewBox:(self.x-42).toFixed(1)+" "+(self.y-35).toFixed(1)+" 84 70");
   for(const actor of others.values()){
     let mark=markers.get(actor.id);
@@ -1246,7 +1322,7 @@ function updateMaps(self,others){
       mark={big,mini};markers.set(actor.id,mark);
     }
     for(const node of [mark.big,mark.mini]){attr(node,"cx",actor.x);attr(node,"cy",actor.y);}
-    attr(mark.big,"r",indoors?1.45:8);
+    attr(mark.big,"r",indoors?1.45:palace?17:8);
     attr(mark.mini,"r",indoors?1.1:2.5);
     const visible=isInsideMuseum(actor.x,actor.y)===indoors?"visible":"hidden";
     attr(mark.big,"visibility",visible);attr(mark.mini,"visibility",visible);

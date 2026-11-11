@@ -63,7 +63,7 @@ export function smoothPeople(people,seconds,serverTime,roundTrip=65){
       const elapsed=age+uplink;
       const lead=elapsed<=horizon?elapsed:horizon+.16*(1-Math.exp(-(elapsed-horizon)/.16));
       predicting=elapsed<horizon+.35;
-      const feet=airborne?JUMP_HEIGHT+platformAt(a.x,a.y):platformAt(a.x,a.y);
+      const feet=platformAt(a.x,a.y)+(airborne?JUMP_HEIGHT:.19);
       for(const share of [1,.6,.3]){
         const guess={x:a.x+(a.vx||0)*lead*share,y:a.y+(a.vy||0)*lead*share};
         if(clearSegment(a,guess,.36,feet)){goal=guess;break;}

@@ -1,12 +1,14 @@
 import {bridge,clearSegment,courtAngle,gate,hall,middle,palacePond,pavilions,stoneFountain,stoneHall,walkable} from "./layout.js";
 import {fromBuilding} from "./museum.js";
 import {isInsideMuseum} from "./visit-layout.js";
+import {gbSite} from "./gyeongbok-layout.js";
 
 const royalTour="https://royal.khs.go.kr/ROYAL/contents/R402000000.do?id=20240313092652267385&schM=view";
 const royalBuildings="https://royal.khs.go.kr/ROYAL/contents/R402000000.do?id=20260331093323561530&schM=view";
 const palaceRecord="https://digital.khs.go.kr/heri/heriDetail.do?ctptNo=1331101240000&ctptUid=13898859674581300745";
 const modernMuseum="https://www.mmca.go.kr/upload/m/data/exhibition/2012/09/14/20120914091758.pdf";
 const pavilionByName=Object.fromEntries(pavilions.map(site=>[site.name,site]));
+const gyeongbokTour="https://royal.khs.go.kr/ROYAL/contents/R404000000.do?schGroupCode=gbg";
 const guideDistance=3.8;
 
 function footprint(site){
@@ -104,7 +106,23 @@ const guides=[
     "대한문 안쪽에 있는 연못이에요. 연못 일대는 1960년대에 스케이트장으로 쓰인 적도 있습니다.",modernMuseum,[],"덕수궁 연못 · 연지"),
   guide("seokjojeon-fountain",stoneFountain,
     "석조전 앞에 펼쳐진 서양식 정원이에요. 네 잎 모양 분수를 중심으로 잔디와 화단이 대칭으로 놓여 있습니다.",
-    "https://world.seoul.go.kr/deoksugung-palace-2/",fountainEdge)
+    "https://world.seoul.go.kr/deoksugung-palace-2/",fountainEdge),
+  ...Object.entries({
+    gwanghwamun:"경복궁의 정문이에요. 돌로 쌓은 육축에 세 개의 홍예문을 내고 그 위에 2층 문루를 올렸습니다. 여러 차례 훼손과 이전을 겪은 뒤 2010년 제자리에 나무 구조로 복원했습니다.",
+    heungnyemun:"광화문과 근정문 사이에 있는 중문이에요. 일제강점기에 조선총독부 청사를 지으며 헐렸다가 2001년에 복원했습니다.",
+    geunjeongmun:"정전인 근정전으로 들어가는 문이에요. 좌우 행각과 함께 근정전 마당을 둘러쌉니다.",
+    geunjeongjeon:"경복궁의 정전으로 국보예요. 왕의 즉위식과 조회, 외국 사신 접견 같은 나라의 큰 의식을 치렀습니다. 2단 월대 위에 서 있고, 마당에는 박석을 깔고 품계석을 세웠습니다.",
+    sajeongjeon:"왕이 평소에 신하들과 나랏일을 의논하던 편전이에요. 좌우의 만춘전과 천추전은 온돌을 갖춘 보조 편전입니다.",
+    gangnyeongjeon:"왕의 침전이에요. 지붕에 용마루가 없는 것이 특징이며, 지금 건물은 1995년에 복원했습니다.",
+    gyotaejeon:"왕비의 침전이에요. 뒤뜰에는 계단식 화단인 아미산이 있고, 그곳의 육각 굴뚝은 보물로 지정되어 있습니다.",
+    gyeonghoeru:"나라의 경사나 사신 접대 때 연회를 베풀던 누각으로 국보예요. 네모난 연못 위 돌기둥 48개가 2층 누마루를 받치고 있으며, 지금 건물은 1867년에 다시 지었습니다.",
+    sujeongjeon:"세종 때 집현전이 있던 자리에 고종 때 다시 지은 건물이에요. 갑오개혁 무렵에는 군국기무처와 내각 청사로 쓰였습니다.",
+    jagyeongjeon:"고종의 양어머니인 신정왕후 조씨를 위해 지은 대비전이에요. 꽃담과 십장생을 새긴 굴뚝이 유명하며, 굴뚝은 보물입니다.",
+    hyangwonjeong:"향원지 연못 한가운데 섬에 세운 육각 2층 정자로 보물이에요. 고종이 건청궁을 지으며 함께 만들었고, 북쪽에서 다리 취향교로 건너갑니다.",
+    geoncheonggung:"고종이 1873년에 지은 궁 안의 궁이에요. 1887년 우리나라에서 처음으로 전등을 밝힌 곳이며, 1895년 명성황후가 시해된 을미사변의 현장이기도 합니다. 2007년에 복원했습니다.",
+    jibokjae:"고종이 서재로 쓰며 외국 사신을 맞이하던 건물이에요. 벽돌을 쌓아 올린 중국풍 양식이 궁 안의 다른 전각과 다릅니다.",
+    "palace-museum":"조선 왕실과 대한제국 황실의 유물을 전시하는 박물관이에요. 경복궁역 5번 출구와 바로 이어집니다."
+  }).map(([id,description])=>guide("gb-"+id,gbSite[id],description,gyeongbokTour))
 ];
 
 function squaredDistance(a,b){

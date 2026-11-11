@@ -103,7 +103,7 @@
           <div id="game" tabindex="0" role="group" aria-label="3D 산책. 조이스틱이나 방향키로 이동, 드래그로 시야 회전, 두 손가락으로 확대 및 축소">
             <p id="loading-game">산책길을 열고 있어요.</p>
             <div class="game-info">
-              <div class="game-place"><span>정동의 가을</span><strong id="game-place">매표소 앞</strong><small class="desktop-controls-hint">화면 기준으로 이동 · 드래그로 시야 돌리기</small><small class="touch-controls-hint">드래그로 시야 회전 · 두 손가락으로 줌</small></div>
+              <div class="game-place"><span id="game-season">정동의 가을</span><strong id="game-place">매표소 앞</strong><small class="desktop-controls-hint">화면 기준으로 이동 · 드래그로 시야 돌리기</small><small class="touch-controls-hint">드래그로 시야 회전 · 두 손가락으로 줌</small></div>
               <div class="look-actions">
                 <span id="look-hint" hidden>내 위치를 지도에 5초 동안 표시해요.</span>
                 <button id="look" class="primary" type="button" aria-describedby="look-hint" disabled><span aria-hidden="true">✦</span> 여기 봐</button>
@@ -137,6 +137,7 @@
                 <button id="pet-cat" type="button" class="quiet activity-button" hidden>쓰다듬기</button>
                 <button id="take-item" type="button" class="quiet activity-button" hidden>받기</button>
                 <button id="use-item" type="button" class="quiet activity-button" hidden>사용하기</button>
+                <button id="subway" type="button" class="quiet activity-button" hidden>지하철 타기</button>
                 <button id="museum-door" type="button" class="quiet activity-button" hidden>입장하기</button>
                 <button id="museum-exhibit" type="button" class="quiet activity-button" aria-haspopup="dialog" hidden>작품 설명</button>
                 <button id="landmark-guide" type="button" class="quiet activity-button" aria-haspopup="dialog" aria-controls="landmark-guide-dialog" hidden>설명 읽기</button>
@@ -219,6 +220,14 @@
     </section>
     <footer><span>✦ &nbsp; 덕수궁 한바퀴</span><span>덕수궁 돌담길을 바탕으로 만든 3D 산책 공간</span></footer>
   </main>
+  </div>
+  <div id="transit" class="transit" role="status" aria-live="polite" hidden>
+    <div class="transit-card">
+      <span class="transit-icon" aria-hidden="true">🚇</span>
+      <strong id="transit-title">경복궁역</strong>
+      <span id="transit-line">시청역 → 경복궁역</span>
+      <span class="transit-track" aria-hidden="true"><i></i></span>
+    </div>
   </div>
   <div id="toast" role="status" hidden></div>
   <dialog id="landmark-guide-dialog" aria-labelledby="landmark-guide-title">

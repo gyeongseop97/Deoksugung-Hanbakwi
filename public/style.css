@@ -633,3 +633,17 @@ dialog input,dialog code{display:block;width:100%;padding:9px;border-radius:7px;
   .wish-tools{grid-area:2 / 2;align-self:start}
   .wish-drawing-actions{margin-top:7px}
 }
+
+/* Subway ride between the Deoksugung and Gyeongbokgung maps */
+.transit{position:fixed;z-index:8;inset:0;display:grid;place-items:center;background:#0d1512f2;animation:transit-fade 2.7s ease both}
+.transit[hidden]{display:none}
+.transit-card{display:grid;justify-items:center;gap:8px;padding:28px 36px;border:1px solid #c8b48066;border-radius:18px;background:#1f2d25;color:#f3e7c4;text-align:center}
+.transit-icon{font-size:40px;line-height:1}
+.transit-card strong{font-size:26px;letter-spacing:.02em}
+.transit-card span{font-size:14px;color:#cfc59f}
+.transit-track{position:relative;width:min(240px,60vw);height:4px;margin-top:8px;border-radius:2px;background:#ffffff1f;overflow:hidden}
+.transit-track i{position:absolute;inset:0;border-radius:2px;background:#e1c687;transform-origin:left;animation:transit-run 2.3s ease-in-out both}
+@keyframes transit-fade{0%{opacity:0}14%{opacity:1}86%{opacity:1}100%{opacity:0}}
+@keyframes transit-run{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+@media (prefers-reduced-motion:reduce){.transit,.transit-track i{animation:none}}
+.gyeongbok-label{font-size:21px;stroke-width:5px}

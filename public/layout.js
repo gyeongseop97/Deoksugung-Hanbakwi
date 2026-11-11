@@ -225,6 +225,15 @@ export const city = [
   {...p("정동극장",37.56563,126.97308),w:27,d:21,h:14}
 ];
 export const landmarks=[spawn,ticket,gate,bridge,middle,court,hall,stoneHall,stoneFountain,palacePond,...palace,...route,...pavilions];
+export function addLandmarks(points){landmarks.push(...points);}
+// Other maps (reached by subway) register here. A zone owns a region of map coordinates,
+// decides what is walkable inside it and supplies its own path-finding grid.
+const zones=[];
+export function addZone(zone){zones.push(zone);}
+export function zoneAt(x,y){
+  for(const zone of zones)if(zone.contains(x,y))return zone;
+  return null;
+}
 export const distance=(point,x,y)=>Math.hypot(point.x-x,point.y-y);
 export const nearest=(x,y)=>landmarks.reduce((best,point)=>distance(point,x,y)<distance(best,x,y)?point:best);
 
@@ -248,7 +257,7 @@ function nearPath(points,x,y,radius){
 
 const obstacleBuckets = new Map();
 const stride=10;
-function bucketKey(x,y){return Math.floor(x/stride)+Math.floor(y/stride)*100;}
+function bucketKey(x,y){return Math.floor(x/stride)+Math.floor(y/stride)*1000;}
 export function addObstacle(x,y,width,depth,angle=0,top=Infinity){
   const c=Math.cos(angle),s=Math.sin(angle);
   const halfWidth=width/2+.29,halfDepth=depth/2+.29;
@@ -256,7 +265,7 @@ export function addObstacle(x,y,width,depth,angle=0,top=Infinity){
   const spanX=Math.abs(c)*halfWidth+Math.abs(s)*halfDepth,spanY=Math.abs(s)*halfWidth+Math.abs(c)*halfDepth;
   for(let px=Math.floor((x-spanX)/stride);px<=Math.floor((x+spanX)/stride);px++){
     for(let py=Math.floor((y-spanY)/stride);py<=Math.floor((y+spanY)/stride);py++){
-      const key=px+py*100;
+      const key=px+py*1000;
       if(!obstacleBuckets.has(key))obstacleBuckets.set(key,[]);
       obstacleBuckets.get(key).push(box);
     }
@@ -314,7 +323,7 @@ function crossesObstacle(from,to,level=0){
   let nextY=stepY?((row+Number(stepY>0))*stride-from.y)/dy:Infinity;
   // Traverse only grid buckets touched by the segment; test each box in local space.
   while(true){
-    const boxes=obstacleBuckets.get(col+row*100);
+    const boxes=obstacleBuckets.get(col+row*1000);
     if(boxes)for(const box of boxes){
       if(level<=box.top&&crossesBox(from.x,from.y,dx,dy,box))return true;
     }
@@ -325,6 +334,8 @@ function crossesObstacle(from,to,level=0){
 }
 // feet is the absolute height of a jumping or perched walker; 0 keeps every obstacle solid.
 export function walkable(x,y,feet=0){
+  const zone=zones.length?zoneAt(x,y):null;
+  if(zone)return !solidAt(x,y,feetLevel(feet))&&zone.walkable(x,y);
   if(x<45||x>560||y<30||y>420||solidAt(x,y,feetLevel(feet))||inPolygon(x,y,palacePond.outline))return false;
   return isInsideMuseum(x,y) || inPolygon(x,y,estateOutline) || distance(spawn,x,y)<23 || distance(fountain,x,y)<15 ||
     inPolygon(x,y,stonewallVerge) || distance(garden,x,y)<9 || nearPath(entranceWalk,x,y,7.4) || nearPath(route,x,y,5.4) ||
@@ -338,15 +349,17 @@ export function clearSegment(from,to,step=.36,feet=0){
   }
   return !count||!crossesObstacle(from,to,feetLevel(feet));
 }
-const spacing=2, cols=300, rows=225;
+const spacing=2;
+const baseField={ox:0,oy:0,cols:300,rows:225};
 const around=[[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,1],[1,-1],[-1,-1]];
-const gridPoint=(i)=>({x:i%cols*spacing,y:Math.floor(i/cols)*spacing});
-function snap(point,radius,direct,feet=0){
+const gridPoint=(i,{ox,oy,cols})=>({x:ox+i%cols*spacing,y:oy+Math.floor(i/cols)*spacing});
+function snap(point,radius,direct,feet,field){
   let best=-1,gap=Infinity;
-  const cx=Math.round(point.x/spacing),cy=Math.round(point.y/spacing);
+  const {ox,oy,cols,rows}=field;
+  const cx=Math.round((point.x-ox)/spacing),cy=Math.round((point.y-oy)/spacing);
   for(let y=Math.max(0,cy-radius);y<=Math.min(rows-1,cy+radius);y++){
     for(let x=Math.max(0,cx-radius);x<=Math.min(cols-1,cx+radius);x++){
-      const next={x:x*spacing,y:y*spacing},d=distance(point,next.x,next.y);
+      const next={x:ox+x*spacing,y:oy+y*spacing},d=distance(point,next.x,next.y);
       if(d>=gap||!walkable(next.x,next.y)||(direct&&!clearSegment(point,next,.36,feet)))continue;
       best=y*cols+x;gap=d;
     }
@@ -357,17 +370,19 @@ function snap(point,radius,direct,feet=0){
 export function planWalk(from,target,feet=0){
   const exact=walkable(target.x,target.y);
   if(exact&&clearSegment(from,target,.36,feet))return [target];
-  const start=snap(from,3,true,feet);
-  let goal=snap(target,7,exact);
+  const field=zoneAt(from.x,from.y)?.grid??baseField,{ox,oy,cols,rows}=field;
+  if(zoneAt(target.x,target.y)!==zoneAt(from.x,from.y))return [];
+  const start=snap(from,3,true,feet,field);
+  let goal=snap(target,7,exact,0,field);
   if(start<0||goal<0)return [];
   const previous=new Int32Array(cols*rows).fill(-1),queue=[start];
   previous[start]=start;
   for(let cursor=0;cursor<queue.length&&previous[goal]<0;cursor++){
-    const current=queue[cursor],point=gridPoint(current),col=current%cols,row=Math.floor(current/cols);
+    const current=queue[cursor],point=gridPoint(current,field),col=current%cols,row=Math.floor(current/cols);
     for(const [dx,dy] of around){
       const x=col+dx,y=row+dy,next=y*cols+x;
       if(x<0||x>=cols||y<0||y>=rows||previous[next]>=0||
-        !clearSegment(point,{x:x*spacing,y:y*spacing}))continue;
+        !clearSegment(point,{x:ox+x*spacing,y:oy+y*spacing}))continue;
       previous[next]=current;queue.push(next);
     }
   }
@@ -375,14 +390,14 @@ export function planWalk(from,target,feet=0){
     let nearestGap=16;
     goal=-1;
     for(const index of queue){
-      const point=gridPoint(index),gap=distance(target,point.x,point.y);
+      const point=gridPoint(index,field),gap=distance(target,point.x,point.y);
       if(gap<nearestGap){nearestGap=gap;goal=index;}
     }
     if(goal<0)return [];
   }
   const points=[];
-  for(let i=goal;i!==start;i=previous[i])points.push(gridPoint(i));
-  points.push(gridPoint(start));points.reverse();
+  for(let i=goal;i!==start;i=previous[i])points.push(gridPoint(i,field));
+  points.push(gridPoint(start,field));points.reverse();
   if(exact&&clearSegment(points.at(-1),target))points.push(target);
   const simplified=[];
   let cursor=from;

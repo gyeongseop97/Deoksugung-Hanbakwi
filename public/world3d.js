@@ -9,6 +9,8 @@ import { addStands, makeItemProps } from "./street-stands.js";
 import { addMuseum, stairHeight } from "./museum.js";
 import { PET_MS, FEED_MS, jumpLift } from "./activities.js";
 import { makeWalkerModels } from "./walker-model.js";
+import { gbSurveyModels } from "./gyeongbok.js";
+import { gbSite, gwanghwamun, inGyeongbok } from "./gyeongbok-layout.js";
 import { decodeWishFace, WISH_WIDTH, WISH_HEIGHT, WISH_COLORS, WISH_FLIGHT_MS } from "./wish-art.js";
 
 export function makeWorld(container,{onCatFlee,catSeed}={}) {
@@ -61,7 +63,9 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
       }
     `
   }));
-  sky.renderOrder=-3;scene.add(sky);
+  // Sky, clouds, hills and stars ride on one rig that moves with the walker to the other map.
+  const heavens=new T.Group();
+  sky.renderOrder=-3;heavens.add(sky);scene.add(heavens);
   scene.fog=new T.FogExp2(0xc6dbe3,.0039);
   const hemi=new T.HemisphereLight(0xe8f0ff,0x86765a,1.42);
   const sun=new T.DirectionalLight(0xffe7bd,3.05);
@@ -88,7 +92,7 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
   const moonLight=new T.DirectionalLight(0xabc9ff,0);
   moonLight.position.set(-145,94,33);
   scene.add(hemi,sun,sun.target,moonLight);
-  const drawPalaceSky=addPalaceSky(T,scene,{sunDirection:sunDirection.clone().multiplyScalar(142)});
+  const drawPalaceSky=addPalaceSky(T,heavens,{sunDirection:sunDirection.clone().multiplyScalar(142)});
   const wx=x=>x-300,wz=y=>y-225;
   let seed=220621;
   function rand(){seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;}
@@ -111,7 +115,7 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
   }
 
   const kit={wx,wz,rand,shape,box,cylinder,matte};
-  const {benches,trees,catWalls,fountains,lampMaterial,classical,middleModel,hallModel,drawPond,pavilionModels}=buildJeongdong(T,scene,kit);
+  const {benches,trees,catWalls,fountains,lampMaterial,classical,middleModel,hallModel,drawPond,pavilionModels,subwayStations}=buildJeongdong(T,scene,kit);
   const drawWater=addWater(T,scene,fountains,kit);
   const stations=addStands(T,scene,kit);
   const createItemProp=makeItemProps(T,kit);
@@ -122,7 +126,7 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     scene.add(light);
     return light;
   });
-  const nightSky=addNightSky(T,scene,rand);
+  const nightSky=addNightSky(T,heavens,rand);
   const dayHorizon=new T.Color(0xcce4f0),nightHorizon=new T.Color(0x23384f);
   const dayZenith=new T.Color(0x367ec5),nightZenith=new T.Color(0x080e21);
   const dayFog=new T.Color(0xc6dbe3),nightFog=new T.Color(0x1b2b40);
@@ -142,8 +146,11 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     const {spec,groups}=pavilionModels.get(label);
     return {model,point:spec,groups,angle:spec.angle};
   });
-  const fallbackGroups=new Set([classical,middleModel,hallModel,...surveyedPavilions.flatMap(pavilion=>pavilion.groups)]);
-  consolidate(scene,fallbackGroups);
+  // Gyeongbokgung halls stay separate too, so a survey model can take a hall's place later.
+  const gyeongbokGroups=subwayStations.groups;
+  const fallbackGroups=new Set([classical,middleModel,hallModel,...surveyedPavilions.flatMap(pavilion=>pavilion.groups),
+    ...gbSurveyModels.map(id=>gyeongbokGroups.get(id)).filter(Boolean)]);
+  const chunks=consolidate(scene,fallbackGroups);
 
   const outdoors=new T.Group();
   for(const object of [...scene.children]){
@@ -193,6 +200,7 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
   loadLandmark("junghwamun",middle,[middleModel],courtAngle).then(loaded=>{scannedMiddle=loaded;});
   loadLandmark("junghwajeon",hall,[hallModel],courtAngle);
   for(const {model,point,groups,angle} of surveyedPavilions)loadLandmark(model,point,groups,angle);
+  for(const id of gbSurveyModels)if(gyeongbokGroups.has(id))loadLandmark(id,gbSite[id],[gyeongbokGroups.get(id)],gbSite[id].angle);
 
   const models=new Map(),emojiMaps=new Map();
   function labelSprite(nickname,coat){
@@ -340,7 +348,7 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     }
     if(element.hidden===show)element.hidden=!show;
   }
-  let cameraAnchor=null,cameraDistance=0,prevTime=0,governedAt=0;
+  let cameraAnchor=null,cameraDistance=0,prevTime=0,governedAt=0,cullAt=0;
   function govern(now){
     const elapsed=now-(governedAt||now);
     governedAt=now;
@@ -376,6 +384,19 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     scene.fog.color.copy(dayFog).lerp(nightFog,night);
     hemi.color.copy(ambientDay).lerp(ambientNight,night);
     const anchor=me,angle=view.pan*Math.PI/180,indoors=museum.isInside(anchor.x,anchor.y);
+    // Around Deoksugung the skyline is fixed; at Gyeongbokgung it travels with the walker
+    // like a backdrop so the distant city and hills never drift into the palace.
+    if(inGyeongbok(anchor.x,anchor.y))heavens.position.set(wx(anchor.x)-21,0,wz(anchor.y)+14);
+    else heavens.position.set(0,0,0);
+    if(!indoors&&now>=cullAt){
+      // Fog hides everything past half a kilometre, so those map cells are not drawn at all.
+      cullAt=now+260;
+      const cx=wx(anchor.x),cz=wz(anchor.y);
+      for(const chunk of chunks){
+        const visible=Math.hypot(chunk.x-cx,chunk.z-cz)-chunk.radius<540;
+        if(chunk.object.visible!==visible)chunk.object.visible=visible;
+      }
+    }
     outdoors.visible=!indoors;museum.setVisible(indoors);
     guideMarker.visible=!indoors&&Math.hypot(anchor.x-ticketGuide.x,anchor.y-ticketGuide.y)<22;
     if(guideMarker.visible){
@@ -534,7 +555,7 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
 // vertex-coloured mesh. Cells outside the view are culled as a whole.
 function consolidate(scene,fallbackGroups,cell=48){
   scene.updateMatrixWorld(true);
-  const plainMaterials=new Map(),instanceGroups=new Map(),mergeGroups=new Map();
+  const plainMaterials=new Map(),instanceGroups=new Map(),mergeGroups=new Map(),made=[];
   const local=new T.Matrix4(),inverse=new T.Matrix4(),normalMatrix=new T.Matrix3(),centre=new T.Vector3(),vertex=new T.Vector3();
   const inverses=new Map();
   function plainKey(material){
@@ -586,6 +607,7 @@ function consolidate(scene,fallbackGroups,cell=48){
       });
       batch.castShadow=batch.receiveShadow=true;
       batch.computeBoundingSphere();owner.add(batch);
+      made.push([batch,batch.boundingSphere]);
       continue;
     }
     const mergeKey=key.slice(0,key.lastIndexOf("|"));
@@ -642,7 +664,14 @@ function consolidate(scene,fallbackGroups,cell=48){
     const merged=new T.Mesh(geometry,plain?plainMaterial(look,first.material,true):first.material);
     merged.castShadow=merged.receiveShadow=true;
     owner.add(merged);
+    made.push([merged,geometry.boundingSphere]);
   }
+  scene.updateMatrixWorld(true);
+  // World-space bounds of every combined piece, used to skip far-away map cells.
+  return made.map(([object,sphere])=>{
+    const centre=sphere.center.clone().applyMatrix4(object.matrixWorld);
+    return {object,x:centre.x,z:centre.z,radius:sphere.radius};
+  });
 }
 
 // Survey models arrive without normals and would be shaded one hard facet at a time. This
