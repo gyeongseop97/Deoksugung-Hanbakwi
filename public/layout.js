@@ -44,6 +44,8 @@ export const route = [
   p("정동길",37.56567,126.97233)
 ];
 export const entranceWalk = [spawn,{x:spawn.x+2,y:route[0].y-6},route[0]];
+// Pavement south of the gate plaza beside the avenue: City Hall station exit 2 and the bus stop.
+export const stationWalk=[{x:463.5,y:311},{x:463.5,y:337}];
 export const palace = [
   spawn,p("매표 광장",37.56503,126.97671),gate,bridge,
   mapPoint([711,706],"덕수궁 종합안내도"),
@@ -385,7 +387,7 @@ export function walkable(x,y,feet=0){
   if(zone)return !solidAt(x,y,feetLevel(feet))&&zone.walkable(x,y);
   if(x<45||x>560||y<30||y>420||solidAt(x,y,feetLevel(feet))||inPolygon(x,y,palacePond.outline))return false;
   return isInsideMuseum(x,y) || inPolygon(x,y,estateOutline) || distance(spawn,x,y)<23 || distance(fountain,x,y)<15 ||
-    inPolygon(x,y,stonewallVerge) || distance(garden,x,y)<9 || nearPath(entranceWalk,x,y,7.4) || nearPath(route,x,y,5.4) ||
+    inPolygon(x,y,stonewallVerge) || distance(garden,x,y)<9 || nearPath(entranceWalk,x,y,7.4) || nearPath(stationWalk,x,y,4.6) || nearPath(route,x,y,5.4) ||
     nearPath(palace,x,y,4.1);
 }
 export function clearSegment(from,to,step=.36,feet=0){

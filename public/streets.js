@@ -186,6 +186,7 @@ export function buildJeongdong(T,scene,kit) {
   }
   const s=placed(spawn);
   paved(s.x-1,s.z+4,39,39,.025);
+  paved(wx(463.5),wz(327.5),9.6,20.5,.028);
   const avenue=[{x:gate.x+23,y:40},{x:gate.x+25,y:433}];
   ribbon(avenue,-5.7,-3.7,pavingMaterial,.040);
   ribbon(avenue,-3.7,18.0,roadMaterial,.013);

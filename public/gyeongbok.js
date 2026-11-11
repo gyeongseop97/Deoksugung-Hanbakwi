@@ -1,5 +1,5 @@
 import {
-  gwanghwamun,gbSites,gbSite,gbCourts,gbLake,gbPond,gbPaths,gbLawns,gbStation,cityHallStation,subwayStops,
+  gwanghwamun,gbSites,gbSite,gbCourts,gbLake,gbPond,gbPaths,gbLawns,gbStation,cityHallStation,cityHallBusStop,gbBusStop,subwayStops,
   gbWoldae,gbHaetae,gbPhotoZone,gbRoyalPavilion,wallHalf,wallNorth,at
 } from "./gyeongbok-layout.js";
 import {solidAt} from "./layout.js";
@@ -702,6 +702,44 @@ export function buildGyeongbok(T,scene,kit,tools){
   scene.updateMatrixWorld(true);
   subwayExit(cityHallStation,"시청 City Hall",0x00a84d);
   subwayExit(gbStation,"경복궁 Gyeongbokgung",0xef7c1c);
+  // Bus stops: a glass shelter with a bench and route sign, and a city bus waiting at the kerb.
+  function busStop(stop,title,heading){
+    const g=new T.Group();
+    g.position.set(wx(stop.x),0,wz(stop.y));g.rotation.y=stop.angle;g.name=stop.name;scene.add(g);
+    const steel=0x56646a,blue=0x2a5fb8;
+    for(const side of [-1,1]){box(steel,side*1.7,1.25,-.45,.09,2.5,.09,g);box(steel,side*1.7,1.25,.45,.09,2.5,.09,g);}
+    box(0x9cc2c2,0,1.3,-.5,3.4,1.9,.05,g);
+    box(0xe6ebe8,0,2.55,.05,3.8,.1,1.5,g);box(steel,0,2.47,.05,3.9,.08,1.6,g);
+    box(0x7b5540,0,.48,-.2,2.6,.08,.42,g);
+    for(const side of [-1,1])box(steel,side*1.1,.24,-.2,.07,.48,.36,g);
+    box(steel,2.5,1.5,.5,.1,3,.1,g);
+    box(blue,2.5,2.75,.5,.9,.6,.14,g);
+    nameplate("BUS",g,2.5,2.75,.58,.8,.34,"#2a5fb8","#ffffff");
+    nameplate(title,g,0,2.2,-.46,3.0,.42,"#f4f4ee","#1e2a30");
+    block(g.position.x,g.position.z,3.6,1.1,stop.angle,2.7);
+    // The bus stands on the road beyond the kerb, facing along it.
+    const bus=new T.Group();
+    bus.position.set(-.6,0,3.6);g.add(bus);
+    box(blue,0,1.55,0,10.4,2.5,2.5,bus);
+    box(0xe9edf0,0,2.86,0,10.2,.12,2.4,bus);
+    box(0x1c2733,0,1.95,1.26,9.2,.95,.03,bus);box(0x1c2733,0,1.95,-1.26,9.2,.95,.03,bus);
+    box(0x1c2733,5.21,1.9,0,.03,1.2,2.2,bus);box(0x1c2733,-5.21,2.0,0,.03,.9,2.1,bus);
+    box(0xf2f5f7,0,1.1,1.262,10.4,.14,.02,bus);box(0xf2f5f7,0,1.1,-1.262,10.4,.14,.02,bus);
+    for(const x of [-2.2,3.6])box(0x22303c,x,1.35,-1.265,1.1,2.0,.03,bus);
+    box(0x10161c,5.22,2.62,0,.03,.3,1.7,bus);
+    nameplate(heading,bus,5.24,2.62,0,1.6,.26,"#10161c","#ffb347").rotation.y=Math.PI/2;
+    for(const x of [-3.4,3.2])for(const side of [-1,1]){
+      const wheel=cylinder(0x16181a,x,.5,side*1.12,.5,.32,16,bus);wheel.rotation.x=Math.PI/2;
+      cylinder(0x8d949a,x,.5,side*1.29,.24,.03,12,bus).rotation.x=Math.PI/2;
+    }
+    box(0xf6e7a1,5.22,.95,.85,.03,.2,.36,bus);box(0xf6e7a1,5.22,.95,-.85,.03,.2,.36,bus);
+    box(0xb3261e,-5.22,1.0,.9,.03,.22,.3,bus);box(0xb3261e,-5.22,1.0,-.9,.03,.22,.3,bus);
+    g.updateMatrixWorld(true);
+    const parked=bus.localToWorld(new T.Vector3(0,0,0));
+    block(parked.x,parked.z,10.6,2.7,stop.angle,3);
+  }
+  busStop(cityHallBusStop,"시청앞·덕수궁","경복궁");
+  busStop(gbBusStop,"경복궁","시청·덕수궁");
 
   // ---- Planting --------------------------------------------------------------------------
   for(const group of groups.values())treeClearance.addModel(group);

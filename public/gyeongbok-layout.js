@@ -65,14 +65,26 @@ export const gbStation={
   name:"경복궁역 5번 출구",...at(-104,36,"경복궁역 5번 출구"),angle:Math.PI/2,
   door:at(-100.4,36),arrive:{...at(-96.5,36),heading:60}
 };
-// City Hall station exit 2 opens beside Daehanmun, a few steps from the ticket office.
+// City Hall station exit 2 stands just south of Daehanmun, on the avenue pavement where the
+// stonewall road begins; the Deoksugung bus stop is on the kerb beside it.
 export const cityHallStation={
-  name:"시청역 2번 출구",x:spawn.x+7.6,y:spawn.y+7.4,angle:-Math.PI/2,
-  door:{x:spawn.x+4.0,y:spawn.y+7.4},arrive:{x:spawn.x+1.2,y:spawn.y+6.2,heading:285}
+  name:"시청역 2번 출구",x:463.6,y:333.2,angle:Math.PI,
+  door:{x:463.6,y:329.6},arrive:{x:462.4,y:327.2,heading:350}
+};
+// Bus stops: one by the station exit, one on the road in front of the Gwanghwamun terrace.
+export const cityHallBusStop={
+  name:"시청앞·덕수궁 정류장",x:466.2,y:320.6,angle:Math.PI/2,
+  door:{x:464.4,y:320.6},arrive:{x:463.4,y:319.4,heading:320}
+};
+export const gbBusStop={
+  name:"경복궁 정류장",...at(31,-55.6,"경복궁 정류장"),angle:0,
+  door:at(31,-53.9),arrive:{...at(27.5,-51.5),heading:335}
 };
 export const subwayStops=[
-  {...cityHallStation,id:"city-hall",to:"gyeongbokgung",destination:"경복궁역",line:"시청역 → 경복궁역"},
-  {...gbStation,id:"gyeongbokgung",to:"city-hall",destination:"시청역",line:"경복궁역 → 시청역"}
+  {...cityHallStation,id:"city-hall",mode:"subway",to:"gyeongbokgung",destination:"경복궁역",line:"시청역 → 경복궁역"},
+  {...gbStation,id:"gyeongbokgung",mode:"subway",to:"city-hall",destination:"시청역",line:"경복궁역 → 시청역"},
+  {...cityHallBusStop,id:"bus-city-hall",mode:"bus",to:"bus-gyeongbokgung",destination:"경복궁 정류장",line:"시청앞·덕수궁 → 경복궁"},
+  {...gbBusStop,id:"bus-gyeongbokgung",mode:"bus",to:"bus-city-hall",destination:"시청앞·덕수궁 정류장",line:"경복궁 → 시청앞·덕수궁"}
 ];
 
 // Stone-paved royal road along the axis and the main visitor paths (for ground and map).
@@ -216,7 +228,7 @@ addZone({
   grid:{ox:gbBounds.minX,oy:gbBounds.minY,cols:301,rows:491}
 });
 addLandmarks([
-  ...gbSites,gbStation,cityHallStation,
+  ...gbSites,gbStation,cityHallStation,cityHallBusStop,gbBusStop,
   at(0,-28,"광화문 월대"),at(-50,-36,"광화문 광장"),at(50,-36,"광화문 광장"),at(0,70,"흥례문 앞마당"),at(0,180,"영제교"),at(0,262,"근정전 마당"),
   at(-128,428,"경회루 연못"),at(12,706,"향원정"),at(0,480,"아미산"),
   ...gbPaths.flatMap(path=>path.points.slice(1,-1).map(point=>({...point,name:path.name})))

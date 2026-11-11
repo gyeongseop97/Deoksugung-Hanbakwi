@@ -972,6 +972,30 @@ function nearbySubway(){
   }
   return null;
 }
+// Ride animations: a train pulls in, opens its doors and leaves through the tunnel; a bus
+// drives past the city skyline toward the palace gate.
+const transitScenes={
+  subway:`<svg viewBox="0 0 320 120" role="img" aria-label="지하철"><rect width="320" height="120" fill="#10181c"/>
+    <g class="ride-tunnel"><path d="M-40 26H400" stroke="#f4d98a" stroke-width="3" stroke-dasharray="14 46"/><path d="M-40 14H400" stroke="#2b3a41" stroke-width="6"/></g>
+    <rect y="92" width="320" height="28" fill="#2a343a"/><rect y="92" width="320" height="3" fill="#f0c94a"/>
+    <g class="ride-train"><rect x="20" y="40" width="280" height="54" rx="10" fill="#d7dde0"/><rect x="20" y="70" width="280" height="8" fill="#ef7c1c"/>
+      <rect x="20" y="82" width="280" height="12" rx="4" fill="#8f999e"/>
+      <g fill="#1e2b33"><rect x="34" y="48" width="38" height="18" rx="3"/><rect x="140" y="48" width="40" height="18" rx="3"/><rect x="248" y="48" width="38" height="18" rx="3"/></g>
+      <g class="ride-doors"><rect class="ride-door-left" x="84" y="46" width="22" height="42" fill="#b9c2c6" stroke="#6d777c"/><rect class="ride-door-right" x="106" y="46" width="22" height="42" fill="#b9c2c6" stroke="#6d777c"/>
+        <rect class="ride-door-left" x="192" y="46" width="22" height="42" fill="#b9c2c6" stroke="#6d777c"/><rect class="ride-door-right" x="214" y="46" width="22" height="42" fill="#b9c2c6" stroke="#6d777c"/></g>
+      <circle cx="292" cy="62" r="4" fill="#fff3c2"/></g></svg>`,
+  bus:`<svg viewBox="0 0 320 120" role="img" aria-label="버스"><rect width="320" height="120" fill="#bfe0ee"/>
+    <g class="ride-skyline" fill="#8fa9b8"><rect x="10" y="30" width="34" height="62"/><rect x="60" y="44" width="46" height="48"/><rect x="130" y="22" width="28" height="70"/><rect x="180" y="50" width="52" height="42"/><rect x="250" y="36" width="36" height="56"/>
+      <rect x="330" y="30" width="34" height="62"/><rect x="380" y="44" width="46" height="48"/><rect x="450" y="22" width="28" height="70"/><rect x="500" y="50" width="52" height="42"/><rect x="570" y="36" width="36" height="56"/></g>
+    <g class="ride-gate"><rect x="0" y="62" width="120" height="30" fill="#8d897c"/><path d="M18 92V74a9 9 0 0 1 18 0v18M51 92V72a9 9 0 0 1 18 0v20M84 92V74a9 9 0 0 1 18 0v18" fill="#3b3a34"/>
+      <rect x="14" y="44" width="92" height="18" fill="#8c2f24"/><path d="M2 46L60 30l58 16z" fill="#384344"/></g>
+    <rect y="92" width="320" height="28" fill="#4a5055"/><g class="ride-lane"><path d="M-80 106H480" stroke="#f1e4c6" stroke-width="3" stroke-dasharray="26 30"/></g>
+    <g class="ride-bus"><rect x="70" y="42" width="180" height="50" rx="8" fill="#2a5fb8"/><rect x="70" y="42" width="180" height="6" rx="3" fill="#e9edf0"/>
+      <g fill="#1c2733"><rect x="80" y="52" width="30" height="18" rx="2"/><rect x="116" y="52" width="30" height="18" rx="2"/><rect x="152" y="52" width="30" height="18" rx="2"/><rect x="188" y="52" width="26" height="18" rx="2"/><rect x="220" y="50" width="26" height="24" rx="3"/></g>
+      <rect x="70" y="76" width="180" height="4" fill="#f2f5f7"/><circle cx="246" cy="84" r="3" fill="#fff3c2"/>
+      <g class="ride-wheel" style="transform-origin:112px 94px"><circle cx="112" cy="94" r="11" fill="#16181a"/><path d="M112 85v18M103 94h18" stroke="#8d949a" stroke-width="2"/></g>
+      <g class="ride-wheel" style="transform-origin:212px 94px"><circle cx="212" cy="94" r="11" fill="#16181a"/><path d="M212 85v18M203 94h18" stroke="#8d949a" stroke-width="2"/></g></g></svg>`
+};
 function rideSubway(){
   const stop=nearbySubway();
   if(!stop||riding||myLink()?.active||feedingLocked(gameTime()))return;
@@ -979,13 +1003,15 @@ function rideSubway(){
   riding=true;resetInput();
   $("transit-title").textContent=stop.destination;
   $("transit-line").textContent=stop.line;
+  $("transit").dataset.mode=stop.mode;
+  $("transit-scene").innerHTML=transitScenes[stop.mode];
   $("transit").hidden=false;
   const visit=session;
-  setTimeout(()=>{if(session===visit)movePlayerTo(target.arrive,target.name);},1100);
+  setTimeout(()=>{if(session===visit)movePlayerTo(target.arrive,target.name);},2300);
   setTimeout(()=>{
-    $("transit").hidden=true;riding=false;
+    $("transit").hidden=true;riding=false;$("transit-scene").innerHTML="";
     if(session===visit){toast(target.name+"에 도착했어요.");focusGame();}
-  },2700);
+  },4600);
 }
 $("subway").addEventListener("click",rideSubway);
 function nearbyExhibit(){
@@ -1123,7 +1149,7 @@ function updateActivities(time,guideNearby){
     setActivity("use-item",spec?(me.item.kind==="sparkler"?spec.verb:spec.verb+" · "+me.item.remaining+"회"):null,!canUseItem(time));
   }
   const subway=eligible&&nearbySubway();
-  setActivity("subway",subway?"지하철 타기 · "+subway.destination:null,riding||feeding||Boolean(myLink()?.active));
+  setActivity("subway",subway?(subway.mode==="bus"?"버스 타기 · ":"지하철 타기 · ")+subway.destination:null,riding||feeding||Boolean(myLink()?.active));
   const portal=eligible&&portalNearby();
   setActivity("museum-door",portal?(portal.inside?"나가기":"입장하기"):null,feeding||Boolean(myLink()?.active));
   const exhibit=eligible&&nearbyExhibit();
@@ -1356,7 +1382,7 @@ function drawGyeongbok(base,mini){
     const big=!mini&&inGyeongbok(stop.x,stop.y);
     svg(base,"circle",{cx:stop.x,cy:stop.y,r:mini?1.9:big?7:3,fill:"#f1d8a6",stroke:"#513e32","stroke-width":mini?.6:big?2:.9});
     svg(base,"text",{x:stop.x,y:stop.y-(mini?3.2:big?12:5),class:mini?"mini-landmark":big?"map-label gyeongbok-label":"map-label","text-anchor":"middle",
-      ...(mini||big?{}:{style:"font-size:8.5px;stroke-width:2.2px"})},mini?"지하철":stop.name);
+      ...(mini||big?{}:{style:"font-size:8.5px;stroke-width:2.2px"})},mini?(stop.mode==="bus"?"버스":"지하철"):stop.name);
   }
 }
 const gyeongbokViewBox=[gbBounds.minX+18,gbBounds.minY-24,564,1016].join(" ");

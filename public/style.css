@@ -635,15 +635,35 @@ dialog input,dialog code{display:block;width:100%;padding:9px;border-radius:7px;
 }
 
 /* Subway ride between the Deoksugung and Gyeongbokgung maps */
-.transit{position:fixed;z-index:8;inset:0;display:grid;place-items:center;background:#0d1512f2;animation:transit-fade 2.7s ease both}
+.transit{position:fixed;z-index:8;inset:0;display:grid;place-items:center;background:#0d1512f2;animation:transit-fade 4.6s ease both}
 .transit[hidden]{display:none}
-.transit-card{display:grid;justify-items:center;gap:8px;padding:28px 36px;border:1px solid #c8b48066;border-radius:18px;background:#1f2d25;color:#f3e7c4;text-align:center}
-.transit-icon{font-size:40px;line-height:1}
+.transit-card{display:grid;justify-items:center;gap:8px;padding:22px 26px 26px;border:1px solid #c8b48066;border-radius:18px;background:#1f2d25;color:#f3e7c4;text-align:center;box-shadow:0 18px 60px #0009}
+.transit-scene{width:min(360px,74vw);aspect-ratio:8/3;border-radius:12px;overflow:hidden;background:#10181c;margin-bottom:6px}
+.transit-scene svg{display:block;width:100%;height:100%}
 .transit-card strong{font-size:26px;letter-spacing:.02em}
 .transit-card span{font-size:14px;color:#cfc59f}
 .transit-track{position:relative;width:min(240px,60vw);height:4px;margin-top:8px;border-radius:2px;background:#ffffff1f;overflow:hidden}
-.transit-track i{position:absolute;inset:0;border-radius:2px;background:#e1c687;transform-origin:left;animation:transit-run 2.3s ease-in-out both}
-@keyframes transit-fade{0%{opacity:0}14%{opacity:1}86%{opacity:1}100%{opacity:0}}
+.transit-track i{position:absolute;inset:0;border-radius:2px;background:#e1c687;transform-origin:left;animation:transit-run 4.2s ease-in-out both}
+.ride-train{animation:ride-train 4.4s cubic-bezier(.3,0,.3,1) both}
+.ride-tunnel{animation:ride-tunnel .5s linear infinite}
+.ride-door-left{animation:ride-door-left 4.4s ease both}
+.ride-door-right{animation:ride-door-right 4.4s ease both}
+.ride-bus{animation:ride-bus 4.4s ease-in-out both}
+.ride-wheel{animation:ride-wheel .5s linear infinite}
+.ride-lane{animation:ride-lane .45s linear infinite}
+.ride-skyline{animation:ride-skyline 4.4s linear both}
+.ride-gate{animation:ride-gate 4.4s ease-in both}
+@keyframes transit-fade{0%{opacity:0}8%{opacity:1}90%{opacity:1}100%{opacity:0}}
 @keyframes transit-run{from{transform:scaleX(0)}to{transform:scaleX(1)}}
-@media (prefers-reduced-motion:reduce){.transit,.transit-track i{animation:none}}
+@keyframes ride-train{0%{transform:translateX(-340px)}22%{transform:translateX(0)}52%{transform:translateX(0)}100%{transform:translateX(360px)}}
+@keyframes ride-tunnel{from{transform:translateX(0)}to{transform:translateX(-60px)}}
+@keyframes ride-door-left{0%,24%{transform:translateX(0)}32%,44%{transform:translateX(-18px)}52%,100%{transform:translateX(0)}}
+@keyframes ride-door-right{0%,24%{transform:translateX(0)}32%,44%{transform:translateX(18px)}52%,100%{transform:translateX(0)}}
+@keyframes ride-bus{0%{transform:translate(-300px,0)}18%{transform:translate(-20px,0)}30%{transform:translate(-20px,-1.5px)}45%{transform:translate(0,0)}60%{transform:translate(0,-1.5px)}82%{transform:translate(20px,0)}100%{transform:translate(20px,0)}}
+@keyframes ride-wheel{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+@keyframes ride-lane{from{transform:translateX(0)}to{transform:translateX(-56px)}}
+@keyframes ride-skyline{from{transform:translateX(0)}to{transform:translateX(-300px)}}
+@keyframes ride-gate{0%,58%{transform:translateX(330px)}100%{transform:translateX(190px)}}
+@media (prefers-reduced-motion:reduce){.transit,.transit-track i,.ride-train,.ride-tunnel,.ride-door-left,.ride-door-right,.ride-bus,.ride-wheel,.ride-lane,.ride-skyline,.ride-gate{animation:none}}
+
 .gyeongbok-label{font-size:21px;stroke-width:5px}
