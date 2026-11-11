@@ -305,7 +305,7 @@ function paintCoat(cat,x,y,z,section){
   return cat.coat;
 }
 
-function batchParts(T,parts,material){
+function batchParts(T,parts){
   const positions=[],normals=[],colors=[];
   const transform=new T.Matrix4(),normalMatrix=new T.Matrix3(),object=new T.Object3D();
   const point=new T.Vector3(),normal=new T.Vector3(),tint=new T.Color();
@@ -327,24 +327,21 @@ function batchParts(T,parts,material){
   geometry.setAttribute("position",new T.Float32BufferAttribute(positions,3));
   geometry.setAttribute("normal",new T.Float32BufferAttribute(normals,3));
   geometry.setAttribute("color",new T.Float32BufferAttribute(colors,3));
-  return new T.Mesh(geometry,material);
+  return geometry;
 }
 
-function catModel(T,scene,cat,meshes){
-  const {sphere,detail,ear,tailShape,fluffyTail,fur,plain,shadowGeometry,shadowMaterial}=meshes;
-  const group=new T.Group(),upper=new T.Group(),head=new T.Group(),tail=new T.Group();
-  group.name=cat.name;group.visible=false;group.scale.setScalar(cat.size);scene.add(group);
-  group.add(upper);upper.add(head,tail);
+function coatGeometry(T,cat,meshes){
+  const {sphere,detail,ear,tailShape,fluffyTail}=meshes;
   const part=(geometry,color,position,scale,rotation)=>({geometry,color,position,scale,rotation});
   const bodyCoat=(x,y,z)=>paintCoat(cat,x,y,z,"body");
   const headCoat=(x,y,z)=>paintCoat(cat,x,y,z,"head");
   const tailCoat=(x,y,z)=>paintCoat(cat,x,y,z,"tail");
-  upper.add(batchParts(T,[
+  const body=batchParts(T,[
     part(sphere,bodyCoat,[0,.315,-.015],[.144,.134,.257]),
     part(sphere,bodyCoat,[0,.309,-.16],[.151,.144,.141]),
     part(sphere,bodyCoat,[0,.335,.145],[.121,.147,.141]),
     part(sphere,bodyCoat,[0,.392,.215],[.093,.109,.114])
-  ],fur));
+  ]);
 
   const face=[part(sphere,headCoat,[0,0,0],[.122,.106,.109])],eyeParts=[];
   const white=cat.pattern==="calico"||cat.pattern==="tuxedo"||cat.pattern==="white";
@@ -371,13 +368,23 @@ function catModel(T,scene,cat,meshes){
     }
   }
   face.push(part(detail,nose,[0,-.023,.122],[.022,.015,.013]));
-  const eyes=batchParts(T,eyeParts,fur);
-  head.add(batchParts(T,face,fur),eyes);
-  head.position.set(0,.454,.243);
-
-  tail.add(batchParts(T,[
+  const tail=batchParts(T,[
     part(cat.pattern==="white"?fluffyTail:tailShape,tailCoat,[0,0,0],[1,1,1])
-  ],fur));
+  ]);
+  return {body,head:batchParts(T,face),eyes:batchParts(T,eyeParts),tail};
+}
+
+function catModel(T,scene,cat,coat,meshes){
+  const {detail,fur,plain,shadowGeometry,shadowMaterial,coats}=meshes;
+  if(!coats.has(coat.id))coats.set(coat.id,coatGeometry(T,coat,meshes));
+  const skin=coats.get(coat.id);
+  const group=new T.Group(),upper=new T.Group(),head=new T.Group(),tail=new T.Group();
+  group.name=cat.name;group.visible=false;group.scale.setScalar(cat.size);scene.add(group);
+  group.add(upper);upper.add(head,tail,new T.Mesh(skin.body,fur));
+  const eyes=new T.Mesh(skin.eyes,fur);
+  head.add(new T.Mesh(skin.head,fur),eyes);
+  head.position.set(0,.454,.243);
+  tail.add(new T.Mesh(skin.tail,fur));
   tail.position.set(0,.312,-.240);
 
   const paws=new T.InstancedMesh(detail,plain,8),tint=new T.Color();
@@ -421,7 +428,7 @@ function sharedCatMeshes(T){
   return {
     sphere:new T.SphereGeometry(1,13,9).toNonIndexed(),
     detail:new T.SphereGeometry(1,8,6).toNonIndexed(),
-    ear,tailShape:makeTail(false),fluffyTail:makeTail(true),
+    ear,tailShape:makeTail(false),fluffyTail:makeTail(true),coats:new Map(),
     fur:new T.MeshStandardMaterial({vertexColors:true,roughness:.94}),
     plain:new T.MeshStandardMaterial({roughness:.95}),
     shadowGeometry:new T.CircleGeometry(1,14),
@@ -481,29 +488,23 @@ export function addParkLife(T,scene,kit){
     const next=String(value??"preview");
     if(next===seed)return;
     seed=next;
-    for(const cat of live){
-      cat.group.traverse(object=>{
-        if(object.isInstancedMesh)object.dispose();
-        else if(object.isMesh&&object!==cat.shadow)object.geometry.dispose();
-      });
-      cat.group.removeFromParent();
-    }
+    for(const cat of live){cat.paws.dispose();cat.group.removeFromParent();}
     live.length=0;
     social.reset();
     const hash=catSeedNumber(seed),random=randomSequence(hash);
-    const count=9+Math.floor(random()*4),coats=shuffled(cats,random);
-    coats.push(...shuffled(cats,random).slice(0,count-cats.length));
-    const used={benches:new Set(),walls:new Set(),trees:new Set()};
+    const count=18+Math.floor(random()*7),coats=[];
+    while(coats.length<count)coats.push(...shuffled(cats,random).slice(0,count-coats.length));
+    const used={homes:new Set(),benches:new Set(),walls:new Set(),trees:new Set()};
     for(const [index,coat] of coats.entries()){
       const rng=randomSequence(hash^Math.imul(index+1,0x9e3779b1));
-      const home=roam.start(rng,index)??findHome(spawn);
+      const home=roam.start(rng,index,used.homes)??findHome(spawn);
       if(!home)continue;
       const ground=roam(home,rng,index);
       if(!ground.length)continue;
       const spec=index<cats.length?coat:{...coat,id:coat.id+"-"+(index+1),name:coat.name+" "+(index-cats.length+2),
         size:coat.size*(.88+rng()*.11)};
       const path=makeRoute(ground,rng,kit,used,index);
-      const model=catModel(T,scene,spec,meshes);
+      const model=catModel(T,scene,spec,coat,meshes);
       live.push({...spec,...path,...model,x:home.x,y:home.y,
         routeAt:null,updatedAt:null,petFrom:0,petUntil:0,petPose:null,canPet:false,escape:null,checkAt:0,
         lure:null,lureCheckAt:0,feeding:null,pose:null,social:null,rejoin:null,frame:{}});
