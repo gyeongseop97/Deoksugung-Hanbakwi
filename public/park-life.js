@@ -1,5 +1,5 @@
 import {clearSegment,palacePaths,route,solidAt,spawn,walkable} from "./layout.js";
-import {PET_MS} from "./activities.js";
+import {FEED_MS,PET_MS} from "./activities.js";
 
 const cats=[
   {id:"cheese",name:"치즈태비",home:spawn,habit:"bench",size:1.04,coat:0xd5914b,mark:0x98521f,paw:0xf0d5aa,eyes:[0xa8a953,0xa8a953],pattern:"tabby"},
@@ -91,7 +91,28 @@ function wallExcursion(origin,walls,used){
   return null;
 }
 
-function makeRoute(home,random,excursion){
+function treeExcursion(home,kit,used){
+  const worldX=kit.wx(home.x),worldZ=kit.wz(home.y);
+  const options=(kit.trees??[]).filter(tree=>!used.has(tree)&&Math.hypot(tree.x-worldX,tree.z-worldZ)<18);
+  options.sort((a,b)=>Math.hypot(a.x-worldX,a.z-worldZ)-Math.hypot(b.x-worldX,b.z-worldZ));
+  for(const tree of options){
+    const x=tree.x-kit.wx(0),y=tree.z-kit.wz(0);
+    const fromHome=Math.atan2(home.x-x,home.y-y),reach=tree.height*.047+.37;
+    for(const turn of [0,.54,-.54,1.02,-1.02,1.57,-1.57]){
+      const angle=fromHome+turn;
+      const point={x:x+Math.sin(angle)*reach,y:y+Math.cos(angle)*reach};
+      const distance=Math.hypot(point.x-home.x,point.y-home.y);
+      if(distance<1||!clearSegment(home,point))continue;
+      used.add(tree);
+      const faceTree={...point,heading:angle+Math.PI,surface:"tree"};
+      return [{a:home,b:faceTree,travel:distance/.68,pause:3.7},
+        {a:point,b:home,travel:distance/.67,pause:1}];
+    }
+  }
+  return [];
+}
+
+function makeRoute(home,random,excursion,scratching){
   const path=[home];
   for(let stop=0;stop<(excursion?3:8);stop++){
     const from=path.at(-1);
@@ -118,7 +139,7 @@ function makeRoute(home,random,excursion){
     const pause=2+random()*4.1;
     addLeg(a,b,travel,pause);
   }
-  for(const {a,b,travel,pause,arc} of excursion?.legs??[]){
+  for(const {a,b,travel,pause,arc} of [...(excursion?.legs??[]),...scratching]){
     addLeg(a,b,travel,pause,arc);
   }
   return {legs,duration,offset:random()*duration};
@@ -187,6 +208,44 @@ function retreatPose(escape,time,runners){
   if(recovery<walk)return retreatLeg(hideout,ground,recovery/walk,angle+Math.PI);
   if(recovery<walk+jump)return retreatLeg(ground,origin,(recovery-walk)/jump,angle+Math.PI,false,.39);
   return null;
+}
+
+function nearbyChuru(point,holders){
+  let nearest=null,range=8.5;
+  for(const holder of holders){
+    const gap=Math.hypot(holder.x-point.x,holder.y-point.y);
+    if(gap>range||(gap===range&&(!nearest||holder.id>=nearest.id))||!clearSegment(point,holder))continue;
+    nearest=holder;range=gap;
+  }
+  return nearest;
+}
+
+function beginLure(pose,holder){
+  const point={x:pose.x,y:pose.y,heading:pose.heading};
+  return {point,trail:[point],playerId:holder.id,returning:false,distance:0};
+}
+
+function lurePose(lure,holder,elapsed){
+  const from=lure.point,origin=lure.trail[0];
+  if(!lure.returning&&(!holder||Math.hypot(holder.x-from.x,holder.y-from.y)>10.5||
+    Math.hypot(origin.x-from.x,origin.y-from.y)>12||lure.trail.length>=24))lure.returning=true;
+  const target=lure.returning?lure.trail.at(-1):holder;
+  const dx=target.x-from.x,dy=target.y-from.y,gap=Math.hypot(dx,dy);
+  const walk=Math.min(Math.max(0,gap-(lure.returning?0:.84)),Math.min(elapsed,75)*(lure.returning?.00165:.00272));
+  let moving=false;
+  if(walk>0&&gap>0){
+    const next=walk===gap?{x:target.x,y:target.y}:{x:from.x+dx*walk/gap,y:from.y+dy*walk/gap};
+    if(clearSegment(from,next)){
+      if(!lure.returning&&!clearSegment(lure.trail.at(-1),next))lure.trail.push(from);
+      lure.point={...next,heading:shortestTurn(from.heading,Math.atan2(dx,dy),Math.min(1,elapsed/185))};
+      lure.distance+=walk;moving=true;
+    }else if(!lure.returning)lure.returning=true;
+  }
+  if(lure.returning&&Math.hypot(lure.point.x-target.x,lure.point.y-target.y)<.008){
+    if(lure.trail.length===1)return null;
+    lure.trail.pop();
+  }
+  return {...lure.point,stride:lure.distance*2*Math.PI/.56,moving,leap:0,jump:null};
 }
 
 function paintCoat(cat,x,y,z,section){
@@ -381,27 +440,33 @@ function fallingLeaves(T,scene,kit){
 
 export function addParkLife(T,scene,kit){
   const meshes=sharedCatMeshes(T),leg=new T.Object3D(),live=[];
-  const perches=new Set();
+  const perches=new Set(),scratchTrees=new Set();
   for(const [i,spec] of cats.entries()){
     const excursion=spec.habit==="wall"?wallExcursion(spec.home,kit.catWalls??[],perches):
       spec.habit==="bench"?benchExcursion(spec.home,kit.benches??[],perches):null;
     const home=excursion?.home??findHome(spec.home);
     if(!home)continue;
-    const path=makeRoute(home,randomSequence(130581+i*7919),excursion);
+    const scratching=treeExcursion(home,kit,scratchTrees);
+    const path=makeRoute(home,randomSequence(130581+i*7919),excursion,scratching);
     live.push({...spec,...path,...catModel(T,scene,spec,meshes),x:home.x,y:home.y,
-      routeAt:null,updatedAt:null,petFrom:0,petUntil:0,canPet:true,escape:null,checkAt:0});
+      routeAt:null,updatedAt:null,petFrom:0,petUntil:0,canPet:true,escape:null,checkAt:0,
+      lure:null,lureCheckAt:0,feeding:null,pose:null});
   }
   const leaves=fallingLeaves(T,scene,kit);
   const heightAt=point=>point.height??kit.floorHeight?.(point)??0;
   function update(now,anchor,walkers=[]){
     const runners=walkers.filter(actor=>actor.running&&actor.stepping&&!actor.blocked&&
       actor.seat==null&&Math.hypot(actor.vx,actor.vy)>2.65);
+    const holders=walkers.filter(actor=>!actor.running&&actor.seat==null&&
+      actor.item?.kind==="churu"&&actor.item.remaining>0);
     for(const cat of live){
       const previousTime=cat.updatedAt??now,time=Math.max(now,previousTime);
+      const feeding=cat.feeding&&time>=cat.feeding.at&&time<cat.feeding.until?cat.feeding:null;
       const held=Math.max(0,Math.min(time,cat.petUntil)-Math.max(previousTime,cat.petFrom));
       const elapsed=time-previousTime-held;
       // Hold the shared route during interactions, then regain its phase without jumping.
-      if(!cat.escape)cat.routeAt=Math.min(time,(cat.routeAt??time)+elapsed*1.28);
+      if(!cat.escape&&!cat.lure&&!feeding)cat.routeAt=Math.min(time,(cat.routeAt??time)+elapsed*1.28);
+      cat.routeAt??=time;
       cat.updatedAt=time;
       const paused=time>=cat.petFrom&&time<cat.petUntil;
       const seconds=(cat.routeAt/1000+cat.offset)%cat.duration;
@@ -411,33 +476,63 @@ export function addParkLife(T,scene,kit){
       const jumping=current.arc>0&&progress<1;
       const surface=progress<1?current.a:current.b;
       const onBench=!jumping&&surface.surface==="bench";
+      const atTree=!jumping&&surface.surface==="tree";
+      const facingSurface=onBench||atTree;
       const previousLeg=cat.legs[(index+cat.legs.length-1)%cat.legs.length];
       const previous=previousLeg.b.heading??previousLeg.heading;
       const landTime=phase-current.travel;
       const patrol={
         x:current.a.x+current.dx*progress,y:current.a.y+current.dy*progress,
         height:surface.height,approach:onBench?surface.approach:null,
-        heading:shortestTurn(onBench?current.heading:previous,onBench?surface.heading:current.heading,
-          Math.min(1,(onBench?landTime:phase)/.36)),
+        heading:shortestTurn(facingSurface?current.heading:previous,facingSurface?surface.heading:current.heading,
+          Math.min(1,(facingSurface?landTime:phase)/.36)),
         stride:progress*current.distance*2*Math.PI/.56,
         moving:!paused&&!jumping&&progress<1&&current.travel>0,
         leap:jumping?Math.sin(Math.PI*progress):0,
         jump:jumping?{from:current.a,to:current.b,arc:current.arc,progress}:null
       };
       const reachable=!jumping&&surface.surface!=="wall";
-      if(!cat.escape&&reachable&&!paused&&runners.length&&time>=cat.checkAt){
+      if(!cat.escape&&reachable&&!feeding&&!paused&&runners.length&&time>=cat.checkAt){
         cat.checkAt=time+110;
-        const runner=approachingRunner(patrol,runners);
-        if(runner)cat.escape=scareFrom(patrol,runner,time);
+        const point=cat.lure?.point??patrol;
+        const runner=approachingRunner(point,runners);
+        if(runner){
+          cat.escape=scareFrom(point,runner,time);
+          if(cat.escape){
+            if(cat.lure)cat.lure.returning=true;
+            kit.onCatFlee?.(runner.id);
+          }
+        }
       }
       const retreat=cat.escape?retreatPose(cat.escape,time,runners):null;
       if(cat.escape&&!retreat){
         cat.escape=null;
         cat.checkAt=time+400;
       }
-      const pose=retreat??patrol;
+      let lured=null;
+      if(!retreat&&!feeding&&reachable&&!onBench){
+        if(!cat.lure&&!paused&&holders.length&&time>=cat.lureCheckAt){
+          cat.lureCheckAt=time+165;
+          const holder=nearbyChuru(patrol,holders);
+          if(holder)cat.lure=beginLure(patrol,holder);
+        }
+        if(cat.lure){
+          const holder=holders.find(actor=>actor.id===cat.lure.playerId);
+          lured=lurePose(cat.lure,holder,elapsed);
+          if(!lured){cat.lure=null;cat.lureCheckAt=time+400;}
+        }
+      }
+      const eater=feeding&&walkers.find(actor=>actor.id===feeding.playerId);
+      const serving=feeding&&{
+        ...feeding.pose,stride:0,moving:false,leap:0,jump:null,
+        heading:eater?shortestTurn(feeding.pose.heading,Math.atan2(eater.x-feeding.pose.x,eater.y-feeding.pose.y),
+          Math.min(1,(time-feeding.at)/275)):feeding.pose.heading
+      };
+      const pose=serving||retreat||lured||patrol;
       const {x,y,heading,stride,jump,leap,moving,sprint}=pose;
-      cat.x=x;cat.y=y;cat.canPet=reachable&&!retreat;
+      cat.pose=pose;
+      cat.x=x;cat.y=y;cat.canPet=reachable&&!retreat&&!feeding;
+      cat.feedable=Boolean(cat.lure&&!cat.lure.returning&&lured&&!paused&&!feeding);
       cat.approach=pose.approach??null;
       cat.group.visible=Boolean(anchor&&Math.hypot(anchor.x-x,anchor.y-y)<39);
       if(!cat.group.visible)continue;
@@ -445,16 +540,22 @@ export function addParkLife(T,scene,kit){
       cat.group.position.set(kit.wx(x),ground,kit.wz(y));
       cat.group.rotation.y=heading;
       const breath=Math.sin(time*.003+cat.offset);
-      const petting=paused?Math.min(1,(time-cat.petFrom)/160,(cat.petUntil-time)/270):0;
+      const petting=paused&&!feeding?Math.min(1,(time-cat.petFrom)/160,(cat.petUntil-time)/270):0;
       const gait=moving?Math.min(1,(time-cat.petUntil)/180)*(sprint?1.18:1):0;
-      const loaf=onBench&&!retreat?Math.max(0,Math.min(1,(landTime-.20)/.44,(current.end-seconds)/.38)):0;
+      const loaf=onBench&&pose===patrol?Math.max(0,Math.min(1,(landTime-.20)/.44,(current.end-seconds)/.38)):0;
+      const scratch=atTree&&!paused&&pose===patrol?
+        Math.max(0,Math.min(1,(landTime-.20)/.38,(current.end-seconds)/.34)):0;
+      const eating=feeding?Math.min(1,(time-feeding.at)/220,(feeding.until-time)/260):0;
       const tuck=Math.max(loaf,leap*.72);
-      cat.upper.position.y=Math.sin(stride*2)*.009*gait+breath*.005+petting*.023-loaf*.165;
+      cat.upper.position.set(0,Math.sin(stride*2)*.009*gait+breath*.005+petting*.023-loaf*.165+
+        scratch*.20-eating*.033,scratch*.26);
       cat.upper.scale.set(1+loaf*.05,1-loaf*.07,1);
-      cat.upper.rotation.x=jump?leap*(heightAt(jump.to)>heightAt(jump.from)?-.34:.32):sprint?.075:0;
-      cat.head.rotation.x=petting*(-.27+Math.sin(time*.007)*.07)+(moving?.030:breath*.032);
+      cat.upper.rotation.x=jump?leap*(heightAt(jump.to)>heightAt(jump.from)?-.34:.32):
+        (sprint?.075:0)-scratch*.90;
+      cat.head.rotation.x=petting*(-.27+Math.sin(time*.007)*.07)+(moving?.030:breath*.032)+
+        eating*(.29+.12*Math.sin(time*.018));
       cat.head.rotation.z=petting*.16;
-      cat.eyes.scale.y=1-Math.max(petting*.89,loaf*.58);
+      cat.eyes.scale.y=1-Math.max(petting*.89,loaf*.58,eating*.64);
       const wag=Math.sin(time*.005+cat.offset)*(.25+petting*.12-loaf*.17);
       const lift=-.06+Math.cos(time*.004)*.08+petting*.14-loaf*.99;
       cat.tail.position.set(loaf*.08,.312,-.240+loaf*.08);
@@ -467,10 +568,14 @@ export function addParkLife(T,scene,kit){
         const side=i%2===0?-1:1,front=i<2,angle=stride+((front&&side<0)||(!front&&side>0)?Math.PI:0);
         const swing=Math.sin(angle)*.085*gait,lift=Math.max(0,Math.cos(angle))*.043*gait;
         const x=side*.104,z=front?.157:-.160;
-        leg.rotation.set(-swing*2+tuck*.47,0,0);leg.position.set(x,.164+lift*.46-tuck*.035,z+swing*.47);
-        leg.scale.set(.048,.116-tuck*.062,.055);
+        const claw=front?scratch:0,stroke=Math.sin(time*.018+side*1.5)*.075*claw;
+        leg.rotation.set(-swing*2+tuck*.47+claw*.49,0,0);
+        leg.position.set(x,.164+lift*.46-tuck*.035+claw*.23+stroke*.52,z+swing*.47+claw*.07);
+        leg.scale.set(.048,.116-tuck*.062+claw*.052,.055);
         leg.updateMatrix();cat.paws.setMatrixAt(i*2,leg.matrix);
-        leg.rotation.x=tuck*.47;leg.position.set(x,.048+lift+tuck*.095,z+swing+.025);leg.scale.set(.051,.043,.073);
+        leg.rotation.x=tuck*.47+claw*1.08;
+        leg.position.set(x,.048+lift+tuck*.095+claw*.47+stroke,z+swing+.025+claw*.15);
+        leg.scale.set(.051,.043,.073);
         leg.updateMatrix();cat.paws.setMatrixAt(i*2+1,leg.matrix);
       }
       cat.paws.instanceMatrix.needsUpdate=true;
@@ -486,6 +591,16 @@ export function addParkLife(T,scene,kit){
     }
     return nearest&&{id:nearest.id,x:nearest.x,y:nearest.y,name:nearest.name};
   }
+  function nearestFeedCat(x,y,playerId){
+    let nearest=null,range=1.48;
+    for(const cat of live){
+      if(!cat.feedable||cat.lure.playerId!==playerId)continue;
+      const gap=Math.hypot(cat.x-x,cat.y-y);
+      if(gap>=range||!clearSegment({x,y},cat))continue;
+      nearest=cat;range=gap;
+    }
+    return nearest&&{id:nearest.id,x:nearest.x,y:nearest.y,name:nearest.name};
+  }
   function pet(id,at){
     const cat=live.find(candidate=>candidate.id===id);
     const until=at+PET_MS;
@@ -493,5 +608,27 @@ export function addParkLife(T,scene,kit){
     cat.petFrom=at>cat.petUntil?at:Math.min(cat.petFrom,at);
     cat.petUntil=Math.max(cat.petUntil,until);
   }
-  return {update,nearestCat,pet};
+  function feed(id,at,playerId){
+    const cat=live.find(candidate=>candidate.id===id),until=at+FEED_MS;
+    if(!cat?.pose||!Number.isFinite(at)||!playerId||cat.escape||cat.pose.jump||cat.pose.height>0)return false;
+    const previous=cat.feeding;
+    if(previous&&at===previous.at&&playerId===previous.playerId)return true;
+    const overlaps=previous&&at<previous.until&&until>previous.at;
+    if(overlaps&&(at>previous.at||at===previous.at&&playerId>previous.playerId))return false;
+    if(previous&&!overlaps&&at<previous.at)return false;
+    const {x,y,height,heading}=overlaps?previous.pose:cat.pose;
+    cat.feeding={at,until,playerId,pose:{x,y,height,heading}};
+    cat.feedable=false;cat.canPet=false;
+    return true;
+  }
+  function resetInteractions(){
+    for(const cat of live){
+      cat.routeAt=null;cat.updatedAt=null;
+      cat.petFrom=0;cat.petUntil=0;cat.canPet=false;
+      cat.escape=null;cat.checkAt=0;
+      cat.lure=null;cat.lureCheckAt=0;cat.feedable=false;
+      cat.feeding=null;cat.pose=null;cat.approach=null;
+    }
+  }
+  return {update,nearestCat,nearestFeedCat,pet,feed,resetInteractions};
 }

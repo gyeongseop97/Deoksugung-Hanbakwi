@@ -6,6 +6,7 @@ const shops=[
   {kind:"coffee",name:"돌담 커피",subtitle:"JEONGDONG COFFEE",segment:1,t:.54,width:12.4,depth:8.5,height:6.15,
     walls:0xcdb493,base:0x8d7054,frame:0x456653,roof:0x343d39,glass:0x8a7860,
     shade:0x59766a,stripe:0xe6d2ad,ink:"#f8e3b3",sign:"#344d3d"},
+  {kind:"churu",name:"돌담 편의점",segment:2,t:.47,width:7.8,depth:5.7,height:3.62},
   {kind:"crepe",name:"단풍 크레페",subtitle:"DESSERT & CRÊPES",segment:3,t:.37,width:11.1,depth:8,height:5.55,
     walls:0xe4c2b4,base:0xc88f81,frame:0xb7656a,roof:0x5f535c,glass:0xc39b90,
     shade:0xc77780,stripe:0xf9dcc9,ink:"#723c48",sign:"#f5d9c3"},
@@ -91,6 +92,53 @@ export function addStands(T,scene,{wx,wz,box,cylinder}){
       cylinder(0x648255,x+dx,.39+h*.35,z,r,h,6,parent,.30);
     }
   }
+  function convenienceStore(shop,group){
+    const {width:w,depth:d,height:h}=shop,z=d/2;
+    const cream=0xe8e4d7,teal=0x146761,trim=0x2d5554,glassTint=0x83a8aa;
+    box(cream,0,h/2,-.52,w,h,d-1.04,group);
+    box(0xc8c4b6,0,.19,-.44,w+.10,.38,d-.72,group);
+    box(cream,0,h-.33,0,w,.66,d,group);
+    box(0x525f59,0,h+.055,0,w+.28,.18,d+.21,group);
+    box(0xb7b7aa,0,.047,z+.57,w+.30,.094,1.16,group);
+    box(teal,0,2.93,z+.16,w+.04,.68,.30,group);
+    box(0xf4bf54,0,3.26,z+.318,w+.08,.075,.05,group);
+    box(0x77c2a8,0,2.62,z+.315,w+.08,.079,.05,group);
+    sign(group,shop.name,null,2.12,-.12,2.94,z+.325,"#146761","#fff4d9");
+    sign(group,"24시",null,1.27,w*.371,2.94,z+.326,"#f4c35f","#215c53");
+
+    const panes=new T.MeshBasicMaterial({color:glassTint,transparent:true,opacity:.21,depthWrite:false});
+    function pane(x,y,width,height,depth=z+.045){
+      const window=new T.Mesh(new T.PlaneGeometry(width,height),panes);
+      window.position.set(x,y,depth);group.add(window);
+    }
+    for(const side of [-1,1]){
+      const x=side*2.40,sideWidth=2.40;
+      box(0xc8c4b6,x,.20,z-.24,sideWidth+.1,.4,.57,group);
+      box(cream,side*(w/2-.16),1.43,z-.02,.34,2.49,.21,group);
+      box(trim,side*1.19,1.51,z+.052,.10,2.18,.13,group);
+      box(trim,side*3.62,1.51,z+.052,.10,2.18,.13,group);
+      box(trim,x,.44,z+.052,sideWidth,.10,.13,group);
+      box(trim,x,2.53,z+.052,sideWidth,.10,.13,group);
+      box(trim,x,1.49,z+.052,.047,2.14,.08,group);
+      pane(x,1.49,sideWidth,2.05);
+      for(let row=0;row<3;row++){
+        const y=.60+row*.53;
+        box(0x514c45,x,y,z-.24,2.26,.07,.56,group);
+        for(let i=0;i<8;i++){
+          const color=[0xf5c359,0x76bfc0,0xf3927b,0xf6ecce,0x82a66c,0xe99fc1][(i+row+side+1)%6];
+          const height=.14+(i+row*2)%3*.055;
+          box(color,x+(i-3.5)*.267,y+.044+height/2,z-.13,.16,height,.12,group);
+        }
+      }
+    }
+    for(const x of [-.92,0,.92])box(trim,x,1.31,z+.095,.075,2.45,.11,group);
+    box(trim,0,2.53,z+.095,1.89,.08,.11,group);
+    box(trim,0,.085,z+.095,1.89,.10,.11,group);
+    pane(0,1.30,1.81,2.33,z+.101);
+    box(0x9baca5,0,1.04,z+.128,1.81,.105,.027,group);
+    for(const x of [-.153,.153])box(0xe2e5db,x,1.20,z+.154,.040,.20,.042,group);
+    sign(group,"츄르",null,.75,2.85,1.98,z+.094,"#f4c35f","#3d4c47");
+  }
   function shopModel(shop,group){
     const {width:w,depth:d,height:h,base,walls,frame,roof,shade,stripe}=shop,z=d/2;
     box(walls,0,h/2,0,w,h,d,group);
@@ -150,10 +198,11 @@ export function addStands(T,scene,{wx,wz,box,cylinder}){
     const x=a.x+dx*shop.t,y=a.y+dy*shop.t;
     const centerX=x+sideX*centerOffset,centerY=y+sideY*centerOffset;
     const group=new T.Group();group.position.set(wx(centerX),0,wz(centerY));group.rotation.y=angle;scene.add(group);
-    shopModel(shop,group);
+    if(shop.kind==="churu")convenienceStore(shop,group);
+    else shopModel(shop,group);
     batchDetails(group);
     addObstacle(centerX,centerY,shop.width,shop.depth,angle,shop.height+.35);
-    for(const side of [-1,1]){
+    for(const side of shop.kind==="churu"?[]:[-1,1]){
       const localX=side*shop.width*.411,localZ=shop.depth/2+.61;
       addObstacle(centerX+localX*Math.cos(angle)+localZ*Math.sin(angle),
         centerY-localX*Math.sin(angle)+localZ*Math.cos(angle),.99,.71,angle,1.05);
@@ -209,6 +258,20 @@ export function makeItemProps(T,{box,cylinder,shape}){
   const sparkMaterial=new T.LineBasicMaterial({
     vertexColors:true,transparent:true,depthWrite:false,blending:T.AdditiveBlending,toneMapped:false
   });
+  const churuLabel=document.createElement("canvas");churuLabel.width=100;churuLabel.height=176;
+  const label=churuLabel.getContext("2d");
+  label.fillStyle="#f47d66";label.fillRect(0,0,100,176);
+  label.fillStyle="#ffd27c";label.fillRect(0,7,100,99);
+  label.fillStyle="#fff1ca";
+  label.beginPath();label.moveTo(24,72);label.lineTo(23,37);label.lineTo(44,52);label.lineTo(58,52);
+  label.lineTo(78,37);label.lineTo(76,76);label.closePath();label.fill();
+  label.beginPath();label.ellipse(50,73,26,18,0,0,Math.PI*2);label.fill();
+  label.fillStyle="#75414b";label.fillRect(35,66,5,6);label.fillRect(61,66,5,6);label.fillRect(47,76,7,4);
+  label.font='bold 35px "Malgun Gothic",sans-serif';label.textAlign="center";label.fillStyle="#fff1ca";
+  label.fillText("츄르",50,148,88);
+  const churuMap=new T.CanvasTexture(churuLabel);churuMap.colorSpace=T.SRGBColorSpace;
+  const churuMaterial=new T.MeshBasicMaterial({map:churuMap,side:T.DoubleSide});
+  const churuLabelFace=new T.PlaneGeometry(.072,.147);
   function sphere(group,color,x,y,z,a,b,c){
     const object=shape(smallBall,color,x,y,z,group);object.scale.set(a,b,c);return object;
   }
@@ -230,6 +293,29 @@ export function makeItemProps(T,{box,cylinder,shape}){
     sphere(group,0xf5e8cf,.009,.144,-.006,.087,.033,.085);
     box(0xf0c784,-.041,.023,.088,.016,.151,.011,group);
     const handle=shape(mugHandle,0xe4bf80,.111,.013,0,group);handle.scale.x=.81;
+  }
+  function churu(group){
+    const sleeve=new T.Group();group.add(sleeve);
+    const tube=cylinder(0xf2836d,0,.03,0,.044,.220,10,sleeve,.84);
+    tube.scale.z=.018;
+    box(0xf4c86e,0,-.085,0,.087,.021,.028,sleeve);
+    box(0xffd38d,0,.143,0,.064,.018,.027,sleeve);
+    for(const side of [-1,1]){
+      const wrapper=new T.Mesh(churuLabelFace,churuMaterial);
+      wrapper.position.set(0,.022,side*.0185);
+      if(side===-1)wrapper.rotation.y=Math.PI;
+      sleeve.add(wrapper);
+    }
+    box(0xf28b74,0,.157,0,.026,.018,.020,group);
+    box(0x9a594e,0,.167,0,.021,.005,.015,group);
+    const paste=sphere(group,0xe4b283,0,.177,0,.010,.012,.007);
+    paste.visible=false;
+    return {update(age){
+      const squeezing=age>=0?(.5-.5*Math.cos(age*12)):0;
+      sleeve.scale.z=1-squeezing*.35;
+      paste.visible=age>.13;
+      paste.scale.y=.008+squeezing*.007;
+    }};
   }
   function sparkler(group){
     cylinder(0x8d8376,0,.166,0,.013,.48,8,group,.74);
@@ -269,7 +355,7 @@ export function makeItemProps(T,{box,cylinder,shape}){
     }
     return {update,dispose:()=>geometry.dispose()};
   }
-  const models={coffee,crepe,parfait:crepe,beer,sparkler};
+  const models={coffee,crepe,parfait:crepe,beer,sparkler,churu};
   return parent=>{
     const instances=new Map();
     let previous=null;

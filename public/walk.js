@@ -3,7 +3,7 @@ import {
   middle,hall,stoneHall,stoneFountain,city,pavilions,estateOutline,nearest,distance as near,walkable,clearSegment,planWalk
 } from "./layout.js";
 import {normalize,angleDelta,hexCoat,moving,receivePeople,smoothPeople,handPosition,handSide,pairFits} from "./people.js";
-import {ITEMS,PET_MS} from "./activities.js";
+import {ITEMS,PET_MS,FEED_MS} from "./activities.js";
 import {makeWishDrawing} from "./wish-drawing.js";
 import {WISH_FLIGHT_MS} from "./wish-art.js";
 import {isInsideMuseum,museumBounds,museumGalleries,museumGalleryAt,museumHall} from "./visit-layout.js";
@@ -25,13 +25,13 @@ function initialAvatar(){
     }
   }catch{}
   return {x:spawn.x,y:spawn.y,heading:252,vx:0,vy:0,wish:0,wishOrigin:null,wishHeading:0,wishArt:null,wave:0,emote:null,
-    seat:null,seatSide:null,item:null,blushUntil:0,blushLevel:0,pet:null,running:false,blocked:false,character,look};
+    seat:null,seatSide:null,item:null,blushUntil:0,blushLevel:0,pet:null,feed:null,running:false,blocked:false,character,look};
 }
 const me=initialAvatar(),people=new Map(),markers=new Map(),seenSignals=new Map(),formations=new Map();
-let ownView=initialView(),following=null,world,worldFailed=false;
+let ownView=initialView(),following=null,world,worldLoading,worldFailed=false;
 let firstPerson=localStorage.getItem("jeongdong-first-person")==="true";
 let session=null,active=true,joining=false,syncTimer,lastPost=0,lastSync=0,lastWishSynced=0,dirty=true;
-let links=[],queuedSignal=null,queuedHand=null,lookDirection,toastTimer;
+let links=[],queuedSignal=null,queuedHand=null,queuedFeed=null,lookDirection,toastTimer;
 let course=[],pendingSeat=null,seatClaim=null,thumb=[0,0],thumbId,orbit=null;
 let clockOffset=null,roundTrip=65,renderTime=0;
 let runToggled=false,shiftHeld=false;
@@ -39,9 +39,30 @@ const keys=new Set();
 const vectors={ArrowUp:[0,-1],ArrowDown:[0,1],ArrowLeft:[-1,0],ArrowRight:[1,0],w:[0,-1],s:[0,1],a:[-1,0],d:[1,0]};
 const fragments=new URLSearchParams(location.hash.slice(1));
 const suppliedCode=(fragments.get("code")||"").toUpperCase();
-const lobby=$("lobby"),nickname=$("nickname"),joinCode=$("join-code");
+const entryFlow=$("entry-flow"),profileStep=$("profile-step"),serverStep=$("server-step"),gameShell=$("game-shell");
+const nickname=$("nickname"),joinCode=$("join-code");
+const profileChoices=[...document.querySelectorAll("[name='entry-character']")];
+const serverButtons=["open-server","create-room","join-room","server-back","invite-toggle"].map($);
 nickname.value=localStorage.getItem("jeongdong-nickname")||"";
 joinCode.value=suppliedCode;
+profileChoices.find(option=>option.value===me.character).checked=true;
+
+let catTipTimer;
+let catTipDismissed=localStorage.getItem("jeongdong-cat-run-tip-hidden")==="true";
+function hideCatRunTip(){
+  clearTimeout(catTipTimer);
+  $("cat-run-tip").hidden=true;
+}
+function onCatFlee(runnerId){
+  if(!session||runnerId!==session.id||catTipDismissed||!$("cat-run-tip").hidden)return;
+  $("cat-run-tip").hidden=false;
+  catTipTimer=setTimeout(hideCatRunTip,6200);
+}
+$("cat-run-tip-dismiss").addEventListener("click",()=>{
+  catTipDismissed=true;
+  localStorage.setItem("jeongdong-cat-run-tip-hidden","true");
+  hideCatRunTip();focusGame();
+});
 
 function toast(message){
   $("toast").textContent=message;$("toast").hidden=false;
@@ -113,11 +134,11 @@ $("character").addEventListener("click",()=>{
   refreshCharacterPreview();
   characterOptions.find(option=>option.dataset.character===me.character).focus();
 });
-characterOptions.forEach(option=>option.addEventListener("click",()=>{
-  const character=option.dataset.character;
+function chooseCharacter(character){
   if(me.look.hair===defaultHair(me.character))me.look={...me.look,hair:defaultHair(character)};
   me.character=character;saveAppearance();
-}));
+}
+characterOptions.forEach(option=>option.addEventListener("click",()=>chooseCharacter(option.dataset.character)));
 appearanceOptions.forEach(option=>option.addEventListener("click",()=>{
   const {feature,option:choice}=option.dataset;
   if(me.look[feature]===choice)return;
@@ -182,7 +203,7 @@ function readLookSignals(serverTime){
 }
 
 function handCandidates(){
-  if(!world||!session||me.seat!=null||myLink())return [];
+  if(!world||!session||me.seat!=null||myLink()||feedingLocked(gameTime()))return [];
   const busy=new Set(links.flatMap(link=>[link.leader,link.follower]));
   return [...people.values()].filter(person=>person.available&&!busy.has(person.id)&&
     near(me,person.position.x,person.position.y)<=2.4&&handSide(me,{...person.avatar,...person.position})!==0)
@@ -237,7 +258,7 @@ $("hand-decline").addEventListener("click",()=>{
 });
 $("hand-accept").addEventListener("click",()=>{
   const link=myLink(),leader=link&&people.get(link.leader);
-  if(!leader||link.active||link.follower!==session.id)return;
+  if(!leader||link.active||link.follower!==session.id||feedingLocked(gameTime()))return;
   const side=handSide(leader.avatar,me);
   if(!side){toast("서로 가까운, 걸을 수 있는 곳에서 손을 잡아 주세요.");return;}
   queuedHand={action:"accept",id:link.id,side};
@@ -282,13 +303,13 @@ function updateClock(serverTime,sent,received){
 async function sync(){
   const visit=session;
   if(!active||!visit)return;
-  const sent=performance.now(),signal=queuedSignal,hand=queuedHand,claim=seatClaim;
-  const post=dirty||signal||hand||claim||Date.now()-lastPost>=3800;
+  const sent=performance.now(),signal=queuedSignal,hand=queuedHand,claim=seatClaim,feed=queuedFeed;
+  const post=dirty||signal||hand||claim||feed||Date.now()-lastPost>=3800;
   const base={room:visit.room,id:visit.id,key:visit.key};
   const avatar=post?{...me}:null;
   if(avatar&&claim)Object.assign(avatar,{seat:claim.bench,seatSide:claim.side});
   if(avatar&&(avatar.wish===lastWishSynced||gameTime(sent)-avatar.wish>=WISH_FLIGHT_MS))delete avatar.wishArt;
-  const body=post?{...base,avatar,view:{...ownView},signal,hand}:base;
+  const body=post?{...base,avatar,view:{...ownView},signal,hand,feed}:base;
   if(post)dirty=false;
   try{
     const response=await request("/api/room",body),data=await response.json();
@@ -301,8 +322,16 @@ async function sync(){
     if(post){lastPost=lastSync;lastWishSynced=avatar.wish;}
     if(queuedSignal===signal)queuedSignal=null;
     if(queuedHand===hand)queuedHand=null;
+    const confirmed=data.walkers.find(row=>row.id===visit.id)?.avatar;
+    if(confirmed?.feed&&confirmed.feed.claim!==me.feed?.claim){
+      me.feed=confirmed.feed;me.item=confirmed.item??null;
+    }
+    if(feed&&queuedFeed===feed){
+      queuedFeed=null;
+      if(confirmed?.feed?.claim!==feed.claim)toast("고양이에게 가까이 다가가 다시 간식을 주세요.");
+    }
     receivePeople(people,data.walkers,visit.id,data.serverTime);
-    if(claim)confirmSeat(claim,data.walkers.find(row=>row.id===visit.id)?.avatar);
+    if(claim)confirmSeat(claim,confirmed);
     changeLinks(data.handholds||[]);
     const link=myLink();
     if(hand?.action==="offer"&&!link)toast("가까이 있는 친구에게 다시 손을 내밀어 주세요.");
@@ -321,8 +350,8 @@ async function sync(){
     setPresence("다시 연결 중");
   }finally{
     if(active&&session===visit){
-      const fast=Boolean(myLink()||queuedHand||queuedSignal||seatClaim||moving(me)||[...people.values()].some(p=>moving(p.avatar)));
-      const cadence=fast?85:people.size?150:320;
+      const fast=Boolean(myLink()||queuedHand||queuedSignal||queuedFeed||seatClaim||moving(me)||[...people.values()].some(p=>moving(p.avatar)));
+      const cadence=visit.mode==="open"?(fast?115:people.size?250:430):(fast?85:people.size?150:320);
       syncTimer=setTimeout(sync,document.hidden?1150:Math.max(18,cadence-(performance.now()-sent)));
     }
   }
@@ -331,25 +360,47 @@ async function sync(){
 function leaveBeacon(){
   if(session)navigator.sendBeacon("/api/room",JSON.stringify({room:session.room,id:session.id,key:session.key,leave:true}));
 }
+function toggleInviteForm(open){
+  $("invite-form").hidden=!open;
+  attr($("invite-toggle"),"aria-expanded",open);
+  if(open)joinCode.focus();
+}
+function showServers(showCode=false){
+  entryFlow.hidden=false;gameShell.hidden=true;
+  profileStep.hidden=true;serverStep.hidden=false;
+  const summary=$("server-profile");
+  summary.textContent=nickname.value.trim()+" · "+(me.character==="woman"?"여자":"남자");
+  summary.hidden=false;
+  $("server-title").focus({preventScroll:true});
+  toggleInviteForm(showCode);
+}
+function showProfile(){
+  serverStep.hidden=true;profileStep.hidden=false;
+  profileChoices.find(option=>option.value===me.character).checked=true;
+  nickname.focus({preventScroll:true});
+}
 function returnToLobby(message=""){
   const old=session;
   leaveBeacon();session=null;clearTimeout(syncTimer);resetInput();
-  queuedSignal=queuedHand=null;people.clear();changeLinks([]);seenSignals.clear();setFollowing(null);
+  queuedSignal=queuedHand=queuedFeed=null;people.clear();changeLinks([]);seenSignals.clear();setFollowing(null);
   lookDirection=null;$("look-direction").hidden=true;setLookPin(null);
   $("invite").disabled=$("look").disabled=$("follow").disabled=true;
   $("lobby-status").textContent=message;
+  sessionStorage.removeItem("jeongdong-room-mode");
   sessionStorage.removeItem("jeongdong-room-code");
-  if(old)joinCode.value=old.code;
+  if(old)joinCode.value=old.code??"";
   history.replaceState(null,"",location.pathname+location.search);
-  if(!lobby.open)lobby.showModal();
+  document.querySelectorAll("dialog[open]").forEach(dialog=>dialog.close());
+  hideCatRunTip();showServers();
   setPresence("방을 선택해 주세요");
 }
 async function enterRoom(action,code){
   if(joining)return;
   const name=nickname.value.trim();
-  if(!name){nickname.reportValidity();return;}
-  if([...name].length>16){$("lobby-status").textContent="닉네임은 16자까지 입력할 수 있어요.";return;}
-  joining=true;$("create-room").disabled=$("join-room").disabled=true;
+  if(!name||[...name].length>16){
+    showProfile();$("profile-status").textContent="닉네임은 1~16자로 입력해 주세요.";return;
+  }
+  joining=true;serverButtons.forEach(button=>{button.disabled=true;});
   $("lobby-status").textContent="산책방에 들어가는 중이에요.";
   const id=token(),key=token(),avatar=initialAvatar(),view=initialView();
   const angle=parseInt(id.slice(0,8),16)/0x100000000*Math.PI*2;
@@ -360,46 +411,59 @@ async function enterRoom(action,code){
     const response=await request("/api/rooms",{action,code,nickname:name,id,key,avatar,view}),data=await response.json();
     if(!response.ok)throw Error(data.error);
     updateClock(data.serverTime,sent,performance.now());renderTime=0;
-    session={room:data.room,code:data.code,id,key,...data.profile};
+    session={room:data.room,code:data.code,mode:data.mode??"private",id,key,...data.profile};
     Object.assign(me,avatar,{nickname:session.nickname,coat:session.coat});
     ownView=view;applyNight(view);dirty=true;lastWishSynced=0;lastPost=lastSync=Date.now();
     people.clear();links=[];seenSignals.clear();formations.clear();resetInput();
     $("location").textContent=spawn.name;
     localStorage.setItem("jeongdong-nickname",session.nickname);
-    sessionStorage.setItem("jeongdong-room-code",session.code);
-    history.replaceState(null,"","#code="+session.code);
+    sessionStorage.setItem("jeongdong-room-mode",session.mode);
+    if(session.code)sessionStorage.setItem("jeongdong-room-code",session.code);
+    else sessionStorage.removeItem("jeongdong-room-code");
+    history.replaceState(null,"",location.pathname+location.search+(session.code?"#code="+session.code:""));
     $("invite").disabled=false;
-    $("lobby-status").textContent="";lobby.close();
+    $("invite").textContent=session.mode==="open"?"오픈서버":"↗ 초대코드";
+    $("lobby-status").textContent="";entryFlow.hidden=true;gameShell.hidden=false;
+    world?.parkLife.resetInteractions?.();
+    loadWorld();focusGame();
     if(action==="create")openInvite();
     sync();
   }catch(error){
     $("lobby-status").textContent=error.message==="Failed to fetch"?"연결을 확인한 뒤 다시 시도해 주세요.":error.message;
   }finally{
-    joining=false;$("create-room").disabled=$("join-room").disabled=false;
+    joining=false;serverButtons.forEach(button=>{button.disabled=false;});
   }
 }
-$("lobby-form").addEventListener("submit",event=>{
+$("profile-form").addEventListener("submit",event=>{
   event.preventDefault();
-  const action=event.submitter?.value||(joinCode.value.trim()?"join":"create");
-  enterRoom(action,joinCode.value.trim().toUpperCase());
-});
-$("lobby-form").addEventListener("keydown",event=>{
-  if(event.key==="Enter"&&event.target.matches("input")&&joinCode.value.trim()){
-    event.preventDefault();event.currentTarget.requestSubmit($("join-room"));
+  const name=nickname.value.trim();
+  if(!name||[...name].length>16){
+    $("profile-status").textContent="닉네임은 1~16자로 입력해 주세요.";nickname.focus();return;
   }
+  const character=profileChoices.find(option=>option.checked)?.value;
+  if(!character){$("profile-status").textContent="캐릭터를 골라 주세요.";return;}
+  $("profile-status").textContent="";localStorage.setItem("jeongdong-nickname",name);
+  chooseCharacter(character);
+  showServers(Boolean(joinCode.value));
 });
-lobby.addEventListener("cancel",event=>event.preventDefault());
+$("open-server").addEventListener("click",()=>enterRoom("open"));
+$("create-room").addEventListener("click",()=>enterRoom("create"));
+$("server-back").addEventListener("click",showProfile);
+$("invite-toggle").addEventListener("click",()=>toggleInviteForm($("invite-form").hidden));
+$("invite-form").addEventListener("submit",event=>{
+  event.preventDefault();enterRoom("join",joinCode.value.trim().toUpperCase());
+});
 joinCode.addEventListener("input",()=>{joinCode.value=joinCode.value.toUpperCase();});
 function openInvite(){
   if(!session)return;
+  if(session.mode==="open"){$("open-room-dialog").showModal();return;}
   $("invite-code").value=session.code;$("invite-dialog").showModal();
 }
 $("invite").addEventListener("click",openInvite);
-$("leave-room").addEventListener("click",()=>{
-  $("invite-dialog").close();returnToLobby();
-});
+$("leave-room").addEventListener("click",()=>returnToLobby());
+$("leave-open-room").addEventListener("click",()=>returnToLobby());
 async function copyInvite(link){
-  if(!session)return;
+  if(!session?.code)return;
   const value=link?location.origin+location.pathname+"#code="+session.code:session.code;
   try{
     await navigator.clipboard.writeText(value);toast(link?"초대 링크를 복사했어요.":"초대코드를 복사했어요.");
@@ -415,7 +479,7 @@ window.addEventListener("pagehide",()=>{active=false;clearTimeout(syncTimer);lea
 window.addEventListener("pageshow",event=>{
   if(!event.persisted)return;
   active=true;
-  if(session){const code=session.code;returnToLobby();enterRoom("join",code);}
+  if(session){const {code,mode}=session;returnToLobby();enterRoom(mode==="open"?"open":"join",code);}
 });
 
 function markPace(){
@@ -628,6 +692,13 @@ function nearbyStation(){
 function canUseItem(time){
   return Boolean(me.item?.remaining&&time-me.item.started>=ITEMS[me.item.kind].duration);
 }
+function feedingLocked(time){
+  return Boolean(queuedFeed&&time-queuedFeed.at<FEED_MS||me.feed&&time-me.feed.at<FEED_MS);
+}
+function feedCatNearby(){
+  if(!session||following||me.seat!=null||myLink()?.active||me.running||me.item?.kind!=="churu")return null;
+  return world?.parkLife.nearestFeedCat(me.x,me.y,session.id);
+}
 function portalNearby(){
   const museum=world?.museum;
   if(!museum)return null;
@@ -650,7 +721,7 @@ function focusGame(){$("game").focus({preventScroll:true});}
 $("pet-cat").addEventListener("click",()=>{
   if(!session||following||myLink()?.active||me.seat!=null)return;
   const time=gameTime(),cat=world?.parkLife.nearestCat(me.x,me.y);
-  if(!cat||time-(me.pet?.at??0)<PET_MS)return;
+  if(!cat||time-(me.pet?.at??0)<PET_MS||feedingLocked(time))return;
   resetInput();
   me.heading=normalize(Math.atan2(cat.x-me.x,me.y-cat.y)*180/Math.PI);
   me.pet={id:cat.id,at:time};dirty=true;focusGame();
@@ -658,15 +729,25 @@ $("pet-cat").addEventListener("click",()=>{
 $("take-item").addEventListener("click",()=>{
   if(!session||following||me.seat!=null)return;
   const station=nearbyStation(),time=gameTime();
-  if(!station||station.kind===me.item?.kind||me.item&&time-me.item.started<ITEMS[me.item.kind].duration)return;
+  if(!station||station.kind===me.item?.kind||queuedFeed||me.item&&time-me.item.started<ITEMS[me.item.kind].duration)return;
   const spec=ITEMS[station.kind];
   me.item={kind:station.kind,remaining:spec.uses,started:0};dirty=true;
-  toast(spec.name+" 받았어요.");focusGame();
+  toast(station.kind==="churu"?"츄르를 샀어요. 고양이 가까이에서 잠시 기다려 보세요.":spec.name+" 받았어요.");
+  focusGame();
 });
 $("use-item").addEventListener("click",()=>{
   if(!session||following)return;
   const time=gameTime();
   if(!canUseItem(time))return;
+  if(me.item.kind==="churu"){
+    const cat=feedCatNearby();
+    if(!cat||queuedFeed||feedingLocked(time)||time-(me.pet?.at??0)<PET_MS)return;
+    resetInput();
+    me.heading=normalize(Math.atan2(cat.x-me.x,me.y-cat.y)*180/Math.PI);
+    queuedFeed={id:cat.id,claim:token(),at:time};
+    Object.assign(me,{vx:0,vy:0,running:false,blocked:false});dirty=true;focusGame();
+    return;
+  }
   me.item={...me.item,remaining:me.item.remaining-1,started:time};
   if(me.item.kind==="beer"){
     const previous=time<me.blushUntil?me.blushLevel||1:0;
@@ -677,7 +758,7 @@ $("use-item").addEventListener("click",()=>{
 });
 $("museum-door").addEventListener("click",()=>{
   const portal=portalNearby();
-  if(!session||following||myLink()?.active||!portal)return;
+  if(!session||following||myLink()?.active||feedingLocked(gameTime())||!portal)return;
   const {inside,museum}=portal,destination=inside?museum.outsideDoor:museum.insideSpawn;
   resetInput();stand();
   Object.assign(me,{x:destination.x,y:destination.y,heading:destination.heading,vx:0,vy:0,blocked:false,running:false});
@@ -714,18 +795,26 @@ function updateActivities(time){
     me.item=null;dirty=true;
   }
   const eligible=world&&session&&!following;
+  const feeding=feedingLocked(time);
   const atFountain=nearWishFountain();
   if($("wish").hidden===Boolean(atFountain))$("wish").hidden=$("wish").disabled=!atFountain;
   const cat=eligible&&me.seat==null&&!myLink()?.active&&world.parkLife.nearestCat(me.x,me.y);
-  setActivity("pet-cat",cat?"쓰다듬기":null,time-(me.pet?.at??0)<PET_MS);
+  setActivity("pet-cat",cat?"쓰다듬기":null,feeding||time-(me.pet?.at??0)<PET_MS);
   if(cat)attr($("pet-cat"),"title",cat.name+" 쓰다듬기");
   const station=eligible&&me.seat==null&&nearbyStation();
-  const busy=Boolean(me.item&&time-me.item.started<ITEMS[me.item.kind].duration);
-  setActivity("take-item",station&&station.kind!==me.item?.kind?ITEMS[station.kind].name+" 받기":null,busy);
+  const busy=Boolean(queuedFeed||me.item&&time-me.item.started<ITEMS[me.item.kind].duration);
+  const pickup=station&&station.kind!==me.item?.kind?(station.kind==="churu"?"츄르 사기":ITEMS[station.kind].name+" 받기"):null;
+  setActivity("take-item",pickup,busy);
   const spec=eligible&&me.item&&ITEMS[me.item.kind];
-  setActivity("use-item",spec?(me.item.kind==="sparkler"?spec.verb:spec.verb+" · "+me.item.remaining+"회"):null,!canUseItem(time));
+  if(spec&&me.item.kind==="churu"){
+    const cat=feedCatNearby();
+    const label=feeding?(queuedFeed?"간식 주는 중":"간식 먹는 중"):cat?spec.verb+" · "+me.item.remaining+"회":null;
+    setActivity("use-item",label,feeding||Boolean(queuedFeed)||!canUseItem(time)||time-(me.pet?.at??0)<PET_MS);
+  }else{
+    setActivity("use-item",spec?(me.item.kind==="sparkler"?spec.verb:spec.verb+" · "+me.item.remaining+"회"):null,!canUseItem(time));
+  }
   const portal=eligible&&portalNearby();
-  setActivity("museum-door",portal?(portal.inside?"나가기":"입장하기"):null,Boolean(myLink()?.active));
+  setActivity("museum-door",portal?(portal.inside?"나가기":"입장하기"):null,feeding||Boolean(myLink()?.active));
   const exhibit=eligible&&nearbyExhibit();
   setActivity("museum-exhibit",exhibit?"작품 설명":null);
   if(exhibit)attr($("museum-exhibit"),"aria-label",exhibit.title+" 작품 설명");
@@ -769,7 +858,7 @@ function motion(now,elapsed){
     if(me.heading!==next.heading){me.heading=next.heading;dirty=true;}
     if(next.x!==me.x||next.y!==me.y){me.x=next.x;me.y=next.y;dirty=true;}
     blocked=Boolean(leader.avatar.blocked);
-  }else if(session&&elapsed>0){
+  }else if(session&&elapsed>0&&!feedingLocked(gameTime(now))){
     if(keys.size||thumbId!==undefined){
       const [dx,dy]=Array.from(keys,key=>vectors[key]).reduce(([x,y],[vx,vy])=>[x+vx,y+vy],thumb);
       blocked=moveWithInput(dx,dy,speed,link,!worldFailed&&(thumbId!==undefined||document.activeElement!==$("world")));
@@ -808,6 +897,8 @@ function actors(now,stepping){
 let lastFrame=performance.now();
 function frame(now){
   const elapsed=Math.max(0,Math.min(56,now-lastFrame))/1000;lastFrame=now;
+  requestAnimationFrame(frame);
+  if(!session)return;
   const time=gameTime(now);
   renderTime=Math.max(renderTime,time-130-Math.min(170,roundTrip*.68));
   smoothPeople(people,elapsed,time,time-renderTime);
@@ -817,7 +908,7 @@ function frame(now){
   const view=focus?people.get(following).view:ownView;
   if(Boolean(view.night)!==($("night").getAttribute("aria-pressed")==="true"))applyNight(view);
   updateActivities(time);
-  const seatEnabled=world&&session&&!following&&!myLink()?.active;
+  const seatEnabled=world&&session&&!following&&!myLink()?.active&&!feedingLocked(time);
   const bench=seatEnabled&&me.seat==null&&!pendingSeat&&!seatClaim?benchNearby():null;
   const seatLabel=me.seat!=null?"일어나기":seatClaim?"자리 확인 중":pendingSeat?"벤치로 이동 중":
     bench?.choice?"앉기":bench?.nearby?"빈자리 없음":null;
@@ -827,7 +918,6 @@ function frame(now){
   if($("game-place").textContent!==place)$("game-place").textContent=place;
   updateHandControls();updateLookDirection(now);updateMaps(self,others);
   world?.render({me:self,peers:[...others.values()],focus,view,firstPerson,destination:course.at(-1),clock:time},now);
-  requestAnimationFrame(frame);
 }
 
 const svgNS="http://www.w3.org/2000/svg";
@@ -952,12 +1042,19 @@ for(const exhibit of Object.values(museumExhibits)){
   item.append(link);$("exhibit-credits").append(item);
 }
 drawMap($("map-landscape"));drawMap($("mini-landscape"),true);applyNight(ownView);
-lobby.showModal();
 const savedCode=sessionStorage.getItem("jeongdong-room-code");
-if(savedCode&&nickname.value&&(!suppliedCode||suppliedCode===savedCode))enterRoom("join",savedCode);
-import("/world3d.js").then(({makeWorld})=>{
-  world=makeWorld($("game"));drawDestinations(world);$("loading-game").hidden=true;
-  if($("character-dialog").open)refreshCharacterPreview();
-})
-  .catch(()=>{worldFailed=true;$("loading-game").textContent="이 브라우저에서 3D 산책을 열 수 없어요.";});
+const savedOpen=sessionStorage.getItem("jeongdong-room-mode")==="open";
+if(nickname.value&&(savedCode&&(!suppliedCode||suppliedCode===savedCode)||savedOpen&&!suppliedCode)){
+  showServers();enterRoom(savedOpen&&!suppliedCode?"open":"join",savedCode);
+}
+function loadWorld(){
+  if(world||worldLoading)return;
+  worldLoading=import("/world3d.js").then(({makeWorld})=>{
+    world=makeWorld($("game"),{onCatFlee});worldFailed=false;
+    drawDestinations(world);$("loading-game").hidden=true;
+    if($("character-dialog").open)refreshCharacterPreview();
+  }).catch(()=>{
+    worldFailed=true;$("loading-game").textContent="이 브라우저에서 3D 산책을 열 수 없어요.";
+  }).finally(()=>{worldLoading=null;});
+}
 requestAnimationFrame(frame);

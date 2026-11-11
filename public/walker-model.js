@@ -1,4 +1,4 @@
-import {ITEMS, PET_MS} from "./activities.js";
+import {FEED_MS, ITEMS, PET_MS} from "./activities.js";
 
 const TAU = Math.PI * 2;
 const HAIR = ["short", "bob", "long", "bun"];
@@ -551,13 +551,16 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
     const running = walking && position.running;
     const held = position.hand === -1 || position.hand === 1;
     const petAge = clock - position.pet?.at;
-    const pet = !seat && !walking && !held && petAge >= 0 && petAge < PET_MS;
-    const petPose = pet ? smooth(Math.min(petAge/235,(PET_MS-petAge)/275)) : 0;
     const waveAge = (clock - position.wave) / 1000;
     const item = position.item, spec = item && ITEMS[item.kind];
+    const feedAge = clock - position.feed?.at;
+    const feeding = !seat && !walking && !held && item?.kind === "churu" && feedAge >= 0 && feedAge < FEED_MS;
+    const feedPose = feeding ? smooth(Math.min(feedAge/320,(FEED_MS-feedAge)/360)) : 0;
+    const pet = !feeding && !seat && !walking && !held && petAge >= 0 && petAge < PET_MS;
+    const petPose = pet ? smooth(Math.min(petAge/235,(PET_MS-petAge)/275)) : 0;
     const itemAge = spec && item.started ? Math.max(0,clock-item.started) : Infinity;
     const carrying = Boolean(spec && (item.remaining > 0 || itemAge < spec.duration));
-    const waving = waveAge >= 0 && waveAge < 2.45 && !pet && !(held && carrying);
+    const waving = waveAge >= 0 && waveAge < 2.45 && !pet && !feeding && !(held && carrying);
     const waveLift = waving ? smooth(Math.min(waveAge/.27,(2.45-waveAge)/.36)) : 0;
 
     const facing = Math.PI - (seat?.heading ?? position.heading ?? 252) * Math.PI/180;
@@ -569,7 +572,7 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
     model.lastY = position.y;
     model.sprint = mix(model.sprint,Number(running),smoothPose);
     model.seatBlend = mix(model.seatBlend,Number(Boolean(seat)),smoothPose);
-    model.petBlend = mix(model.petBlend,petPose,smoothPose);
+    model.petBlend = mix(model.petBlend,Math.max(petPose,feedPose),smoothPose);
     const sprint = model.sprint, seated = model.seatBlend, crouch = model.petBlend;
     const cycleDistance = mix(1.20,2.28,sprint), stance = mix(.57,.34,sprint);
     const velocity = mix(2.58,6.675,sprint);
@@ -625,7 +628,8 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
     const waveSide = held ? -position.hand : carrying ? -1 : 1;
     const itemSide = held ? -position.hand : pet ? -1 : 1;
     const spark = carrying && item.kind === "sparkler";
-    const eat = carrying && !spark && itemAge < spec.duration ? smooth(Math.min(itemAge/255,(spec.duration-itemAge)/360)) : 0;
+    const eat = carrying && !spark && item.kind !== "churu" && itemAge < spec.duration
+      ? smooth(Math.min(itemAge/255,(spec.duration-itemAge)/360)) : 0;
     for (let i=0;i<2;i++) {
       const side = SIDE[i], arm = arms[i];
       let x = side*.299, y = -.036+seated*.118, z = .018+seated*.227;
@@ -645,6 +649,11 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
       } else if (carrying && side === itemSide) {
         x = side*mix(.347,.124,eat); y = mix(.065,.550,eat); z = mix(.288,.324,eat);
         if (spark) { x = side*.414; y = .127; z = .302; }
+        if (feeding) {
+          x = side*mix(.347,.16,feedPose);
+          y = mix(.065,-.235,feedPose);
+          z = mix(.288,.48,feedPose);
+        }
         pole.set(side*.8,-.69,-.16);
       } else if (pet && side === 1) {
         const pat = Math.sin(petAge*.018)*.041;
@@ -660,9 +669,9 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
     if (carrying) {
       const hand = arms[itemSide===1?1:0].target;
       itemPivot.position.set(hand.x,hand.y+.015,hand.z+.039);
-      itemPivot.rotation.set(spark ? .11 : -.66*eat,0,0);
+      itemPivot.rotation.set(spark ? .11 : feeding ? 1.81*feedPose : -.66*eat,0,0);
     }
-    model.itemProp(carrying?item.kind:null,spark&&item.started?itemAge/1000:-1);
+    model.itemProp(carrying?item.kind:null,feeding?feedAge/1000:spark&&item.started?itemAge/1000:-1);
 
     const reaction = position.emote, age = (clock-reaction?.at)/1000;
     emote.visible = age >= 0 && age < 3.15 && Boolean(emojiTexture);

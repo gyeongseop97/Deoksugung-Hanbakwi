@@ -1,4 +1,5 @@
 import {validWishArt, WISH_FLIGHT_MS} from "./public/wish-art.js";
+import {FEED_MS, ITEMS} from "./public/activities.js";
 
 const json = (data, status = 200) => Response.json(data,{status,headers:{"Cache-Control":"no-store"}});
 const validId = (value) => typeof value==="string" && /^[a-f0-9]{32}$/.test(value);
@@ -6,7 +7,6 @@ const finite = (value,min,max) => typeof value==="number" && value>=min && value
 const validPoint = (point) => point && finite(point.x,0,600) && finite(point.y,0,450);
 const validTime = (value) => finite(value,0,9999999999999);
 const reactions = new Set(["😊","❤️","👍","😮","😢","😠","✨"]);
-const itemKinds = new Set(["sparkler","coffee","crepe","parfait","beer"]);
 const hairStyles = new Set(["short","bob","long","bun"]);
 const eyeStyles = new Set(["round","soft","bright"]);
 const outfitStyles = new Set(["coat","hoodie","puffer","tee","hanbok"]);
@@ -27,8 +27,8 @@ const validAvatar = (a) => validPoint(a) &&
   (a.wishOrigin==null || validPoint(a.wishOrigin)) &&
   (a.wishHeading===undefined || finite(a.wishHeading,0,360)) &&
   (a.wishArt==null || a.wish>0 && validPoint(a.wishOrigin) && validWishArt(a.wishArt)) &&
-  (a.item==null || itemKinds.has(a.item.kind) && Number.isInteger(a.item.remaining) &&
-    finite(a.item.remaining,0,a.item.kind==="sparkler"?1:3) && validTime(a.item.started)) &&
+  (a.item==null || typeof a.item.kind==="string" && Object.hasOwn(ITEMS,a.item.kind) && Number.isInteger(a.item.remaining) &&
+    finite(a.item.remaining,0,ITEMS[a.item.kind].uses) && validTime(a.item.started)) &&
   (a.blushUntil===undefined || validTime(a.blushUntil)) &&
   (a.blushLevel===undefined || Number.isInteger(a.blushLevel) && finite(a.blushLevel,0,3)) &&
   (a.pet==null || typeof a.pet.id==="string" && /^[a-z0-9-]{1,32}$/.test(a.pet.id) && validTime(a.pet.at));
@@ -36,8 +36,11 @@ const validView = (v) => v && finite(v.pan,-720,720) && finite(v.tilt,-90,90) &&
   finite(v.zoom,-3,3) && (v.night===undefined || typeof v.night==="boolean");
 const validHand = (h) => h && validId(h.id) && (h.action==="release" ||
   (h.side===-1 || h.side===1) && (h.action==="accept" || h.action==="offer" && validId(h.peer)));
+const validFeed = (feed) => feed && validId(feed.claim) && validTime(feed.at) &&
+  typeof feed.id==="string" && /^[a-z0-9-]{1,32}$/.test(feed.id);
 
 const codeAlphabet="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+const openRoomId="00000000000000000000000000000001";
 const clothes=[
   0xb85545,0x308070,0x5f75bb,0xb77934,0xa2548c,0x6d8647,0x3084a2,0xb34762,
   0x9474bb,0x33716b,0xcc9250,0x5568a3,0x917249,0x8d4844,0x4f8858,0x8358a1,
@@ -61,7 +64,11 @@ async function enterRoom(db,body){
   }
   let target;
   const now=Date.now();
-  if(action==="create"){
+  if(action==="open"){
+    await db.prepare("INSERT OR IGNORE INTO rooms (id,code,created) VALUES (?,?,?) RETURNING id")
+      .bind(openRoomId,"_open",now).all();
+    target={id:openRoomId,code:null};
+  }else if(action==="create"){
     for(let attempt=0;attempt<4&&!target;attempt++){
       const {results}=await db.prepare("INSERT OR IGNORE INTO rooms (id,code,created) VALUES (?,?,?) RETURNING id,code")
         .bind(newId(),roomCode(),now).all();
@@ -75,7 +82,7 @@ async function enterRoom(db,body){
     target=results[0];
     if(!target)return json({error:"이 초대코드에 해당하는 방을 찾을 수 없어요."},404);
   }else{
-    return json({error:"방 만들기 또는 입장을 선택해 주세요."},400);
+    return json({error:"서버에 들어가는 방법을 선택해 주세요."},400);
   }
   const fallback=0x445544+(crypto.getRandomValues(new Uint32Array(1))[0]%0x888888);
   const {results}=await db.prepare(`
@@ -94,23 +101,32 @@ async function enterRoom(db,body){
     ), ?))
     ON CONFLICT(room,id) DO UPDATE SET updated=excluded.updated WHERE walkers.player_key IS excluded.player_key
     RETURNING nickname,coat
-  `).bind(target.id,id,now,JSON.stringify({...avatar,seat:null,seatSide:null}),JSON.stringify(view),key,nickname,
+  `).bind(target.id,id,now,JSON.stringify({...avatar,seat:null,seatSide:null,feed:null}),JSON.stringify(view),key,nickname,
     JSON.stringify(clothes),target.id,now-18000,target.id,now-18000,fallback).all();
   if(!results[0])return json({error:"산책방에 다시 입장해 주세요."},409);
-  return json({room:target.id,code:target.code,profile:results[0],serverTime:now});
+  return json({room:target.id,code:target.code,mode:action==="open"?"open":"private",profile:results[0],serverTime:now});
 }
 
-function avatarUpdate(db,room,id,key,avatar,view,signal,now,active){
-  const snapshot=JSON.stringify(avatar);
+function avatarUpdate(db,room,id,key,avatar,view,signal,now,active,pendingFeed=""){
+  const {feed,...snapshotData}=avatar;
+  const snapshot=JSON.stringify(snapshotData);
   const inheritWish=avatar.wishArt===undefined&&avatar.wish>now-WISH_FLIGHT_MS?avatar.wish:null;
-  const wishPatch=`CASE WHEN json_extract(avatar,'$.wish')=? AND json_type(avatar,'$.wishArt')='array'
-    THEN json_object('wishArt',json_extract(avatar,'$.wishArt')) ELSE '{}' END`;
+  const acknowledgedFeed=validId(feed?.claim)?feed.claim:null;
+  const snapshotPatch=`json_patch(
+    CASE WHEN json_extract(avatar,'$.wish')=? AND json_type(avatar,'$.wishArt')='array'
+      THEN json_object('wishArt',json_extract(avatar,'$.wishArt')) ELSE '{}' END,
+    CASE WHEN json_type(avatar,'$.feed')='object' THEN
+      CASE WHEN json_extract(avatar,'$.feed.claim') IS NOT ?
+        THEN json_object('feed',json_extract(avatar,'$.feed'),'item',json_extract(avatar,'$.item'))
+        ELSE json_object('feed',json_extract(avatar,'$.feed')) END
+      ELSE '{}' END)`;
   const signalJson=signal?JSON.stringify({...signal,receivedAt:now}):null;
   if(avatar.seat==null){
     return db.prepare(`
-      UPDATE walkers SET updated=?, avatar=json_patch(?, ${wishPatch}), view=?, signal=COALESCE(?, CASE WHEN updated>=? THEN signal END)
+      UPDATE walkers SET updated=?, avatar=json_patch(?, ${snapshotPatch}), view=?, signal=COALESCE(?, CASE WHEN updated>=? THEN signal END)
       WHERE room=? AND id=? AND player_key IS ?
-    `).bind(now,snapshot,inheritWish,JSON.stringify(view),signalJson,active,room,id,key);
+        AND json_extract(avatar,'$.feed.claim') IS NOT ?
+    `).bind(now,snapshot,inheritWish,acknowledgedFeed,JSON.stringify(view),signalJson,active,room,id,key,pendingFeed);
   }
   const preferred=avatar.seatSide??0;
   return db.prepare(`
@@ -122,11 +138,33 @@ function avatarUpdate(db,room,id,key,avatar,view,signal,now,active){
         AND json_extract(peer.avatar,'$.seat')=?
         AND COALESCE(json_extract(peer.avatar,'$.seatSide'),0)=slot
       ) ORDER BY slot=? DESC LIMIT 1
-    ), json_set(?, '$.seat', NULL, '$.seatSide', NULL)), ${wishPatch}),
+    ), json_set(?, '$.seat', NULL, '$.seatSide', NULL)), ${snapshotPatch}),
     view=?, signal=COALESCE(?, CASE WHEN updated>=? THEN signal END)
     WHERE room=? AND id=? AND player_key IS ?
-  `).bind(now,snapshot,preferred,1-preferred,room,id,active,avatar.seat,preferred,snapshot,inheritWish,
-    JSON.stringify(view),signalJson,active,room,id,key);
+      AND json_extract(avatar,'$.feed.claim') IS NOT ?
+  `).bind(now,snapshot,preferred,1-preferred,room,id,active,avatar.seat,preferred,snapshot,inheritWish,acknowledgedFeed,
+    JSON.stringify(view),signalJson,active,room,id,key,pendingFeed);
+}
+
+function feedUpdate(db,room,id,key,feed,now){
+  const accepted=JSON.stringify({id:feed.id,claim:feed.claim,at:now});
+  const cutoff=now-FEED_MS;
+  return db.prepare(`
+    UPDATE walkers SET avatar=json_set(avatar,'$.feed',json(?),
+      '$.item.remaining',json_extract(avatar,'$.item.remaining')-1,'$.item.started',?)
+    WHERE room=? AND id=? AND player_key=?
+      AND json_extract(avatar,'$.seat') IS NULL
+      AND COALESCE(json_extract(avatar,'$.running'),0)=0
+      AND json_extract(avatar,'$.item.kind')='churu'
+      AND json_extract(avatar,'$.item.remaining')>0
+      AND json_extract(avatar,'$.item.started')<=?
+      AND json_extract(avatar,'$.feed.claim') IS NOT ?
+      AND NOT EXISTS (
+        SELECT 1 FROM walkers peer
+        WHERE peer.room=? AND json_extract(peer.avatar,'$.feed.id')=?
+          AND json_extract(peer.avatar,'$.feed.at')>?
+      )
+  `).bind(accepted,now,room,id,key,cutoff,feed.claim,room,feed.id,cutoff);
 }
 
 const readyPair=`
@@ -186,7 +224,7 @@ export async function api(request,env){
   if(!validId(body?.room)||!validId(body.id)||(body.key!==undefined&&!validId(body.key))){
     return json({error:"잘못된 산책방 정보예요."},400);
   }
-  const {room,id,key=null,avatar,view,signal,hand,leave}=body;
+  const {room,id,key=null,avatar,view,signal,hand,feed,leave}=body;
   if(leave===true){
     await db.batch([
       db.prepare(`
@@ -198,14 +236,16 @@ export async function api(request,env){
     return json({ok:true});
   }
   if(hand!=null&&(!key||!validHand(hand)))return json({error:"손잡기 요청을 읽을 수 없어요."},400);
+  if(feed!=null&&(!key||avatar===undefined||!validFeed(feed)))return json({error:"간식 주기 요청을 읽을 수 없어요."},400);
   const now=Date.now(),active=now-18000,online=now-9000;
+  const currentFeed=feed&&feed.at>=now-FEED_MS&&feed.at<=now+1500;
   const operations=[];
   if(avatar!==undefined){
     if(!validAvatar(avatar)||!validView(view)||(signal&&(!validId(signal.id)||!validView(signal.view)||
         (signal.point!==undefined&&!validPoint(signal.point))))){
       return json({error:"산책 위치를 읽을 수 없어요."},400);
     }
-    operations.push(avatarUpdate(db,room,id,key,avatar,view,signal,now,active));
+    if(!feed||currentFeed)operations.push(avatarUpdate(db,room,id,key,avatar,view,signal,now,active,feed?.claim));
     if(Math.random()<.004){
       operations.push(db.prepare("DELETE FROM walkers WHERE updated < ?").bind(now-86400000));
       operations.push(db.prepare(`
@@ -215,6 +255,7 @@ export async function api(request,env){
       `).bind(now-86400000,active));
     }
   }
+  if(currentFeed)operations.push(feedUpdate(db,room,id,key,feed,now));
   if(hand)operations.push(...handStatements(db,room,id,key,hand,now,online));
   operations.push(db.prepare(
     "SELECT id,updated,avatar,view,signal,player_key,nickname,coat FROM walkers WHERE room=? AND updated>=? ORDER BY id"

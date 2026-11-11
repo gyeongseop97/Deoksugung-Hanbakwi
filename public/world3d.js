@@ -5,11 +5,11 @@ import { solidAt, bridge, gate, middle, hall, stoneHall, courtAngle } from "./la
 import { addParkLife } from "./park-life.js";
 import { addStands, makeItemProps } from "./street-stands.js";
 import { addMuseum, stairHeight } from "./museum.js";
-import { PET_MS } from "./activities.js";
+import { PET_MS, FEED_MS } from "./activities.js";
 import { makeWalkerModels } from "./walker-model.js";
 import { decodeWishFace, WISH_WIDTH, WISH_HEIGHT, WISH_COLORS, WISH_FLIGHT_MS } from "./wish-art.js";
 
-export function makeWorld(container) {
+export function makeWorld(container,{onCatFlee}={}) {
   const scene=new T.Scene();
   const camera=new T.PerspectiveCamera(57,1,.15,1290);
   const renderer=new T.WebGLRenderer({antialias:true,powerPreference:"high-performance"});
@@ -145,7 +145,7 @@ export function makeWorld(container) {
   }
   scene.add(outdoors);
   const museum=addMuseum(T,scene,kit);
-  const parkLife=addParkLife(T,outdoors,{...kit,trees,floorHeight,catWalls,benches});
+  const parkLife=addParkLife(T,outdoors,{...kit,trees,floorHeight,catWalls,benches,onCatFlee});
 
   const landmarkLoaders=Promise.all([
     import("https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/loaders/GLTFLoader.js"),
@@ -273,6 +273,7 @@ export function makeWorld(container) {
     spotLights.forEach((light,i)=>{light.intensity=night*(i===2?720:126);});
     if(!indoors){drawWater(now*.001,night);drawPond(now*.001,night);nightSky(night);}
     const roster=[me,...peers],present=new Set(roster.map(player=>player.id));
+    for(const {id,feed} of roster)if(feed&&feed.at<=clock&&feed.at+FEED_MS>clock)parkLife.feed(feed.id,feed.at,id);
     for(const {pet} of roster)if(pet&&pet.at<=clock&&pet.at+PET_MS>clock)parkLife.pet(pet.id,pet.at);
     parkLife.update(clock,indoors?null:anchor,roster);
     for(const [id,model] of models){
