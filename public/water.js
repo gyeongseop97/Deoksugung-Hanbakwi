@@ -1,5 +1,27 @@
 import {addObstacle} from "./layout.js";
 
+function basinOutline(T,radius){
+  const points=Array.from({length:64},(_,i)=>{
+    const angle=i*Math.PI/32,edge=radius*(.89+.11*Math.cos(4*angle));
+    return new T.Vector2(edge*Math.cos(angle),edge*Math.sin(angle));
+  });
+  const shape=new T.Shape(points);
+  shape.closePath();
+  return shape;
+}
+
+function stoneBasin(T,scene,x,z,radius){
+  const outer=basinOutline(T,radius),rim=basinOutline(T,radius*1.015),inside=basinOutline(T,radius*.91);
+  rim.holes.push(inside);
+  for(const [shape,y,depth,color] of [[outer,0,.39,0x9a9687],[rim,.39,.135,0xbcb4a0]]){
+    const stone=new T.Mesh(new T.ExtrudeGeometry(shape,{depth,bevelEnabled:false}),new T.MeshStandardMaterial({color,roughness:.92}));
+    stone.rotation.x=-Math.PI/2;stone.position.set(x,y,z);stone.receiveShadow=true;scene.add(stone);
+  }
+  const pool=new T.ShapeGeometry(inside),uv=pool.getAttribute("uv");
+  for(let i=0;i<uv.count;i++)uv.setXY(i,.5+uv.getX(i)/(2*radius),.5+uv.getY(i)/(2*radius));
+  return pool;
+}
+
 export function addWater(T,scene,sources,{cylinder,rand}) {
   const state=[];
   const sprite=document.createElement("canvas");
@@ -9,23 +31,26 @@ export function addWater(T,scene,sources,{cylinder,rand}) {
   fade.addColorStop(1,"rgba(255,255,255,0)");
   ctx.fillStyle=fade;ctx.fillRect(0,0,32,32);
   const dropTexture=new T.CanvasTexture(sprite);
-  for(const {x,z,radius:r} of sources) {
-    cylinder(0x8e9087,x,.20,z,r,.41,36);
-    cylinder(0xaba89b,x,.44,z,r*1.012,.15,36);
-    const pool = new T.Mesh(new T.CircleGeometry(r*.91,42),new T.ShaderMaterial({
-      uniforms:{clock:{value:0},night:{value:0}},
+  for(const {x,z,radius:r,scalloped=false} of sources) {
+    if(!scalloped){
+      cylinder(0x8e9087,x,.20,z,r,.41,36);
+      cylinder(0xaba89b,x,.44,z,r*1.012,.15,36);
+    }
+    const poolShape=scalloped?stoneBasin(T,scene,x,z,r):new T.CircleGeometry(r*.91,42);
+    const pool = new T.Mesh(poolShape,new T.ShaderMaterial({
+      uniforms:{clock:{value:0},night:{value:0},parterre:{value:Number(scalloped)}},
       vertexShader:`
         varying vec2 field;
         void main(){field=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}
       `,
       fragmentShader:`
-        uniform float clock,night;
+        uniform float clock,night,parterre;
         varying vec2 field;
         void main(){
           vec2 p=(field-.5)*2.0;float r=length(p);
           float ripples=pow(.5+.5*sin(r*35.0-clock*4.1),12.0)*exp(-r*1.2);
           float wave=.5+.5*sin(p.x*35.0+p.y*21.0+clock*1.1)*sin(p.y*28.0-p.x*17.0-clock*.9);
-          vec3 deep=mix(vec3(.15,.35,.40),vec3(.025,.081,.14),night);
+          vec3 deep=mix(mix(vec3(.15,.35,.40),vec3(.08,.42,.55),parterre),vec3(.025,.081,.14),night);
           vec3 highlight=mix(vec3(.52,.77,.82),vec3(.28,.50,.68),night);
           vec3 color=mix(deep,highlight,.22+wave*.26+ripples*.31+r*.11);
           gl_FragColor=vec4(color,1.0);
@@ -33,13 +58,19 @@ export function addWater(T,scene,sources,{cylinder,rand}) {
         }
       `
     }));
-    pool.rotation.x=-Math.PI/2;pool.position.set(x,.531,z);scene.add(pool);
-    cylinder(0x939b94,x,.76,z,r*.095,.49,16);
-    cylinder(0xb6b1a0,x,1.028,z,r*.136,.13,16);
-    // A dozen small colliders follow the round lip rather than blocking its corners.
-    for(let i=0;i<14;i++){
-      const angle=i*Math.PI*2/14;
-      addObstacle(x+300+Math.cos(angle)*r*.79,z+225+Math.sin(angle)*r*.79,r*.60,r*.60,0,.53);
+    pool.rotation.x=-Math.PI/2;pool.position.set(x,scalloped?.493:.531,z);scene.add(pool);
+    cylinder(scalloped?0x426658:0x939b94,x,.76,z,r*.095,.49,16);
+    cylinder(scalloped?0x567c68:0xb6b1a0,x,1.028,z,r*.136,.13,16);
+    if(scalloped)for(let i=0;i<4;i++){
+      const angle=i*Math.PI/2;
+      cylinder(0x50766a,x+Math.cos(angle)*r*.61,.62,z+Math.sin(angle)*r*.61,r*.046,.24,10);
+    }
+    // Short colliders follow the lip instead of blocking the surrounding walk.
+    const edges=scalloped?20:14;
+    for(let i=0;i<edges;i++){
+      const angle=i*Math.PI*2/edges;
+      const edge=scalloped?r*(.75+.11*Math.cos(4*angle)):r*.79,segment=r*(scalloped?.37:.60);
+      addObstacle(x+300+Math.cos(angle)*edge,z+225+Math.sin(angle)*edge,segment,segment,0,.53);
     }
     addObstacle(x+300,z+225,r*1.21,r*1.21,0,.53);
     const count=154,positions=new Float32Array(count*3),seeds=[];
