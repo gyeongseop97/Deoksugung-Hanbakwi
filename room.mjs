@@ -47,6 +47,7 @@ const validFeed = (feed) => feed && validId(feed.claim) && validTime(feed.at) &&
 const codeAlphabet="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const openRoomId="00000000000000000000000000000001";
 const lookPingLifetime=5000,lookPingDistance=40;
+const chatLifetime=6000;
 const clothes=[
   0xb85545,0x308070,0x5f75bb,0xb77934,0xa2548c,0x6d8647,0x3084a2,0xb34762,
   0x9474bb,0x33716b,0xcc9250,0x5568a3,0x917249,0x8d4844,0x4f8858,0x8358a1,
@@ -61,6 +62,12 @@ function cleanName(value){
   if(typeof value!=="string")return "";
   const name=value.normalize("NFC").trim().replace(/\s+/g," ");
   return [...name].length<=16 && !/[\p{Cc}\p{Bidi_Control}]/u.test(name) ? name : "";
+}
+function cleanChat(chat){
+  if(!validId(chat?.id)||!validTime(chat.at)||typeof chat.text!=="string")return null;
+  const text=chat.text.normalize("NFC").trim().replace(/\s+/g," ");
+  if(!text||[...text].length>80||/[\p{Cc}\p{Bidi_Control}]/u.test(text))return null;
+  return {id:chat.id,text,sentAt:chat.at};
 }
 async function enterRoom(db,body){
   const {action,id,key,avatar,view}=body||{};
@@ -91,6 +98,8 @@ async function enterRoom(db,body){
     return json({error:"서버에 들어가는 방법을 선택해 주세요."},400);
   }
   const fallback=0x445544+(crypto.getRandomValues(new Uint32Array(1))[0]%0x888888);
+  const initialAvatar={...avatar,seat:null,seatSide:null,feed:null};
+  delete initialAvatar.chat;
   const {results}=await db.prepare(`
     INSERT INTO walkers (room,id,updated,avatar,view,player_key,nickname,coat)
     VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE((
@@ -107,31 +116,36 @@ async function enterRoom(db,body){
     ), ?))
     ON CONFLICT(room,id) DO UPDATE SET updated=excluded.updated WHERE walkers.player_key IS excluded.player_key
     RETURNING nickname,coat
-  `).bind(target.id,id,now,JSON.stringify({...avatar,seat:null,seatSide:null,feed:null}),JSON.stringify(view),key,nickname,
+  `).bind(target.id,id,now,JSON.stringify(initialAvatar),JSON.stringify(view),key,nickname,
     JSON.stringify(clothes),target.id,now-18000,target.id,now-18000,fallback).all();
   if(!results[0])return json({error:"산책방에 다시 입장해 주세요."},409);
   return json({room:target.id,code:target.code,mode:action==="open"?"open":"private",profile:results[0],serverTime:now});
 }
 
 function avatarUpdate(db,room,id,key,avatar,view,now,active,pendingFeed=""){
-  const {feed,...snapshotData}=avatar;
+  const {feed,chat,...snapshotData}=avatar;
   const snapshot=JSON.stringify(snapshotData);
   const inheritWish=avatar.wishArt===undefined&&avatar.wish>now-WISH_FLIGHT_MS?avatar.wish:null;
   const acknowledgedFeed=validId(feed?.claim)?feed.claim:null;
   const snapshotPatch=`json_patch(
-    CASE WHEN json_extract(avatar,'$.wish')=? AND json_type(avatar,'$.wishArt')='array'
-      THEN json_object('wishArt',json_extract(avatar,'$.wishArt')) ELSE '{}' END,
-    CASE WHEN json_type(avatar,'$.feed')='object' THEN
-      CASE WHEN json_extract(avatar,'$.feed.claim') IS NOT ?
-        THEN json_object('feed',json_extract(avatar,'$.feed'),'item',json_extract(avatar,'$.item'))
-        ELSE json_object('feed',json_extract(avatar,'$.feed')) END
+    json_patch(
+      CASE WHEN json_extract(avatar,'$.wish')=? AND json_type(avatar,'$.wishArt')='array'
+        THEN json_object('wishArt',json_extract(avatar,'$.wishArt')) ELSE '{}' END,
+      CASE WHEN json_type(avatar,'$.feed')='object' THEN
+        CASE WHEN json_extract(avatar,'$.feed.claim') IS NOT ?
+          THEN json_object('feed',json_extract(avatar,'$.feed'),'item',json_extract(avatar,'$.item'))
+          ELSE json_object('feed',json_extract(avatar,'$.feed')) END
+        ELSE '{}' END),
+    CASE WHEN json_type(avatar,'$.chat')='object' THEN json_object('chat',json(
+      CASE WHEN json_extract(avatar,'$.chat.at')>? THEN json_extract(avatar,'$.chat')
+        ELSE json_remove(json_extract(avatar,'$.chat'),'$.text') END))
       ELSE '{}' END)`;
   if(avatar.seat==null){
     return db.prepare(`
       UPDATE walkers SET updated=?, avatar=json_patch(?, ${snapshotPatch}), view=?
       WHERE room=? AND id=? AND player_key IS ?
         AND json_extract(avatar,'$.feed.claim') IS NOT ?
-    `).bind(now,snapshot,inheritWish,acknowledgedFeed,JSON.stringify(view),room,id,key,pendingFeed);
+    `).bind(now,snapshot,inheritWish,acknowledgedFeed,now-chatLifetime,JSON.stringify(view),room,id,key,pendingFeed);
   }
   const preferred=avatar.seatSide??0;
   return db.prepare(`
@@ -148,7 +162,16 @@ function avatarUpdate(db,room,id,key,avatar,view,now,active,pendingFeed=""){
     WHERE room=? AND id=? AND player_key IS ?
       AND json_extract(avatar,'$.feed.claim') IS NOT ?
   `).bind(now,snapshot,preferred,1-preferred,room,id,active,avatar.seat,preferred,snapshot,inheritWish,acknowledgedFeed,
-    JSON.stringify(view),room,id,key,pendingFeed);
+    now-chatLifetime,JSON.stringify(view),room,id,key,pendingFeed);
+}
+
+function chatUpdate(db,room,id,key,chat,now,active){
+  return db.prepare(`
+    UPDATE walkers SET avatar=json_set(avatar,'$.chat',json(?))
+    WHERE room=? AND id=? AND player_key=? AND updated>=?
+      AND json_extract(avatar,'$.chat.id') IS NOT ?
+      AND COALESCE(json_extract(avatar,'$.chat.sentAt'),-1)<?
+  `).bind(JSON.stringify({...chat,at:now}),room,id,key,active,chat.id,chat.sentAt);
 }
 
 function signalUpdate(db,room,id,key,signal,avatar,now,active){
@@ -282,7 +305,10 @@ export async function api(request,env){
     if(!validAvatar(avatar)||!validView(view)){
       return json({error:"산책 위치를 읽을 수 없어요."},400);
     }
+    const chat=avatar.chat==null?null:cleanChat(avatar.chat);
+    if(avatar.chat!=null&&(!key||!chat))return json({error:"말풍선은 1~80자로 입력해 주세요."},400);
     if(!feed||currentFeed)operations.push(avatarUpdate(db,room,id,key,avatar,view,now,active,feed?.claim));
+    if(chat)operations.push(chatUpdate(db,room,id,key,chat,now,active));
     if(signal)operations.push(signalUpdate(db,room,id,key,signal,avatar,now,active));
     if(Math.random()<.004){
       operations.push(db.prepare("DELETE FROM walkers WHERE updated < ?").bind(now-86400000));
@@ -318,6 +344,9 @@ export async function api(request,env){
     walkers:rows.map(row=>{
       const avatar=row===ownRow?receiver.avatar:JSON.parse(row.avatar);
       if(row.id===id||now-avatar.wish>=WISH_FLIGHT_MS)delete avatar.wishArt;
+      const chat=avatar.chat;
+      if(chat?.text&&chat.at>now-chatLifetime)avatar.chat={id:chat.id,text:chat.text,at:chat.at};
+      else delete avatar.chat;
       return {id:row.id,updated:row.updated,avatar,view:JSON.parse(row.view),
         signal:visibleSignal(row,avatar,receiver,lookPings===true,room,now),
         nickname:row.nickname||"동행",coat:row.coat??0x397e70,handholdAvailable:Boolean(row.player_key)};
