@@ -199,12 +199,15 @@ const perimeter = [[33,18],[171,13],[193,32],[217,69],[234,108],[242,154],[250,1
   [186,790],[160,767],[144,727],[114,689],[91,648],[85,608],[85,369],[87,284],[75,226],
   [62,169],[46,113],[34,69]];
 export const estateOutline=outline(perimeter);
-const wallLine=(kind,height,points)=>points.slice(1).map((b,index)=>({a:points[index],b,kind,height}));
+const southWall=estateOutline.slice(24,37);
+// The public verge follows the outer wall from the road to the Jeongdong turn.
+export const stonewallVerge=[...southWall,...route.slice(1,10).reverse()];
+const wallLine=(kind,height,points,tiles=false)=>points.slice(1).map((b,index)=>({a:points[index],b,kind,height,tiles}));
 export const palaceWalls = [
-  ...wallLine("outer",2.85,outline(perimeter.slice(0,23))),
-  ...wallLine("outer",2.85,[mapPoint([816,690]),{x:gate.x-1,y:gate.y-7}]),
-  ...wallLine("outer",2.85,[{x:gate.x-1,y:gate.y+7},mapPoint([770,765])]),
-  ...wallLine("outer",2.72,outline([...perimeter.slice(34),perimeter[0]])),
+  ...wallLine("outer",2.85,estateOutline.slice(0,23)),
+  ...wallLine("outer",2.85,[estateOutline[22],{x:gate.x-1,y:gate.y-7}]),
+  ...wallLine("outer",3.18,[{x:gate.x-1,y:gate.y+7},...southWall],true),
+  ...wallLine("outer",2.72,[...estateOutline.slice(36),estateOutline[0]]),
   ...wallLine("corridor",2.8,outline([[624,433],[646,395],[702,409],[687,486],[672,548],[574,529],[543,522]])),
   ...wallLine("corridor",2.8,outline([[505,514],[496,510],[500,486]])),
   ...wallLine("court",1.42,outline([[383,676],[406,680],[414,647]])),
@@ -304,7 +307,7 @@ function crossesObstacle(from,to){
 export function walkable(x,y){
   if(x<45||x>560||y<30||y>420||solidAt(x,y)||inPolygon(x,y,palacePond.outline))return false;
   return isInsideMuseum(x,y) || inPolygon(x,y,estateOutline) || distance(spawn,x,y)<23 || distance(fountain,x,y)<15 ||
-    distance(garden,x,y)<9 || nearPath(entranceWalk,x,y,7.4) || nearPath(route,x,y,5.4) ||
+    inPolygon(x,y,stonewallVerge) || distance(garden,x,y)<9 || nearPath(entranceWalk,x,y,7.4) || nearPath(route,x,y,5.4) ||
     nearPath(palace,x,y,4.1);
 }
 export function clearSegment(from,to,step=.36){
