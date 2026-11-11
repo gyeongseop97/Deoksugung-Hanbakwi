@@ -79,14 +79,114 @@ export function buildGyeongbok(T,scene,kit,tools){
   const gateSpec=gbSite.gwanghwamun;
   const gatehouse=pavilion({...gateSpec,h:6.6,raised:.3,rise:3.1,hip:true,noCollision:true});
   gatehouse.position.y=baseHeight;groups.set("gwanghwamun",gatehouse);
-  // Haetae statues guard the square.
-  const lump=new T.IcosahedronGeometry(1,1);
+  // Haetae statues guard the square: seated granite beasts with a curled mane, bulging eyes,
+  // a wide grin, a neck bell and scales, each on a stepped pedestal, heads turned to the road.
+  const granite=new Map();
+  // Large rounded masses are smooth; curls, scales and toes stay faceted like chiselled stone.
+  const carved=(color,flatShading)=>{
+    const key=color*2+(flatShading?1:0);
+    if(!granite.has(key))granite.set(key,new T.MeshStandardMaterial({color,roughness:.95,flatShading}));
+    return granite.get(key);
+  };
+  const ball=new T.SphereGeometry(1,20,14),bead=new T.SphereGeometry(1,7,5),cube=new T.BoxGeometry(1,1,1);
+  const post=new T.CylinderGeometry(.8,1,1,12),curl=new T.TorusGeometry(.27,.1,8,16,Math.PI*1.55);
+  const collar=new T.TorusGeometry(.45,.055,5,14);
+  const stone={body:0xb7b1a2,light:0xc7c1b2,shade:0x9a9486,dark:0x625e55};
+  function haetae(headTurn){
+    const statue=new T.Group(),head=new T.Group(),aim=new T.Vector3();
+    const part=(geometry,color,x,y,z,sx,sy=sx,sz=sx,parent=statue)=>{
+      const mesh=new T.Mesh(geometry,carved(color,geometry===bead||geometry===cube));
+      mesh.position.set(x,y,z);mesh.scale.set(sx,sy,sz);parent.add(mesh);return mesh;
+    };
+    // Flat discs laid on an ellipsoid in staggered rows read as scales.
+    const scales=(cx,cy,cz,rx,ry,rz,rows)=>{
+      rows.forEach(([polar,from,to,count],row)=>{
+        for(let i=0;i<count;i++){
+          const turn=(from+(to-from)*(i+(row%2)*.5)/count)*Math.PI/180,tilt=polar*Math.PI/180;
+          const dx=Math.sin(tilt)*Math.sin(turn),dy=Math.cos(tilt),dz=Math.sin(tilt)*Math.cos(turn);
+          const scale=part(bead,row%2?stone.light:stone.body,cx+dx*rx,cy+dy*ry,cz+dz*rz,.115,.115,.045);
+          scale.lookAt(aim.set(cx+dx*rx+dx/rx,cy+dy*ry+dy/ry,cz+dz*rz+dz/rz));
+        }
+      });
+    };
+    // Haunches, torso and chest of a beast sitting upright.
+    part(ball,stone.body,0,.52,-.5,.72,.56,.78);
+    part(ball,stone.body,0,.84,-.04,.62,.6,.72).rotation.x=-.5;
+    part(ball,stone.body,0,1.03,.36,.56,.58,.46);
+    part(ball,stone.body,0,1.3,.4,.46,.4,.42);
+    scales(0,.52,-.5,.72,.56,.78,[[28,70,290,7],[52,60,300,10],[76,55,305,11]]);
+    scales(0,.84,-.04,.62,.6,.72,[[40,50,130,3],[40,230,310,3],[66,50,130,3],[66,230,310,3]]);
+    for(let i=0;i<7;i++){
+      const t=i/6;
+      part(bead,stone.light,0,1.42-t*.36+Math.sin(t*Math.PI)*.1,.02-t*1.0,.09,.075,.12).rotation.x=.5-t*.9;
+    }
+    for(const side of [-1,1]){
+      part(post,stone.body,side*.34,.5,.62,.2,.98,.22);
+      part(ball,stone.body,side*.37,.98,.5,.24,.3,.26);
+      part(ball,stone.light,side*.34,.11,.76,.22,.12,.3);
+      part(ball,stone.body,side*.56,.44,-.36,.3,.45,.5);
+      part(ball,stone.light,side*.6,.1,.16,.2,.11,.34);
+      for(const toe of [-1,0,1]){
+        part(bead,stone.light,side*.34+toe*.13,.085,1.0-Math.abs(toe)*.04,.075);
+        part(bead,stone.light,side*.6+toe*.12,.08,.46-Math.abs(toe)*.04,.07);
+      }
+      // Flame-shaped tufts at the shoulders.
+      part(bead,stone.light,side*.5,.98,.3,.1,.2,.16).rotation.x=-.5;
+      part(bead,stone.light,side*.54,.84,.16,.08,.16,.13).rotation.x=-.7;
+    }
+    // Tail curled up against the back with a flame tuft.
+    const tail=part(curl,stone.body,0,.98,-1.1,1);
+    tail.rotation.set(0,Math.PI/2,0);tail.rotateZ(-.9);
+    for(const [y,z,size] of [[1.3,-.92,.13],[1.44,-.84,.1],[1.26,-.74,.09]])part(bead,stone.light,0,y,z,size*.8,size*1.3,size);
+    // Collar and bell.
+    part(collar,stone.shade,0,1.2,.44,1).rotation.x=Math.PI/2-.45;
+    part(ball,stone.light,0,.99,.86,.13);
+    part(bead,stone.dark,0,.93,.96,.05,.03,.05);
+    // Head.
+    head.position.set(0,1.64,.56);statue.add(head);
+    const face=(geometry,color,x,y,z,sx,sy,sz)=>part(geometry,color,x,y,z,sx,sy,sz,head);
+    face(ball,stone.body,0,0,0,.56,.5,.52);
+    face(ball,stone.light,0,-.14,.36,.44,.26,.3);
+    face(ball,stone.shade,0,-.3,.3,.38,.14,.26);
+    face(ball,stone.dark,0,-.235,.35,.452,.034,.312);
+    for(let i=0;i<7;i++){
+      const x=(i-3)*.085,z=.35+.3*Math.sqrt(Math.max(0,1-(x/.44)**2))-.012;
+      face(cube,0xdad4c5,x,-.235,z,.06,.075,.045).rotation.y=x*1.9;
+    }
+    for(const side of [-1,1]){
+      // Fangs at the corners of the grin.
+      face(bead,0xdad4c5,side*.31,-.2,.55,.04,.085,.04);
+      face(ball,stone.light,side*.25,.14,.38,.135);
+      face(bead,stone.dark,side*.27,.14,.49,.062,.062,.04);
+      face(ball,stone.shade,side*.25,.28,.36,.2,.07,.15).rotation.z=-side*.28;
+      face(bead,stone.body,side*.47,.2,-.04,.1,.17,.2);
+      face(bead,stone.dark,side*.085,-.05,.735,.038,.03,.03);
+      face(bead,stone.light,side*.33,-.36,.14,.09,.15,.1);
+    }
+    face(ball,stone.body,0,-.02,.63,.2,.12,.12);
+    face(bead,stone.light,0,.5,-.02,.11,.17,.13);
+    face(bead,stone.light,0,-.44,.2,.13,.17,.11);
+    // Mane: two rings of curls behind the face and a ridge down the neck.
+    for(let i=0;i<12;i++){
+      const angle=(-48+i*276/11)*Math.PI/180;
+      face(bead,i%2?stone.light:stone.body,Math.cos(angle)*.56,Math.sin(angle)*.5+.02,-.1,.16,.16,.14);
+    }
+    for(let i=0;i<9;i++){
+      const angle=(-36+i*252/8)*Math.PI/180;
+      face(bead,i%2?stone.body:stone.light,Math.cos(angle)*.45,Math.sin(angle)*.41+.02,-.34,.15,.15,.14);
+    }
+    for(const [x,y,z] of [[0,.2,-.5],[-.2,.02,-.5],[.2,.02,-.5],[0,-.16,-.48],[-.17,-.32,-.4],[.17,-.32,-.4]])face(bead,stone.light,x,y,z,.14);
+    head.rotation.set(.06,headTurn,0);
+    return statue;
+  }
   for(const side of [-1,1]){
-    slab(0xaaa598,side*27,-22,2.6,3.4,1.0);
-    solid(side*27,-22,2.6,3.4,2.6);
-    const p=world(side*27,-22);
-    const body=shape(lump,0xb9b3a4,p.x,1.72,p.z);body.scale.set(.86,.78,1.25);
-    const head=shape(lump,0xc2bcad,p.x,2.38,p.z+.86);head.scale.set(.62,.6,.6);
+    slab(0xa29c8e,side*27,-22,3.1,4.3,.4);
+    slab(0xb1ab9c,side*27,-22,2.6,3.8,.72,.4);
+    slab(0xbab4a5,side*27,-22,2.8,4.0,.14,1.12);
+    solid(side*27,-22,3.1,4.3,3.4);
+    const p=world(side*27,-22),statue=haetae(-side*.5);
+    statue.position.set(p.x,1.26,p.z);statue.scale.setScalar(1.2);statue.name="광화문 해태상";
+    scene.add(statue);
   }
 
   // ---- Buildings ------------------------------------------------------------------------
