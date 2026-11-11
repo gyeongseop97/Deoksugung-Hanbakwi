@@ -1,6 +1,6 @@
 import {
   gwanghwamun,gbSites,gbSite,gbCourts,gbLake,gbPond,gbPaths,gbLawns,gbStation,cityHallStation,subwayStops,
-  gbWoldae,gbHaetae,gbPhotoZone,wallHalf,wallNorth,at
+  gbWoldae,gbHaetae,gbPhotoZone,gbRoyalPavilion,wallHalf,wallNorth,at
 } from "./gyeongbok-layout.js";
 import {solidAt} from "./layout.js";
 
@@ -96,7 +96,9 @@ export function buildGyeongbok(T,scene,kit,tools){
       box(0x356c56,side*(w/2+.02),raised+h+.2,0,.34,.31,d*1.04,group);
       band(group,side*(w/2+.22),raised+h+.2,0,d*1.04+.4,Math.PI/2);
     }
+    const door=group.userData.door;
     if(!spec.gate&&!spec.hollow&&!spec.open)for(const side of [-1,1])for(let i=0;i<bays;i++){
+      if(door&&side===1&&i>=door.a&&i<=door.b)continue;
       const pane=new T.Mesh(unitBox,paper);
       pane.position.set(-w/2+(i+.5)*w/bays,raised+h*.55,side*(d*.50+.075));
       pane.scale.set(w/bays*.82-.06,h*.5,.012);group.add(pane);
@@ -296,9 +298,11 @@ export function buildGyeongbok(T,scene,kit,tools){
 
   // ---- Buildings ------------------------------------------------------------------------
   const built=spec=>{groups.set(spec.id,pavilion(spec));return groups.get(spec.id);};
+  // What each hall was used for decides how its room is furnished.
+  const rooms={sajeongjeon:"council",manchunjeon:"plain",cheonchujeon:"plain",sujeongjeon:"library",bihyeongak:"library",jibokjae:"library"};
   for(const spec of gbSites){
     if(spec.kind==="gate")built({...spec,gate:true,raised:.12,h:spec.stories===2?spec.h*1.9:spec.h,rise:spec.stories===2?2.9:2.0});
-    else if(spec.kind==="hall")built({...spec,raised:.55,rise:2.0+spec.w*.02});
+    else if(spec.kind==="hall")built({...spec,raised:.55,rise:2.0+spec.w*.02,interior:rooms[spec.id]??"living"});
     else if(spec.kind==="sideGate"){
       const g=built({...spec,raised:.3,rise:2.1,noCollision:true});
       const p=world(spec.east,spec.north);
@@ -357,7 +361,7 @@ export function buildGyeongbok(T,scene,kit,tools){
     cylinder(0x6a675c,p.x,tier*2+1.1,p.z,.07,.14,8);
     solid(sx*11.5,285,.8,.8,tier*2+1.1);
   }
-  const hallGroup=pavilion({...throne,h:12.4,raised:.5,rise:4.1,hip:true});
+  const hallGroup=pavilion({...throne,h:12.4,raised:.5,rise:4.1,hip:true,interior:"throne",lift:tier*2});
   hallGroup.position.y=tier*2;groups.set(throne.id,hallGroup);
   // Rank stones line the royal road in the court.
   for(const side of [-1,1])for(let i=0;i<12;i++){
@@ -414,13 +418,116 @@ export function buildGyeongbok(T,scene,kit,tools){
       solid((bridge.west+bridge.east)/2,n,bridge.east-bridge.west,.22,.8);
     }
   }
-  const lakeHall=gbSite.gyeonghoeru;
-  groups.set(lakeHall.id,pavilion({...lakeHall,h:11.2,raised:.4,rise:4.2,open:true,hollow:true,hip:true}));
-  // Inner rows of stone pillars carry the upper floor.
-  for(let i=1;i<lakeHall.bays;i++)for(const row of [-.2,.2]){
-    const east=lakeHall.east-lakeHall.w/2+i*lakeHall.w/lakeHall.bays;
-    const p=world(east,lakeHall.north+row*lakeHall.d);
-    cylinder(0xa9a394,p.x,2.9,p.z,.34,5.4,10);
+  // Gyeonghoeru: 48 stone pillars (square outside, round inside) carry an open banquet floor
+  // under one great roof. The ground floor is open to walk through; two timber stairs lead up.
+  {
+    const {centre,long,short,floor,base,norths,easts,stairs,columns}=gbRoyalPavilion;
+    const hall=new T.Group(),middle=world(centre.east,centre.north);
+    // The group's x axis runs north along the long side; z runs east.
+    hall.position.set(middle.x,0,middle.z);hall.rotation.y=Math.PI/2;hall.name="경회루";scene.add(hall);
+    groups.set("gyeonghoeru",hall);
+    const beam=(color,a,b,thick,tall)=>{
+      run.set(b.x-a.x,b.y-a.y,b.z-a.z);
+      const piece=box(color,(a.x+b.x)/2,(a.y+b.y)/2,(a.z+b.z)/2,run.length(),tall,thick);
+      piece.quaternion.setFromUnitVectors(xAxis,run.normalize());
+    };
+    slab(0xa9a393,centre.east,centre.north,short+3.2,long+3.2,.19);
+    solid(centre.east,centre.north,short+3.2,long+3.2,.19);
+    slab(stoneTint,centre.east,centre.north,short+2,long+2,.19,.19);
+    solid(centre.east,centre.north,short+2,long+2,base);
+    for(const [i,north] of norths.entries())for(const [j,east] of easts.entries()){
+      const outer=i===0||i===7||j===0||j===5,p=world(east,north);
+      if(outer)slab(0xb5af9f,east,north,.74,.74,4.5,base);
+      else cylinder(0xb0aa9a,p.x,base+2.25,p.z,.4,4.5,12,scene,.86);
+      slab(0xa39d8e,east,north,.98,.98,.14,base+4.5);
+      solid(east,north,.74,.74,floor-.2);
+      // Upper-floor columns stand on the same grid.
+      if(outer)cylinder(0x8f4936,p.x,floor+1.9,p.z,.25,3.8,12);
+    }
+    for(const {east,north} of columns){
+      const p=world(east,north);
+      cylinder(0x8f4936,p.x,floor+1.9,p.z,.27,3.8,12);
+      slab(0xb7ab95,east,north,.7,.7,.12,floor);
+    }
+    // Floor frame: beams on every pillar line, then the boards, leaving the two stairwells open.
+    for(const east of easts)slab(0x8a4a36,east,centre.north,.44,long+1.8,.32,base+4.64);
+    for(const north of norths)slab(0x356c56,centre.east,north,short+1.8,.38,.3,base+4.65);
+    const west=centre.east-short/2-.9,east=centre.east+short/2+.9,south=centre.north-long/2-.9,north=centre.north+long/2+.9;
+    const board=(w,e,s,n)=>slab(0x8a6243,(w+e)/2,(s+n)/2,e-w,n-s,.16,floor-.16);
+    const [first,second]=stairs;
+    board(west,east,south,first.south);
+    board(west,Math.min(first.foot,first.head),first.south,first.north);board(Math.max(first.foot,first.head),east,first.south,first.north);
+    board(west,east,first.north,second.south);
+    board(west,Math.min(second.foot,second.head),second.south,second.north);board(Math.max(second.foot,second.head),east,second.south,second.north);
+    board(west,east,second.north,north);
+    for(const side of [-1,1]){
+      band(hall,0,floor-.34,side*(short/2+.93),long+1.8);
+      band(hall,side*(long/2+.93),floor-.34,0,short+1.8,Math.PI/2);
+      // Balustrade round the banquet floor.
+      for(const [level,thick] of [[.92,.09],[.5,.06],[.14,.06]]){
+        box(0x7b4b38,0,floor+level,side*(short/2+.78),long+1.6,thick,.09,hall);
+        box(0x7b4b38,side*(long/2+.78),floor+level,0,.09,thick,short+1.6,hall);
+      }
+      for(let i=0;i<=28;i++)box(0x8a5a44,-long/2-.78+i*(long+1.56)/28,floor+.5,side*(short/2+.78),.07,.9,.07,hall);
+      for(let i=0;i<=24;i++)box(0x8a5a44,side*(long/2+.78),floor+.5,-short/2-.78+i*(short+1.56)/24,.07,.9,.07,hall);
+      // Lintels and the painted band under the eaves.
+      box(0x884d37,0,floor+3.62,side*short/2,long+.5,.34,.3,hall);
+      box(0x884d37,side*long/2,floor+3.62,0,.3,.34,short+.5,hall);
+      band(hall,0,floor+3.28,side*(short/2+.18),long+.4);
+      band(hall,side*(long/2+.18),floor+3.28,0,short+.4,Math.PI/2);
+      box(0x356c56,0,floor+3.98,side*(short/2+.3),long+1.2,.4,.6,hall);
+      box(0x356c56,side*(long/2+.3),floor+3.98,0,.6,.4,short+1.2,hall);
+    }
+    // Coffered ceiling over the banquet floor.
+    box(0x2f5a4a,0,floor+3.82,0,long+.4,.08,short+.4,hall);
+    for(let i=1;i<7;i++)box(0x9c5a3f,-long/2+i*long/7,floor+3.74,0,.22,.14,short,hall);
+    for(let i=1;i<5;i++)box(0x9c5a3f,0,floor+3.74,-short/2+i*short/5,long,.14,.22,hall);
+    const eaves=floor+4.2,rise=5.1,width=long+5.6,depth=short+5.6;
+    roof(hall,width,depth,eaves,rise,false);
+    box(plaster,0,eaves+rise+.26,0,width*.84+.5,.5,.44,hall);
+    box(0x2f3a3b,0,eaves+rise+.54,0,width*.84+.56,.09,.5,hall);
+    for(const side of [-1,1])box(0x4b504c,side*(width*.42+.3),eaves+rise+.56,0,.38,.9,.46,hall);
+    hips(hall,width,depth,width*.42,eaves,rise,1,6);
+    nameplate("慶會樓",hall,0,floor+3.0,short/2+.34,3.4,.85);
+    // Timber stairs: open treads between two stringers, with handrails.
+    for(const {south:low,north:high,foot,head} of stairs){
+      const mid=(low+high)/2,steps=27,stride=(head-foot)/steps;
+      for(let k=0;k<steps;k++)slab(0x8a6243,foot+stride*(k+.5),mid,Math.abs(stride)+.03,high-low-.24,.06,base+(floor-base)*(k+1)/steps-.06);
+      for(const edge of [low+.08,high-.08]){
+        const a=world(foot,edge),b=world(head,edge);
+        beam(0x6e3f30,{x:a.x,y:base-.05,z:a.z},{x:b.x,y:floor-.05,z:b.z},.1,.3);
+        beam(0x7b4b38,{x:a.x,y:base+.95,z:a.z},{x:b.x,y:floor+.95,z:b.z},.07,.08);
+        for(let k=0;k<=9;k++){
+          const p=world(foot+(head-foot)*k/9,edge);
+          box(0x8a5a44,p.x,base+(floor-base)*k/9+.48,p.z,.07,.96,.07);
+        }
+        // Rail along the stairwell on the upper floor.
+        slab(0x7b4b38,(foot+head)/2,edge+(edge<mid?-.12:.12),Math.abs(head-foot),.07,.07,floor+.9);
+      }
+      slab(0x7b4b38,foot+Math.sign(foot-head)*.06,mid,.07,high-low,.07,floor+.9);
+      for(const lift of [.3,.62])slab(0x8a5a44,foot+Math.sign(foot-head)*.06,mid,.05,high-low,.04,floor+lift);
+    }
+    // Stone railing round the island, open at the three bridges.
+    const {island}=gbLake;
+    function railing(from,to){
+      const length=Math.hypot(to[0]-from[0],to[1]-from[1]),count=Math.max(1,Math.round(length/2.3)),alongNorth=from[0]===to[0];
+      for(let i=0;i<=count;i++){
+        const e=from[0]+(to[0]-from[0])*i/count,n=from[1]+(to[1]-from[1])*i/count;
+        slab(0xbdb6a4,e,n,.26,.26,.9,.09);slab(0xc8c1af,e,n,.34,.34,.1,.99);
+      }
+      const e=(from[0]+to[0])/2,n=(from[1]+to[1])/2;
+      slab(0xb5ae9c,e,n,alongNorth?.16:length,alongNorth?length:.16,.14,.72);
+      slab(0xb5ae9c,e,n,alongNorth?.14:length,alongNorth?length:.14,.3,.16);
+      solid(e,n,alongNorth?.3:length,alongNorth?length:.3,1.15);
+    }
+    const inset=.5,iw=island.west+inset,ie=island.east-inset,is=island.south+inset,inn=island.north-inset;
+    railing([iw,is],[iw,inn]);railing([iw,is],[ie,is]);railing([iw,inn],[ie,inn]);
+    let cursor=is;
+    for(const bridge of gbLake.bridges){
+      railing([ie,cursor],[ie,bridge.north-bridge.width/2-.3]);
+      cursor=bridge.north+bridge.width/2+.3;
+    }
+    railing([ie,cursor],[ie,inn]);
   }
   for(const isle of lake.isles){
     const ring=Array.from({length:14},(_,i)=>at(isle.east+Math.cos(i*Math.PI/7)*isle.radius,isle.north+Math.sin(i*Math.PI/7)*isle.radius));

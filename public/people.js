@@ -1,4 +1,5 @@
-import {clearSegment,distance,platformAt} from "./layout.js";
+// People may wade through the palace ponds, so their movement checks allow shallow water.
+import {wadeSegment as clearSegment,distance,platformAt,loftStair} from "./layout.js";
 import {JUMP_MS,JUMP_HEIGHT} from "./activities.js";
 
 export const normalize = angle => ((angle % 360) + 360) % 360;
@@ -66,7 +67,7 @@ export function smoothPeople(people,seconds,serverTime,roundTrip=65){
       const feet=platformAt(a.x,a.y)+(airborne?JUMP_HEIGHT:.19);
       for(const share of [1,.6,.3]){
         const guess={x:a.x+(a.vx||0)*lead*share,y:a.y+(a.vy||0)*lead*share};
-        if(clearSegment(a,guess,.36,feet)){goal=guess;break;}
+        if(a.up||loftStair(a.x,a.y)!=null||clearSegment(a,guess,.36,feet)){goal=guess;break;}
       }
     }
     const gap=distance(position,goal.x,goal.y);

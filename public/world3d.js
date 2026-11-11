@@ -1,7 +1,7 @@
 import * as T from "three";
 import { buildJeongdong } from "./streets.js";
 import { addWater } from "./water.js";
-import { solidAt, platformAt, bridge, gate, middle, hall, stoneHall, courtAngle, ticketGuide } from "./layout.js";
+import { solidAt, platformAt, waterDepth, loftHeight, bridge, gate, middle, hall, stoneHall, courtAngle, ticketGuide } from "./layout.js";
 import { addParkLife } from "./park-life.js";
 import { addPalaceBirds } from "./palace-birds.js";
 import { addPalaceSky } from "./palace-sky.js";
@@ -186,6 +186,24 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     import("https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/loaders/GLTFLoader.js"),
     import("https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/libs/meshopt_decoder.module.js")
   ]);
+  // Doorways cut through the surveyed shells so the furnished rooms inside can be entered.
+  // Each is a box in the building's own coordinates: across, toward the front, and up.
+  const surveyDoors={
+    junghwajeon:{x:0,z:9.2,width:3.1,depth:2.8,floor:1.75,height:3.05},
+    hamnyeongjeon:{x:1.1,z:5.9,width:2.6,depth:2.6,floor:1.85,height:2.95},
+    seogeodang:{x:0,z:3.6,width:2.4,depth:2.2,floor:1.05,height:2.75}
+  };
+  function doorPlanes({x,z,width,depth,floor,height},point,angle){
+    const c=Math.cos(angle),s=Math.sin(angle),px=wx(point.x),pz=wz(point.y);
+    const across=new T.Vector3(c,0,-s),front=new T.Vector3(s,0,c),up=new T.Vector3(0,1,0);
+    const baseX=across.x*px+across.z*pz,baseZ=front.x*px+front.z*pz;
+    // With clipIntersection a fragment is dropped only when it lies behind every plane.
+    return [
+      new T.Plane(across.clone(),-(baseX+x+width/2)),new T.Plane(across.clone().negate(),baseX+x-width/2),
+      new T.Plane(front.clone(),-(baseZ+z+depth/2)),new T.Plane(front.clone().negate(),baseZ+z-depth/2),
+      new T.Plane(up.clone(),-(floor+height)),new T.Plane(up.clone().negate(),floor)
+    ];
+  }
   async function loadLandmark(name,point,groups,angle=0){
     try{
       const [{GLTFLoader},{MeshoptDecoder}]=await landmarkLoaders;
@@ -201,6 +219,11 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
         }
         const material=mesh.material;
         material.flatShading=false;material.metalness=0;material.roughness=.92;
+        if(surveyDoors[name]){
+          material.clippingPlanes=doorPlanes(surveyDoors[name],point,angle);
+          material.clipIntersection=true;material.clipShadows=true;
+          renderer.localClippingEnabled=true;
+        }
         if(material.map){material.map.anisotropy=anisotropy;material.map.needsUpdate=true;}
         material.needsUpdate=true;
         mesh.castShadow=mesh.receiveShadow=true;
@@ -326,7 +349,31 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
   function seatAt(position){return benches[position.seat]?.slots[position.seatSide??0];}
   // Low kerbs, benches and ledges can be stood on after a jump, so they raise the floor too.
   function floorHeight(position){
-    return Math.max(groundHeight(position),platformAt(position.x,position.y,true));
+    return Math.max(groundHeight(position),platformAt(position.x,position.y,true),loftHeight(position));
+  }
+  // Where a walker's feet are drawn: waist-deep below the surface while wading a pond.
+  const footing=position=>floorHeight(position)-waterDepth(position.x,position.y);
+  const rippleGeometry=new T.RingGeometry(.5,.58,30),ripples=new Map();
+  rippleGeometry.rotateX(-Math.PI/2);
+  function drawRipples(id,player,now,wet){
+    let rings=ripples.get(id);
+    if(!wet){
+      if(rings)for(const ring of rings)ring.visible=false;
+      return;
+    }
+    if(!rings){
+      rings=[0,1].map(()=>new T.Mesh(rippleGeometry,new T.MeshBasicMaterial({color:0xeaf7f8,transparent:true,depthWrite:false})));
+      for(const ring of rings)scene.add(ring);
+      ripples.set(id,rings);
+    }
+    const busy=Math.hypot(player.vx||0,player.vy||0)>.05;
+    rings.forEach((ring,i)=>{
+      const phase=(now*(busy?.0011:.00055)+i*.5)%1;
+      ring.visible=true;
+      ring.position.set(wx(player.x),.062,wz(player.y));
+      ring.scale.setScalar(.75+phase*(busy?1.9:1.2));
+      ring.material.opacity=(1-phase)*(busy?.62:.34);
+    });
   }
   function groundHeight(position) {
     const stair=stairHeight(position);
@@ -448,17 +495,20 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
       if(present.has(id))continue;
       walkerModels.dispose(model);
       models.delete(id);
+      for(const ring of ripples.get(id)??[]){ring.removeFromParent();ring.material.dispose();}
+      ripples.delete(id);
     }
     roster.forEach(player=>{
       let model=models.get(player.id);
       const visible=museum.isInside(player.x,player.y)===indoors&&Math.hypot(player.x-anchor.x,player.y-anchor.y)<135;
-      if(!visible){if(model){model.group.visible=false;walkerModels.clearChat(model);}return;}
+      if(!visible){if(model){model.group.visible=false;walkerModels.clearChat(model);}drawRipples(player.id,player,now,false);return;}
       if(!model){model=walkerModels.create(player.coat??0xab5947,player.nickname,labelSprite);models.set(player.id,model);}
-      walkerModels.update(model,player,{now,clock,delta,seat:seatAt(player),floor:floorHeight(player),jump:jumpLift(player,clock),emojiTexture,chatTexture,
+      drawRipples(player.id,player,now,waterDepth(player.x,player.y)>0&&jumpLift(player,clock)<.3);
+      walkerModels.update(model,player,{now,clock,delta,seat:seatAt(player),floor:footing(player),jump:jumpLift(player,clock),emojiTexture,chatTexture,
         turnEase:player===me?1-Math.exp(-delta*22):1});
     });
     const seat=seatAt(anchor);
-    const eyeHeight=seat?(firstPerson?1.30:1.22):(firstPerson?1.28:1.20)+floorHeight(anchor)+jumpLift(anchor,clock);
+    const eyeHeight=seat?(firstPerson?1.30:1.22):(firstPerson?1.28:1.20)+footing(anchor)+jumpLift(anchor,clock);
     anchorPoint.set(wx(seat?.x??anchor.x),eyeHeight,wz(seat?.y??anchor.y));
     const changed=cameraAnchor!==anchor.id||pivot.distanceToSquared(anchorPoint)>144;
     if(changed)pivot.copy(anchorPoint);

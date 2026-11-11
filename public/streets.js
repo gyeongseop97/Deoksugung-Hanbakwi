@@ -8,6 +8,7 @@ import {standPlantingFootprints} from "./street-stands.js";
 import {makePalaceClearance} from "./palace-plantings.js";
 import {makeTreeBuilder} from "./lowpoly-trees.js";
 import {buildGyeongbok} from "./gyeongbok.js";
+import {furnishHall} from "./palace-interiors.js";
 
 export function buildJeongdong(T,scene,kit) {
   const {box,cylinder,shape,wx,wz,rand,matte}=kit;
@@ -604,9 +605,56 @@ export function buildJeongdong(T,scene,kit) {
     // Buildings that stand on a terrace or gate tower leave the ground below them clear.
     const solid=!spec.noCollision;
     box(0xb4ae9e,0,raised/2,0,w+1.4,raised,d+1.1,g);
+    // An enterable hall: the middle bay (two when the bay count is even) stands open, the
+    // body is a shell of walls round a furnished room, and steps lead up to the floor.
+    // spec.fit places the room inside a surveyed model instead: its own size, floor height
+    // and the porch in front of the door, measured from that model.
+    const fit=spec.fit;
+    const room=spec.interior&&!spec.gate&&!spec.open?{a:Math.ceil(bays/2)-1,b:Math.floor(bays/2),
+      height:fit?.height??Math.min(h*(spec.stories===2?.5:.9),spec.stories===2?h*.5:5.2)}:null;
+    if(room){
+      const west=fit?-fit.gap/2:lo(room.a)+.3,east=fit?fit.gap/2:lo(room.b+1)-.3,middle=(west+east)/2,gap=east-west;
+      const top=fit?fit.floor:(spec.lift??0)+raised,shift=fit?.z??0,thick=.26,iw=fit?fit.w:w-.55,id=fit?fit.d:d-.55;
+      const origin=fromBuilding(spec,0,shift),inside=new T.Group();
+      inside.position.set(wx(origin.x),top-raised,wz(origin.y));inside.rotation.y=angle;scene.add(inside);
+      inside.name=(spec.name||"전각")+" 내부";
+      const wallColor=spec.plain?0x8a6a4c:0x864d39,lintel=Math.min(room.height,3.1);
+      const wallBlock=(lx,lz,bw,bd,high)=>{if(solid)blockLocal(spec,lx,shift+lz,bw,bd,high);};
+      box(0x9b7248,0,raised+.035,0,iw-.3,.07,id-.3,inside);
+      box(wallColor,0,raised+room.height/2,-(id/2-thick/2),iw,room.height,thick,inside);
+      wallBlock(0,-(id/2-.15),iw,.5);
+      for(const side of [-1,1]){
+        box(wallColor,side*(iw/2-thick/2),raised+room.height/2,0,thick,room.height,id,inside);
+        wallBlock(side*(iw/2-.15),0,.5,id);
+        const edge=side<0?west:east,span=iw/2-Math.abs(edge);
+        box(wallColor,side*(Math.abs(edge)+span/2),raised+room.height/2,id/2-thick/2,span,room.height,thick,inside);
+        wallBlock(side*(Math.abs(edge)+span/2),id/2-.15,span,.5);
+        // The door leaves stand folded back inside the opening.
+        box(0x476e5b,edge-side*.06,raised+lintel/2,id/2-thick-.62,.07,lintel-.1,1.15,inside);
+        box(0xd9d0b6,edge-side*.11,raised+lintel*.58,id/2-thick-.62,.02,lintel*.6,1.0,inside);
+      }
+      if(room.height>lintel+.1)box(wallColor,middle,raised+(lintel+room.height)/2,id/2-thick/2,gap,room.height-lintel,thick,inside);
+      // Coffered ceiling.
+      box(0x2f5a4a,0,raised+room.height+.05,0,iw,.1,id,inside);
+      for(let i=1;i<bays;i++)box(0x9c5a3f,-iw/2+i*iw/bays,raised+room.height-.06,0,.2,.14,id-.5,inside);
+      for(const part of [-.25,.25])box(0x9c5a3f,0,raised+room.height-.05,part*id,iw-.5,.14,.2,inside);
+      // The floor platform, then steps down from the doorway (a surveyed model shows its own).
+      const lift=top-raised,drop=fit?top:raised,porch=fit?id/2+fit.porch:(d+1.1)/2;
+      const steps=Math.max(0,Math.ceil(drop/.19)-1),riser=drop/(steps+1);
+      if(fit)wallBlock(0,(porch-id/2)/2,iw+1,id+(porch-id/2),top);
+      else wallBlock(0,0,w+1.4,d+1.1,top);
+      for(let k=1;k<=steps;k++){
+        const height=drop-k*riser,front=porch+(k-.5)*.38;
+        if(!fit)box(0xb0ab9a,middle,height/2,front,gap+1.3,height,.38,inside);
+        wallBlock(middle,front,gap+(fit?3:1.3),.38,top-k*riser);
+      }
+      furnishHall(T,inside,kit,{style:spec.interior,name:spec.name,w:iw-thick*2,d:id-thick*2,floor:raised+.07,height:room.height-.07,
+        glow:lampMaterial,solid:(lx,lz,bw,bd,high)=>wallBlock(lx,lz,bw,bd,high==null?high:top+high)});
+      g.userData.door={a:room.a,b:room.b};g.userData.inside=inside;
+    }
     if(!spec.gate){
       const access=pavilionStairAccess.get(spec.name);
-      if(!solid){
+      if(!solid||room){
       }else if(access){
         const width=w+1.40,depth=d+1.10,sideWidth=(width-access.width)/2;
         for(const side of [-1,1])blockLocal(spec,side*(access.width+sideWidth)/2,0,sideWidth,depth);
@@ -614,7 +662,10 @@ export function buildJeongdong(T,scene,kit) {
       }else block(x,z,w+1.40,d+1.10,angle);
       const veranda=spec.open?.82:0;
       // A pillared pavilion such as Gyeonghoeru has no walls under its upper floor.
-      if(!spec.hollow)box(0x864d39,0,raised+h*.47,-veranda*.5,w-.55,h*.92,d-.55-veranda,g);
+      if(room){
+        // Above the room the body closes again so the roof space cannot be seen into.
+        if(h*.92-room.height>.3)box(0x864d39,0,raised+(room.height+.1+h*.92)/2,0,w-.55,h*.92-room.height-.1,d-.55,g);
+      }else if(!spec.hollow)box(0x864d39,0,raised+h*.47,-veranda*.5,w-.55,h*.92,d-.55-veranda,g);
     }
     for(const side of [-1,1]){
       for(let i=0;i<=bays;i++){
@@ -634,7 +685,7 @@ export function buildJeongdong(T,scene,kit) {
           for(let j=1;j<=7;j++){
             box(j%2===0?0x697957:0x486753,px-width/2+j*width/8,raised+.60,pz,.039,.54,.06,g);
           }
-        }else if(!spec.gate){
+        }else if(!spec.gate&&!(room&&side===1&&i>=room.a&&i<=room.b)){
           const width=w/bays*.82;
           box(0x476e5b,px,raised+h*.46,pz,width,h*.72,.14,g);
           for(let j=1;j<=9;j++)box(0x285548,px-width/2+width*j/10,raised+h*.49,pz+side*.085,.045,h*.58,.043,g);
@@ -732,7 +783,7 @@ export function buildJeongdong(T,scene,kit) {
     const g=placed(middle),shift=side*6.4;
     block(g.x+shift*Math.cos(courtAngle),g.z-shift*Math.sin(courtAngle),8.6,10.0,courtAngle);
   }
-  const hallModel=pavilion({...hall,w:18.6,d:17.6,h:5.0,bays:5,angle:courtAngle,raised:1.01,mainHall:true,sign:"殿和中"});
+  const hallModel=pavilion({...hall,w:18.6,d:17.6,h:5.0,bays:5,angle:courtAngle,raised:1.01,mainHall:true,sign:"殿和中",interior:"throne",lift:.81});
   const hallSite={...hall,angle:courtAngle};
   // Block the edges of each raised level and leave both stair openings clear.
   for(const [halfWidth,back,front,top] of [[19.85,-15.3,27.2,1.14],[13.55,-8.5,22.65,2.08]]){
@@ -796,11 +847,11 @@ export function buildJeongdong(T,scene,kit) {
     }else if(spec.outline){
       // The sleeping hall has a short rear wing rather than a rectangular roof plan.
       const {x,y,angle}=spec,c=Math.cos(angle),s=Math.sin(angle);
-      const wing=(dx,dz,w,d,bays,sign)=>pavilion({
-        ...spec,x:x+dx*c+dz*s,y:y-dx*s+dz*c,w,d,bays,sign,name:""
+      const wing=(dx,dz,w,d,bays,sign,interior)=>pavilion({
+        ...spec,x:x+dx*c+dz*s,y:y-dx*s+dz*c,w,d,bays,sign,name:"",interior
       });
       pavilionModels.set(spec.name,{spec,groups:[
-        wing(1.1,1.95,29.5,11.7,9,spec.sign),wing(-9.5,-5.84,8.4,4.0,3)
+        wing(1.1,1.95,29.5,11.7,9,spec.sign,spec.interior),wing(-9.5,-5.84,8.4,4.0,3)
       ]});
     }else{
       pavilionModels.set(spec.name,{spec,groups:[pavilion(spec)]});

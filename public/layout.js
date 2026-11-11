@@ -172,12 +172,14 @@ export const palacePlantings=[
 // are approximations from the visitor map. Dimensions and heights are metres.
 export const pavilions = [
   { ...p("광명문",37.56540,126.97583),w:13.7,d:8.0,h:3.2,bays:3,angle:-.21,gate:true,sign:"光明門" },
-  { ...p("함녕전",37.56597,126.97594),w:29.5,d:17.6,h:3.7,bays:9,angle:-.21,sign:"咸寧殿",
+  { ...p("함녕전",37.56597,126.97594),w:29.5,d:17.6,h:3.7,bays:9,angle:-.21,sign:"咸寧殿",interior:"living",
+    fit:{w:25.5,d:8.0,z:-.2,floor:1.9,porch:2.3,gap:2.6,height:3.3},
     outline:outline([[598,415],[630,423],[625,440],[677,451],[667,489],[586,472]]) },
-  { ...p("덕홍전",37.56596,126.97555),w:16.9,d:15.0,h:3.8,bays:3,angle:-.24,sign:"德弘殿" },
-  { ...p("석어당",37.56613,126.97517),w:23.4,d:12.4,h:6.1,bays:8,angle:-.20,stories:2,sign:"昔御堂" },
-  { ...p("즉조당",37.56630,126.97498),w:19.6,d:9.4,h:3.6,bays:5,angle:-.20,sign:"卽阼堂" },
-  { ...mapPoint([354,346],"준명당"),w:21.0,d:10.7,h:3.6,bays:6,angle:-.20,sign:"浚明堂" },
+  { ...p("덕홍전",37.56596,126.97555),w:16.9,d:15.0,h:3.8,bays:3,angle:-.24,sign:"德弘殿",interior:"reception" },
+  { ...p("석어당",37.56613,126.97517),w:23.4,d:12.4,h:6.1,bays:8,angle:-.20,stories:2,sign:"昔御堂",interior:"plain",plain:true,
+    fit:{w:20.5,d:6.4,z:0,floor:1.09,porch:1.2,gap:2.4,height:2.9} },
+  { ...p("즉조당",37.56630,126.97498),w:19.6,d:9.4,h:3.6,bays:5,angle:-.20,sign:"卽阼堂",interior:"living" },
+  { ...mapPoint([354,346],"준명당"),w:21.0,d:10.7,h:3.6,bays:6,angle:-.20,sign:"浚明堂",interior:"living" },
   { ...mapPoint([380,351],"준명당 연결 행각"),w:6.8,d:4.2,h:2.7,bays:2,angle:-.20 },
   { ...p("정관헌",37.56645,126.97565),w:20.2,d:13.5,h:4.4,bays:7,angle:-.04,open:true,sign:"靜觀軒" },
   { ...p("돈덕전",37.56716,126.97367),w:28.8,d:38.5,h:13.4,angle:.17,brick:true,kind:"redBrick" },
@@ -333,6 +335,51 @@ function crossesObstacle(from,to,level=0){
   }
 }
 // feet is the absolute height of a jumping or perched walker; 0 keeps every obstacle solid.
+// Upper storeys. A loft has stairs, whose height depends only on position, and a deck that
+// carries only walkers who came up those stairs (avatar.up); everyone else passes beneath.
+const lofts=[];
+export function addLoft(loft){lofts.push(loft);}
+export function loftStair(x,y){
+  for(const loft of lofts){
+    const height=loft.stair(x,y);
+    if(height!=null)return height;
+  }
+  return null;
+}
+export function loftHeight(position){
+  const stair=loftStair(position.x,position.y);
+  if(stair!=null)return stair;
+  if(position.up)for(const loft of lofts)if(loft.deck(position.x,position.y))return loft.height;
+  return 0;
+}
+// One step from a walker's place to (x,y): {up} when it stays on or joins a loft surface,
+// null when the loft blocks it, undefined when ordinary ground rules decide.
+export function loftStep(from,x,y){
+  if(!lofts.length)return undefined;
+  const stair=loftStair(x,y),onStair=loftStair(from.x,from.y);
+  if(stair==null&&onStair==null&&!from.up)return undefined;
+  const here=onStair??(from.up?loftHeight(from):platformAt(from.x,from.y));
+  if(stair!=null)return Math.abs(stair-here)<=.36?{up:false}:null;
+  const loft=lofts.find(item=>item.deck(x,y));
+  if(loft&&Math.abs(loft.height-here)<=.36)return {up:true};
+  if(from.up)return null;
+  // Stepping off the foot of the stairs back onto the ground.
+  return Math.abs(platformAt(x,y)-here)<=.36?undefined:null;
+}
+// Shallow water (a palace pond) can be waded by people. Animals and planned routes keep to
+// dry ground, so the plain checks below never count water as walkable.
+export const waterDepth=(x,y)=>(zones.length?zoneAt(x,y)?.water?.(x,y):0)||0;
+export function wadeable(x,y,feet=0){
+  return walkable(x,y,feet)||waterDepth(x,y)>0&&!solidAt(x,y,feetLevel(feet));
+}
+export function wadeSegment(from,to,step=.36,feet=0){
+  const dx=to.x-from.x,dy=to.y-from.y;
+  const count=Math.ceil(Math.hypot(dx,dy)/step);
+  for(let i=1;i<=count;i++){
+    if(!wadeable(from.x+dx*i/count,from.y+dy*i/count,feet))return false;
+  }
+  return !count||!crossesObstacle(from,to,feetLevel(feet));
+}
 export function walkable(x,y,feet=0){
   const zone=zones.length?zoneAt(x,y):null;
   if(zone)return !solidAt(x,y,feetLevel(feet))&&zone.walkable(x,y);
@@ -353,27 +400,29 @@ const spacing=2;
 const baseField={ox:0,oy:0,cols:300,rows:225};
 const around=[[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,1],[1,-1],[-1,-1]];
 const gridPoint=(i,{ox,oy,cols})=>({x:ox+i%cols*spacing,y:oy+Math.floor(i/cols)*spacing});
-function snap(point,radius,direct,feet,field){
+function snap(point,radius,direct,feet,field,open=walkable,clear=clearSegment){
   let best=-1,gap=Infinity;
   const {ox,oy,cols,rows}=field;
   const cx=Math.round((point.x-ox)/spacing),cy=Math.round((point.y-oy)/spacing);
   for(let y=Math.max(0,cy-radius);y<=Math.min(rows-1,cy+radius);y++){
     for(let x=Math.max(0,cx-radius);x<=Math.min(cols-1,cx+radius);x++){
       const next={x:ox+x*spacing,y:oy+y*spacing},d=distance(point,next.x,next.y);
-      if(d>=gap||!walkable(next.x,next.y)||(direct&&!clearSegment(point,next,.36,feet)))continue;
+      if(d>=gap||!open(next.x,next.y)||(direct&&!clear(point,next,.36,feet)))continue;
       best=y*cols+x;gap=d;
     }
   }
   return best;
 }
 // feet lets a walker standing on a bench or ledge plan the first step down from it.
-export function planWalk(from,target,feet=0){
-  const exact=walkable(target.x,target.y);
-  if(exact&&clearSegment(from,target,.36,feet))return [target];
+// wade plans a route that may cross shallow water.
+export function planWalk(from,target,feet=0,wade=false){
+  const open=wade?wadeable:walkable,clear=wade?wadeSegment:clearSegment;
+  const exact=open(target.x,target.y);
+  if(exact&&clear(from,target,.36,feet))return [target];
   const field=zoneAt(from.x,from.y)?.grid??baseField,{ox,oy,cols,rows}=field;
   if(zoneAt(target.x,target.y)!==zoneAt(from.x,from.y))return [];
-  const start=snap(from,3,true,feet,field);
-  let goal=snap(target,7,exact,0,field);
+  const start=snap(from,3,true,feet,field,open,clear);
+  let goal=snap(target,7,exact,0,field,open,clear);
   if(start<0||goal<0)return [];
   const previous=new Int32Array(cols*rows).fill(-1),queue=[start];
   previous[start]=start;
@@ -382,7 +431,7 @@ export function planWalk(from,target,feet=0){
     for(const [dx,dy] of around){
       const x=col+dx,y=row+dy,next=y*cols+x;
       if(x<0||x>=cols||y<0||y>=rows||previous[next]>=0||
-        !clearSegment(point,{x:ox+x*spacing,y:oy+y*spacing}))continue;
+        !clear(point,{x:ox+x*spacing,y:oy+y*spacing}))continue;
       previous[next]=current;queue.push(next);
     }
   }
@@ -398,12 +447,12 @@ export function planWalk(from,target,feet=0){
   const points=[];
   for(let i=goal;i!==start;i=previous[i])points.push(gridPoint(i,field));
   points.push(gridPoint(start,field));points.reverse();
-  if(exact&&clearSegment(points.at(-1),target))points.push(target);
+  if(exact&&clear(points.at(-1),target))points.push(target);
   const simplified=[];
   let cursor=from;
   for(let i=0;i<points.length;){
     let last=i;
-    for(let j=i+1;j<points.length&&clearSegment(cursor,points[j],.36,i?0:feet);j++)last=j;
+    for(let j=i+1;j<points.length&&clear(cursor,points[j],.36,i?0:feet);j++)last=j;
     cursor=points[last];simplified.push(cursor);i=last+1;
   }
   return simplified;

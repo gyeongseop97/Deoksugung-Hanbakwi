@@ -1,6 +1,6 @@
 import {
   route,palacePaths,palaceCourts,palaceGardens,palacePond,palaceWalls,fountain,ticket,ticketApproach,ticketGuide,gate,bridge,court,
-  middle,hall,stoneHall,stoneFountain,city,pavilions,estateOutline,nearest,distance as near,walkable,clearSegment,planWalk,platformAt
+  middle,hall,stoneHall,stoneFountain,city,pavilions,estateOutline,nearest,distance as near,walkable,clearSegment,wadeSegment,waterDepth,loftStep,loftHeight,loftStair,planWalk,platformAt
 } from "./layout.js";
 import {normalize,angleDelta,hexCoat,moving,receivePeople,smoothPeople,handPosition,handSide,pairFits} from "./people.js";
 import {ITEMS,PET_MS,FEED_MS,JUMP_MS,jumpLift} from "./activities.js";
@@ -417,7 +417,7 @@ function pairedPose(link,leader,follower,now){
   const origin=formations.get(link.id),target=handPosition(leader,link.side);
   const age=Math.min(1,(now-origin.started)/410),blend=age*age*(3-2*age);
   const next={x:origin.x+(target.x-origin.x)*blend,y:origin.y+(target.y-origin.y)*blend,heading:target.heading};
-  if(clearSegment(follower,next))return next;
+  if(wadeSegment(follower,next))return next;
   return {...follower,heading:target.heading};
 }
 
@@ -727,7 +727,12 @@ $("close-map").addEventListener("click",()=>setMap(false));
 function walkTo(target,seat=null){
   if(!target||!session||amFollowingHands()||!world&&!worldFailed)return;
   stand();
-  const steps=planWalk(me,target,feetHeight(gameTime()));
+  // Routes keep to dry ground unless the walker is already in a pond or taps one.
+  const feet=feetHeight(gameTime()),wet=waterDepth(me.x,me.y)>0||waterDepth(target.x,target.y)>0;
+  // Upstairs there is no route grid: head straight for the spot and let each step be checked.
+  const aloft=me.up||loftStair(me.x,me.y)!=null;
+  let steps=aloft?[target]:wet?[]:planWalk(me,target,feet);
+  if(!steps.length)steps=planWalk(me,target,feet,true);
   if(!steps.length){toast("걸을 수 있는 길을 터치해 주세요.");return;}
   course=steps;seatClaim=null;pendingSeat=seat;
 }
@@ -855,18 +860,21 @@ const clearSceneTouch=bindSceneTouch($("game"),gameShell,{
 const stepUp=.19;
 function standingHeight(){return Math.max(world?.groundHeight(me)??0,platformAt(me.x,me.y));}
 function feetHeight(time){
-  const lift=jumpLift(me,time),platform=platformAt(me.x,me.y);
+  const lift=jumpLift(me,time),platform=Math.max(platformAt(me.x,me.y),loftHeight(me));
   // A jump rises from where it started; landing on something lower or level ends it there.
   // On foot a walker still climbs anything a step high, which is what makes stone stairs work.
   return lift?Math.max(jumpBase+lift,platform):platform+stepUp;
 }
 function move(x,y){
-  if(!session||(x===me.x&&y===me.y)||!clearSegment(me,{x,y},.36,feetHeight(gameTime())))return false;
+  if(!session||(x===me.x&&y===me.y))return false;
+  // Stairs and upper floors follow their own rules; everywhere else the ground decides.
+  const loft=loftStep(me,x,y);
+  if(loft===null||loft===undefined&&!wadeSegment(me,{x,y},.36,feetHeight(gameTime())))return false;
   const aim=normalize(Math.atan2(x-me.x,me.y-y)*180/Math.PI);
   const link=myLink();
   const heading=link?.active?normalize(me.heading+angleDelta(me.heading,aim)*.26):aim;
-  if(link?.active&&!pairFits(me,{x,y,heading},link.side))return false;
-  stand();Object.assign(me,{x,y,heading});
+  if(link?.active&&!loft&&!pairFits(me,{x,y,heading},link.side))return false;
+  stand();Object.assign(me,{x,y,heading,up:Boolean(loft?.up)});
   dirty=true;return true;
 }
 function nearWishFountain(){
@@ -916,7 +924,7 @@ function savePhoto(picture){
 $("photo").addEventListener("click",()=>{
   if(photoBusy||!nearPhotoZone()||!lastScene)return;
   photoBusy=true;resetInput();
-  Object.assign(me,{x:gbPhotoZone.x,y:gbPhotoZone.y,heading:gbPhotoZone.heading,vx:0,vy:0,wave:gameTime()});
+  Object.assign(me,{x:gbPhotoZone.x,y:gbPhotoZone.y,heading:gbPhotoZone.heading,vx:0,vy:0,up:false,wave:gameTime()});
   dirty=true;toast("하나, 둘, 셋!");
   setTimeout(()=>{
     photoBusy=false;
@@ -1051,7 +1059,7 @@ $("use-item").addEventListener("click",()=>{
 });
 function movePlayerTo(destination,place){
   resetInput();stand();
-  Object.assign(me,{x:destination.x,y:destination.y,heading:destination.heading,vx:0,vy:0,blocked:false,running:false,jump:0});
+  Object.assign(me,{x:destination.x,y:destination.y,heading:destination.heading,vx:0,vy:0,blocked:false,running:false,jump:0,up:false});
   ownView={...ownView,pan:destination.heading,tilt:0};
   $("location").textContent=place;dirty=true;wakeSync();
 }
@@ -1154,8 +1162,9 @@ function motion(now,elapsed){
   const oldX=me.x,oldY=me.y,link=myLink(),follower=amFollowingHands();
   const wasMoving=moving(me)||me.blocked,wasBlocked=me.blocked,wasRunning=me.running;
   const leader=follower&&people.get(link.leader);
-  const pace=runToggled||shiftHeld;
-  const speed=elapsed*(pace?6.675:2.58);
+  // Wading through a pond is slow going, and there is no running in the water.
+  const wading=waterDepth(me.x,me.y)>0,pace=(runToggled||shiftHeld)&&!wading;
+  const speed=elapsed*(wading?1.1:pace?6.675:2.58);
   let blocked=false;
   if(leader){
     const next=pairedPose(link,leader.position,me,now);

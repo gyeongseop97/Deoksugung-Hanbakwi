@@ -1,4 +1,4 @@
-import {addLandmarks,addZone,spawn} from "./layout.js";
+import {addLandmarks,addZone,addLoft,spawn} from "./layout.js";
 
 // Gyeongbokgung is a second map reached by subway. It lives in the same coordinate
 // space as Deoksugung, 1.2 km to the east, so position sync, the minimap and
@@ -28,7 +28,7 @@ export const gbSites=[
   site("cheonchujeon","천추전","千秋殿",-34,374,17.6,8.6,3.7,6,{kind:"hall"}),
   site("gangnyeongjeon","강녕전","康寧殿",0,414,37.6,14.8,4.6,11,{kind:"hall"}),
   site("gyotaejeon","교태전","交泰殿",0,456,30.6,12.6,4.3,9,{kind:"hall"}),
-  site("gyeonghoeru","경회루","慶會樓",-93,428,34.4,28.5,5.6,7,{kind:"lake",stories:2}),
+  site("gyeonghoeru","경회루","慶會樓",-93,428,28.5,34.4,5.6,5,{kind:"lake",stories:2}),
   site("sujeongjeon","수정전","修政殿",-86,338,35.2,13.6,4.4,10,{kind:"hall"}),
   site("jaseondang","자선당","資善堂",96,322,19.6,10.4,3.8,7,{kind:"hall"}),
   site("bihyeongak","비현각","丕顯閣",126,322,14.2,9.2,3.6,5,{kind:"hall"}),
@@ -102,8 +102,9 @@ export const gbLawns=[
 ];
 
 function inLake(east,north){
-  const {west,east:right,south,north:top,island,bridges}=gbLake;
+  const {west,east:right,south,north:top,island,bridges,isles}=gbLake;
   if(east<=west||east>=right||north<=south||north>=top)return false;
+  if(isles.some(isle=>Math.hypot(east-isle.east,north-isle.north)<isle.radius))return false;
   if(east>island.west&&east<island.east&&north>island.south&&north<island.north)return false;
   return !bridges.some(bridge=>east>=bridge.west-1&&east<=bridge.east+1&&Math.abs(north-bridge.north)<bridge.width/2);
 }
@@ -177,8 +178,41 @@ export function gyeongbokWalkable(x,y){
   return !inLake(east,north)&&!inPond(east,north);
 }
 
+// Gyeonghoeru: seven bays by five on 48 stone pillars, its long side facing the bridges.
+// People walk among the pillars and climb either timber stair to the banquet floor.
+export const gbRoyalPavilion=(()=>{
+  const centre={east:-93,north:428},long=34.4,short=28.5,floor=5.5,base=.38;
+  const norths=Array.from({length:8},(_,i)=>centre.north-long/2+i*long/7);
+  const easts=Array.from({length:6},(_,i)=>centre.east-short/2+i*short/5);
+  const stairs=[{south:412.05,north:414.45,foot:-87.3,head:-97.5},{south:441.55,north:443.95,foot:-98.7,head:-88.5}];
+  // Columns of the upper floor that stand inside the walking area.
+  const columns=norths.slice(1,7).flatMap((north,i)=>easts.slice(1,5).filter((east,j)=>i===0||i===5||j===0||j===3).map(east=>({east,north})));
+  return {centre,long,short,floor,base,norths,easts,stairs,columns};
+})();
+addLoft({
+  height:gbRoyalPavilion.floor,
+  stair(x,y){
+    const east=x-gwanghwamun.x,north=gwanghwamun.y-y,{stairs,floor,base}=gbRoyalPavilion;
+    for(const {south,north:top,foot,head} of stairs){
+      const along=(east-foot)/(head-foot);
+      if(north>=south&&north<=top&&along>=0&&along<=1)return base+(floor-base)*along;
+    }
+    return null;
+  },
+  deck(x,y){
+    const east=x-gwanghwamun.x,north=gwanghwamun.y-y,{centre,long,short,columns}=gbRoyalPavilion;
+    if(Math.abs(north-centre.north)>long/2+.5||Math.abs(east-centre.east)>short/2+.5)return false;
+    return !columns.some(column=>Math.hypot(east-column.east,north-column.north)<.5);
+  }
+});
+// Both ponds are shallow enough to wade: people sink to the waist and move slowly.
+export const gbWaterDepth=.45;
+export function gyeongbokWater(x,y){
+  const east=x-gwanghwamun.x,north=gwanghwamun.y-y;
+  return inLake(east,north)||inPond(east,north)?gbWaterDepth:0;
+}
 addZone({
-  name:"경복궁",contains:inGyeongbok,walkable:gyeongbokWalkable,
+  name:"경복궁",contains:inGyeongbok,walkable:gyeongbokWalkable,water:gyeongbokWater,
   grid:{ox:gbBounds.minX,oy:gbBounds.minY,cols:301,rows:491}
 });
 addLandmarks([
