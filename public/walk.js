@@ -25,7 +25,7 @@ function initialAvatar(){
       if(choices.includes(saved?.[feature]))look[feature]=saved[feature];
     }
   }catch{}
-  return {x:ticketApproach.x+1,y:ticketApproach.y-2.4,heading:entranceHeading,vx:0,vy:0,wish:0,wishOrigin:null,wishHeading:0,wishArt:null,wave:0,emote:null,
+  return {x:ticketApproach.x+1,y:ticketApproach.y-2.4,heading:entranceHeading,vx:0,vy:0,wish:0,wishOrigin:null,wishHeading:0,wishArt:null,wave:0,emote:null,chat:null,
     seat:null,seatSide:null,item:null,blushUntil:0,blushLevel:0,pet:null,feed:null,running:false,blocked:false,character,look};
 }
 const me=initialAvatar(),people=new Map(),markers=new Map(),seenSignals=new Map(),lookPings=new Map(),formations=new Map();
@@ -33,7 +33,8 @@ let ownView=initialView(),trackedPersonId=null,world,worldLoading,worldFailed=fa
 let firstPerson=localStorage.getItem("jeongdong-first-person")==="true";
 let session=null,active=true,joining=false,lastPost=0,lastWishSynced=0,dirty=true;
 let syncTimer,syncDue=Infinity,syncInFlight=null,syncStarted=-Infinity,syncFailures=0;
-let links=[],queuedSignal=null,queuedHand=null,queuedFeed=null,toastTimer;
+let links=[],queuedSignal=null,queuedHand=null,queuedFeed=null,queuedChat=null,toastTimer;
+let lastChatAt=0;
 let course=[],pendingSeat=null,seatClaim=null,thumb=[0,0],thumbId,orbit=null;
 let clockOffset=null,roundTrip=65;
 let runToggled=false,shiftHeld=false;
@@ -43,6 +44,7 @@ const fragments=new URLSearchParams(location.hash.slice(1));
 const suppliedCode=(fragments.get("code")||"").toUpperCase();
 const entryFlow=$("entry-flow"),profileStep=$("profile-step"),serverStep=$("server-step"),gameShell=$("game-shell");
 const nickname=$("nickname"),joinCode=$("join-code");
+const chatInput=$("chat-input"),chatSend=$("chat-send");
 const profileChoices=[...document.querySelectorAll("[name='entry-character']")];
 const serverButtons=["open-server","create-room","join-room","server-back","invite-toggle"].map($);
 nickname.value=localStorage.getItem("jeongdong-nickname")||"";
@@ -64,6 +66,38 @@ $("cat-run-tip-dismiss").addEventListener("click",()=>{
   catTipDismissed=true;
   localStorage.setItem("jeongdong-cat-run-tip-hidden","true");
   hideCatRunTip();focusGame();
+});
+
+const mobileHeader=matchMedia("(max-width:810px), (orientation:landscape) and (max-height:560px)");
+function placeViewControls(){
+  $(mobileHeader.matches?"mobile-view-controls":"desktop-view-controls").append($("view-controls"));
+}
+mobileHeader.addEventListener("change",placeViewControls);
+placeViewControls();
+
+let composingChat=false;
+function chatText(){return chatInput.value.normalize("NFC").replace(/\s+/gu," ").replace(/[\p{Cc}\p{Bidi_Control}]/gu,"").trim();}
+function updateChatSend(){
+  const text=chatText();
+  chatInput.setCustomValidity([...text].length>80?"채팅은 80자까지 입력할 수 있어요.":"");
+  chatSend.disabled=!session||!text||Boolean(queuedChat);
+  chatSend.textContent=queuedChat?"전송 중":"전송";
+}
+chatInput.addEventListener("focus",resetInput);
+chatInput.addEventListener("input",updateChatSend);
+chatInput.addEventListener("compositionstart",()=>{composingChat=true;});
+chatInput.addEventListener("compositionend",()=>{composingChat=false;updateChatSend();});
+chatInput.addEventListener("keydown",event=>{
+  if(event.key==="Enter"&&(event.isComposing||event.keyCode===229||composingChat))event.preventDefault();
+});
+$("chat-form").addEventListener("submit",event=>{
+  event.preventDefault();
+  const text=chatText();
+  if(!session||!text||[...text].length>80||composingChat||queuedChat)return;
+  lastChatAt=Math.max(gameTime(),lastChatAt+1);
+  me.chat=queuedChat={id:token(),text,at:lastChatAt};
+  dirty=true;wakeSync();
+  chatInput.value="";updateChatSend();focusGame();
 });
 
 function toast(message){
@@ -402,7 +436,7 @@ function wakeSync(){
   scheduleSync(Math.max(0,syncStarted+movingCadence()-performance.now()));
 }
 function syncCadence(){
-  const fast=dirty||myLink()||queuedHand||queuedSignal||queuedFeed||seatClaim||moving(me)||me.blocked||
+  const fast=dirty||myLink()||queuedHand||queuedSignal||queuedFeed||queuedChat||seatClaim||moving(me)||me.blocked||
     [...people.values()].some(person=>moving(person.avatar)||person.avatar.blocked);
   if(fast)return movingCadence();
   return session.mode==="open"?(people.size?195+Math.min(55,Math.max(0,people.size-5)*5):330):
@@ -412,12 +446,13 @@ async function sync(){
   const visit=session;
   if(!active||!visit||syncInFlight===visit)return;
   syncInFlight=visit;
-  const sent=performance.now(),signal=queuedSignal,hand=queuedHand,claim=seatClaim,feed=queuedFeed;
+  const sent=performance.now(),signal=queuedSignal,hand=queuedHand,claim=seatClaim,feed=queuedFeed,chat=queuedChat;
   syncStarted=sent;
-  const post=dirty||signal||hand||claim||feed||Date.now()-lastPost>=3800;
+  const post=dirty||signal||hand||claim||feed||chat||Date.now()-lastPost>=3800;
   const base={room:visit.room,id:visit.id,key:visit.key,lookPings:true};
   const avatar=post?{...me}:null;
   if(avatar&&claim)Object.assign(avatar,{seat:claim.bench,seatSide:claim.side});
+  if(avatar){if(chat)avatar.chat=chat;else delete avatar.chat;}
   if(avatar&&(avatar.wish===lastWishSynced||gameTime(sent)-avatar.wish>=WISH_FLIGHT_MS))delete avatar.wishArt;
   const body=post?{...base,avatar,view:{...ownView},signal,hand,feed}:base;
   if(post)dirty=false;
@@ -433,6 +468,12 @@ async function sync(){
     if(queuedSignal===signal)queuedSignal=null;
     if(queuedHand===hand)queuedHand=null;
     const confirmed=data.walkers.find(row=>row.id===visit.id)?.avatar;
+    if(chat&&queuedChat===chat){
+      queuedChat=null;
+      if(confirmed?.chat?.id===chat.id)me.chat=confirmed.chat;
+      else{me.chat=null;toast("채팅을 보내지 못했어요. 다시 시도해 주세요.");}
+      updateChatSend();
+    }
     if(confirmed?.feed&&confirmed.feed.claim!==me.feed?.claim){
       me.feed=confirmed.feed;me.item=confirmed.item??null;
     }
@@ -490,8 +531,10 @@ function showProfile(){
 function returnToLobby(message=""){
   const old=session;
   leaveBeacon();session=null;clearSyncTimer();resetInput();
-  queuedSignal=queuedHand=queuedFeed=null;people.clear();changeLinks([]);resetLocationGuides();
+  queuedSignal=queuedHand=queuedFeed=queuedChat=null;people.clear();changeLinks([]);resetLocationGuides();
+  chatInput.value="";composingChat=false;lastChatAt=0;updateChatSend();
   $("invite").disabled=$("look").disabled=$("look-target").disabled=true;
+  world?.clearChat();
   $("lobby-status").textContent=message;
   sessionStorage.removeItem("jeongdong-room-mode");
   sessionStorage.removeItem("jeongdong-room-code");
@@ -522,6 +565,7 @@ async function enterRoom(action,code){
     session={room:data.room,code:data.code,mode:data.mode??"private",id,key,...data.profile};
     Object.assign(me,avatar,{nickname:session.nickname,coat:session.coat});
     ownView=view;applyNight(view);dirty=true;lastWishSynced=0;lastPost=Date.now();
+    updateChatSend();
     syncStarted=-Infinity;syncFailures=0;
     people.clear();links=[];formations.clear();resetLocationGuides();resetInput();
     $("location").textContent=ticketApproach.name;
