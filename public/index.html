@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
   <meta name="description" content="멀리 있어도 함께 걷는 덕수궁 돌담길.">
   <title>덕수궁 한바퀴</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Crect width='48' height='48' rx='10' fill='%231b271f'/%3E%3Cpath d='M24 8 28 20 40 24 28 28 24 40 20 28 8 24 20 20Z' fill='%23e1c687'/%3E%3C/svg%3E">
@@ -75,27 +75,41 @@
   </main>
   <div id="game-shell" hidden>
   <header class="top">
-    <div class="brand"><span class="brandmark" aria-hidden="true">✦</span><span>덕수궁 한바퀴<small>DEOKSUGUNG WALK</small></span></div>
-    <div class="top-actions">
-      <button id="character" class="quiet" type="button" aria-haspopup="dialog" aria-controls="character-dialog">캐릭터</button>
-      <button id="invite" class="invite" type="button" disabled><span aria-hidden="true">↗</span> 초대코드</button>
+    <h1 class="brand"><span class="brandmark" aria-hidden="true">✦</span><span>덕수궁 한바퀴<small>DEOKSUGUNG WALK</small></span></h1>
+    <div class="top-game-actions">
+      <div id="mobile-view-controls"></div>
+      <div class="top-actions">
+        <button id="character" class="quiet" type="button" aria-haspopup="dialog" aria-controls="character-dialog">캐릭터</button>
+        <button id="invite" class="invite" type="button" disabled><span aria-hidden="true">↗</span> 초대코드</button>
+      </div>
     </div>
   </header>
   <main>
     <section class="experience" aria-label="함께 걷기">
       <article class="panel scene-panel">
-        <div class="panel-head">
-          <div><span class="tag">SEOUL · JEONGDONG</span><h1>덕수궁 돌담길</h1></div>
+        <div class="panel-head scene-head">
+          <div><span class="tag">SEOUL · JEONGDONG</span><h2 class="scene-title">덕수궁 돌담길</h2></div>
           <div class="top-actions">
-            <button id="perspective" class="quiet" type="button" aria-pressed="false" title="1인칭과 3인칭 전환">1인칭</button>
-            <button id="night" class="quiet" type="button" aria-pressed="false">☾ 밤</button>
+            <div id="desktop-view-controls">
+              <div class="view-controls" id="view-controls">
+                <button id="perspective" class="quiet" type="button" aria-pressed="false" title="1인칭과 3인칭 전환">1인칭</button>
+                <button id="night" class="quiet" type="button" aria-pressed="false">☾ 밤</button>
+              </div>
+            </div>
             <span class="pill" id="provider"><i></i><span>3D 산책</span></span>
           </div>
         </div>
         <div class="scene-wrap">
           <div id="game" tabindex="0" role="group" aria-label="3D 산책. 조이스틱이나 방향키로 화면 기준 이동, 화면 드래그로 시야 회전">
             <p id="loading-game">산책길을 열고 있어요.</p>
-            <div class="game-place"><span>정동의 가을</span><strong id="game-place">매표소 앞</strong><small>화면 기준으로 이동 · 드래그로 시야 돌리기</small></div>
+            <div class="game-info">
+              <div class="game-place"><span>정동의 가을</span><strong id="game-place">매표소 앞</strong><small>화면 기준으로 이동 · 드래그로 시야 돌리기</small></div>
+              <div class="look-actions">
+                <span id="look-hint" hidden>내 위치를 지도에 5초 동안 표시해요.</span>
+                <button id="look" class="primary" type="button" aria-describedby="look-hint" disabled><span aria-hidden="true">✦</span> 여기 봐</button>
+                <button id="look-target" class="quiet" type="button" aria-haspopup="dialog" aria-controls="look-target-dialog" disabled>보낼 대상</button>
+              </div>
+            </div>
             <button id="game-presence" class="game-presence" type="button" aria-label="접속자 목록 열기" aria-haspopup="dialog" aria-controls="roster-dialog">접속자</button>
             <div id="cat-run-tip" class="cat-run-tip" aria-label="고양이 안내" hidden>
               <p role="status">고양이에게 뛰어가면 놀라서 도망가요!</p>
@@ -162,11 +176,10 @@
           </div>
         </div>
         <div class="scene-controls">
-          <small class="look-hint" id="look-hint">내 위치를 지도에 5초 동안 표시해요.</small>
-          <div class="camera-actions">
-            <button id="look" class="primary" type="button" aria-describedby="look-hint" disabled><span aria-hidden="true">✦</span> 여기 봐</button>
-            <button id="look-target" class="quiet" type="button" aria-haspopup="dialog" aria-controls="look-target-dialog" disabled>보낼 대상</button>
-          </div>
+          <form class="chat-composer" id="chat-form" aria-label="산책방 채팅">
+            <input id="chat-input" type="text" maxlength="160" enterkeyhint="send" autocomplete="off" aria-label="채팅 메시지" placeholder="같은 방에 채팅 보내기">
+            <button id="chat-send" class="primary" type="submit" disabled>전송</button>
+          </form>
         </div>
       </article>
       <article class="panel map-panel" id="map-panel">
