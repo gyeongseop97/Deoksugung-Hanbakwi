@@ -10,7 +10,9 @@ import {isInsideMuseum,museumBounds,museumGalleries,museumGalleryAt,museumHall} 
 import {museumExhibits} from "./museum-catalog.js";
 import {nearbyPalaceGuide} from "./palace-guide.js";
 import {bindSceneTouch} from "./scene-touch.js";
-import {subwayStops,gbSites,gbBounds,gbLake,gbPond,gbPaths,gbCourts,gbLawns,gbShortcuts,wishPond,gbPhotoZone,inGyeongbok,wallHalf,wallNorth,at as palaceAt} from "./gyeongbok-layout.js";
+import {makeSound} from "./sound.js";
+import {ceremonyAt} from "./palace-people.js";
+import {subwayStops,gbSites,gbBounds,gbLake,gbPond,gbPaths,gbCourts,gbLawns,gbShortcuts,wishPond,gbPhotoZone,gbUijeongbu,gbCrossings,gbBusIsland,inGyeongbok,wallHalf,wallNorth,at as palaceAt} from "./gyeongbok-layout.js";
 
 const $=id=>document.getElementById(id);
 const token=()=>Array.from(crypto.getRandomValues(new Uint8Array(16)),byte=>byte.toString(16).padStart(2,"0")).join("");
@@ -122,6 +124,33 @@ function applyNight(view){
 function myLink(){return session&&links.find(link=>link.leader===session.id||link.follower===session.id);}
 function amFollowingHands(){const link=myLink();return Boolean(link?.active&&link.follower===session.id);}
 $("perspective").setAttribute("aria-pressed",String(firstPerson));
+// Sound: footsteps follow the walker's stride; birds, crickets and the guard drum fill the air.
+const sound=makeSound();
+let strideLeft=0,nextAmbient=0,nextDrum=0,ceremonyAnnounced=-1;
+$("sound").setAttribute("aria-pressed",String(sound.enabled));
+$("sound").addEventListener("click",()=>{$("sound").setAttribute("aria-pressed",String(sound.toggle()));focusGame();});
+for(const kind of ["pointerdown","keydown"])window.addEventListener(kind,()=>sound.wake(),{passive:true});
+function soundscape(time,travelled,wading){
+  if(!session||!world||riding)return;
+  if(travelled>0){
+    strideLeft-=travelled;
+    if(strideLeft<=0){
+      strideLeft=wading?.55:me.running?1.0:.64;
+      sound.step(wading?"water":me.up||loftStair(me.x,me.y)!=null?"wood":"stone");
+    }
+  }
+  if(time>=nextAmbient&&!isInsideMuseum(me.x,me.y)){
+    nextAmbient=time+2600+Math.random()*7000;
+    if(ownView.night)sound.cricket();else sound.chirp();
+  }
+  // Changing of the guard at Gwanghwamun: announce it once and beat the drum while it lasts.
+  const gate=palaceAt(0,-10),ceremony=ceremonyAt(time);
+  if(ceremony.active&&inGyeongbok(me.x,me.y)&&near(gate,me.x,me.y)<130){
+    const round=Math.floor(time/600000);
+    if(round!==ceremonyAnnounced&&ceremony.phase<20){ceremonyAnnounced=round;toast("광화문에서 수문장 교대식이 시작됐어요.");}
+    if(time>=nextDrum&&near(gate,me.x,me.y)<90){nextDrum=time+1500;sound.drum();}
+  }
+}
 $("perspective").addEventListener("click",()=>{
   firstPerson=!firstPerson;
   $("perspective").setAttribute("aria-pressed",String(firstPerson));
@@ -1007,7 +1036,7 @@ function rideSubway(){
   riding=true;resetInput();
   $("transit-title").textContent=stop.destination;
   $("transit-line").textContent=stop.line;
-  $("transit").dataset.mode=stop.mode;
+  $("transit").dataset.mode=stop.mode;sound.chime(stop.mode);
   $("transit-scene").innerHTML=transitScenes[stop.mode];
   $("transit").hidden=false;
   const visit=session;
@@ -1055,7 +1084,7 @@ $("pet-cat").addEventListener("click",()=>{
   if(!cat||time-(me.pet?.at??0)<PET_MS||feedingLocked(time))return;
   resetInput();
   me.heading=normalize(Math.atan2(cat.x-me.x,me.y-cat.y)*180/Math.PI);
-  me.pet={id:cat.id,at:time};dirty=true;focusGame();
+  me.pet={id:cat.id,at:time};dirty=true;sound.meow();focusGame();
 });
 $("take-item").addEventListener("click",()=>{
   if(!session||me.seat!=null)return;
@@ -1208,6 +1237,7 @@ function motion(now,elapsed){
     }else walkCourse(speed);
   }
   const moved=oldX!==me.x||oldY!==me.y;
+  soundscape(gameTime(now),moved&&me.seat==null?Math.min(1.2,Math.hypot(me.x-oldX,me.y-oldY)):0,wading);
   if(moved){
     const location=placeName(me);
     if($("location").textContent!==location)$("location").textContent=location;
@@ -1353,8 +1383,17 @@ function drawGyeongbok(base,mini){
     const a=palaceAt(west,north),b=palaceAt(east,south);
     return {x:a.x,y:a.y,width:b.x-a.x,height:b.y-a.y};
   };
-  svg(base,"rect",{...box(-300,300,-80,wallNorth+60),fill:"#23302a"});
+  svg(base,"rect",{...box(-300,300,-176,wallNorth+60),fill:"#23302a"});
+  svg(base,"rect",{...box(-300,300,-89,-59),fill:"#3a4240"});
   svg(base,"rect",{...box(-92,92,-58,0),fill:"#766c5a"});
+  // Across the road: the Uijeongbu site plaza, the crossings and the bus-stop island.
+  svg(base,"rect",{...box(gbUijeongbu.west,gbUijeongbu.east,gbUijeongbu.south,gbUijeongbu.north),fill:"#55704c",stroke:"#929283","stroke-width":1.6,rx:4});
+  svg(base,"rect",{...box(gbBusIsland.west,gbBusIsland.east,gbBusIsland.south,gbBusIsland.north),fill:"#766c5a",rx:3});
+  for(const crossing of gbCrossings)svg(base,"rect",{...box(crossing.west,crossing.east,crossing.south,crossing.north),fill:"#d8d2bf",opacity:.85});
+  if(!mini){
+    const label=palaceAt((gbUijeongbu.west+gbUijeongbu.east)/2,(gbUijeongbu.south+gbUijeongbu.north)/2);
+    svg(base,"text",{x:label.x,y:label.y+4,class:"map-label gyeongbok-label","text-anchor":"middle"},"의정부지 광장");
+  }
   svg(base,"rect",{...box(-wallHalf,wallHalf,0,wallNorth),fill:"#465248",stroke:"#929283","stroke-width":2.6});
   for(const {kind,west,east,south,north} of gbLawns){
     svg(base,"rect",{...box(west,east,south,north),fill:kind==="grove"?"#314938":"#607651",rx:3});

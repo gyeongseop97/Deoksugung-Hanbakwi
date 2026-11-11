@@ -417,9 +417,22 @@ function snap(point,radius,direct,feet,field,open=walkable,clear=clearSegment){
   return best;
 }
 // feet lets a walker standing on a bench or ledge plan the first step down from it.
+// A straight line walked the way a person walks it: every short stride may climb a ledge one
+// step high, so routes can run up stone steps and across terraces and floors.
+function strideSegment(from,to,wade,feet){
+  const dx=to.x-from.x,dy=to.y-from.y,count=Math.max(1,Math.ceil(Math.hypot(dx,dy)/.3)),clear=wade?wadeSegment:clearSegment;
+  let previous=from,level=feet||platformAt(from.x,from.y)+.19;
+  for(let i=1;i<=count;i++){
+    const next={x:from.x+dx*i/count,y:from.y+dy*i/count};
+    if(!clear(previous,next,.36,level))return false;
+    level=platformAt(next.x,next.y)+.19;previous=next;
+  }
+  return true;
+}
 // wade plans a route that may cross shallow water.
 export function planWalk(from,target,feet=0,wade=false){
-  const open=wade?wadeable:walkable,clear=wade?wadeSegment:clearSegment;
+  const ground=wade?wadeable:walkable;
+  const open=(x,y)=>ground(x,y,platformAt(x,y)+.19),clear=(a,b,step,level)=>strideSegment(a,b,wade,level);
   const exact=open(target.x,target.y);
   if(exact&&clear(from,target,.36,feet))return [target];
   const field=zoneAt(from.x,from.y)?.grid??baseField,{ox,oy,cols,rows}=field;

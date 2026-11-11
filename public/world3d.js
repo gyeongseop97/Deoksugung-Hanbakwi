@@ -1,5 +1,5 @@
 import * as T from "three";
-import { buildJeongdong } from "./streets.js";
+import { buildJeongdong, hallRooms } from "./streets.js";
 import { addWater } from "./water.js";
 import { solidAt, platformAt, waterDepth, loftHeight, bridge, gate, middle, hall, stoneHall, courtAngle, ticketGuide } from "./layout.js";
 import { addParkLife } from "./park-life.js";
@@ -9,7 +9,7 @@ import { addStands, makeItemProps } from "./street-stands.js";
 import { addMuseum, stairHeight } from "./museum.js";
 import { PET_MS, FEED_MS, jumpLift } from "./activities.js";
 import { makeWalkerModels } from "./walker-model.js";
-import { gbSurveyModels, gbNightGlow } from "./gyeongbok.js";
+import { gbSurveyModels, gbNightGlow, gbShuttles } from "./gyeongbok.js";
 import { gbSite, gwanghwamun, inGyeongbok, gbLightSpots } from "./gyeongbok-layout.js";
 import { addPalacePeople } from "./palace-people.js";
 import { decodeWishFace, WISH_WIDTH, WISH_HEIGHT, WISH_COLORS, WISH_FLIGHT_MS } from "./wish-art.js";
@@ -129,21 +129,36 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
   });
   // The same three lights serve both maps: at Gyeongbokgung they move to the halls nearest the walker.
   const lightHomes=spotLights.map((light,i)=>({position:light.position.clone(),range:light.distance,power:i===2?720:126}));
-  let lightPower=lightHomes.map(home=>home.power);
+  let lightPower=lightHomes.map(home=>home.power),lightDay=lightHomes.map(()=>0);
+  // The room a walker stands in, if any: its lamp is lit by day as well as by night.
+  function roomAt(point){
+    for(const room of hallRooms){
+      const dx=point.x-room.x,dy=point.y-room.y,c=Math.cos(room.angle),s=Math.sin(room.angle);
+      if(Math.abs(dx*c-dy*s)<room.w/2&&Math.abs(dx*s+dy*c)<room.d/2)return room;
+    }
+    return null;
+  }
   function placeLights(anchor){
+    lightDay=lightHomes.map(()=>0);
     if(!inGyeongbok(anchor.x,anchor.y)){
       spotLights.forEach((light,i)=>{light.position.copy(lightHomes[i].position);light.distance=lightHomes[i].range;});
       lightPower=lightHomes.map(home=>home.power);
-      return;
+    }else{
+      const nearest=gbLightSpots.map(spot=>({spot,gap:Math.hypot(spot.x-anchor.x,spot.y-anchor.y)})).sort((a,b)=>a.gap-b.gap);
+      spotLights.forEach((light,i)=>{
+        const {spot}=nearest[i];
+        light.position.set(wx(spot.x),spot.height,wz(spot.y));light.distance=spot.range;
+      });
+      lightPower=nearest.slice(0,spotLights.length).map(({spot})=>spot.power);
     }
-    const nearest=gbLightSpots.map(spot=>({spot,gap:Math.hypot(spot.x-anchor.x,spot.y-anchor.y)})).sort((a,b)=>a.gap-b.gap);
-    spotLights.forEach((light,i)=>{
-      const {spot}=nearest[i];
-      light.position.set(wx(spot.x),spot.height,wz(spot.y));light.distance=spot.range;
-    });
-    lightPower=nearest.slice(0,spotLights.length).map(({spot})=>spot.power);
+    const room=roomAt(anchor);
+    if(room){
+      spotLights[0].position.set(wx(room.x),room.floor+room.height-.7,wz(room.y));
+      spotLights[0].distance=Math.max(room.w,room.d)*.8+8;
+      lightPower[0]=130;lightDay[0]=85;
+    }
   }
-  const palacePeople=addPalacePeople(T,scene,kit,walkerModels,{floorHeight:point=>floorHeight(point),labelSprite:(...args)=>labelSprite(...args)});
+  const palacePeople=addPalacePeople(T,scene,kit,walkerModels,{floorHeight:point=>floorHeight(point),labelSprite:(...args)=>labelSprite(...args),handheld});
   const nightSky=addNightSky(T,heavens,rand);
   const dayHorizon=new T.Color(0xcce4f0),nightHorizon=new T.Color(0x23384f);
   const dayZenith=new T.Color(0x367ec5),nightZenith=new T.Color(0x080e21);
@@ -189,7 +204,7 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
   // Doorways cut through the surveyed shells so the furnished rooms inside can be entered.
   // Each is a box in the building's own coordinates: across, toward the front, and up.
   const surveyDoors={
-    junghwajeon:{x:0,z:9.2,width:3.1,depth:2.8,floor:1.75,height:3.05},
+    junghwajeon:{x:0,z:9.2,width:3.1,depth:2.8,floor:2.08,height:3.0},
     hamnyeongjeon:{x:1.1,z:5.9,width:2.6,depth:2.6,floor:1.85,height:2.95},
     seogeodang:{x:0,z:3.6,width:2.4,depth:2.2,floor:1.05,height:2.75}
   };
@@ -483,7 +498,16 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     if(shadowed)aimShadow(wx(anchor.x),0,wz(anchor.y));
     govern(now);
     lampMaterial.emissiveIntensity=.03+night*2.15;
-    spotLights.forEach((light,i)=>{light.intensity=night*lightPower[i];});
+    spotLights.forEach((light,i)=>{light.intensity=lightDay[i]*(1-night)+night*lightPower[i];});
+    // Buses pull in, wait at the stop and drive on, the two stops half a cycle apart.
+    gbShuttles.forEach((shuttle,i)=>{
+      const near=Math.hypot(shuttle.x-anchor.x,shuttle.y-anchor.y)<260;
+      const t=((clock/1000+i*23)%46+46)%46;
+      shuttle.bus.visible=near&&t<34;
+      if(!shuttle.bus.visible)return;
+      const arriving=Math.min(1,t/7),leaving=Math.max(0,(t-27)/7);
+      shuttle.bus.position.x=shuttle.stopAt-70*(1-arriving)**2+80*leaving*leaving;
+    });
     for(const {material,rest,strength} of gbNightGlow)material.emissiveIntensity=rest+night*strength;
     const roster=[me,...peers],present=new Set(roster.map(player=>player.id));
     if(!indoors){drawWater(now*.001,night);drawPond(now*.001,night);nightSky(night);drawPalaceSky(now,night);birds.update(clock,delta,roster);}

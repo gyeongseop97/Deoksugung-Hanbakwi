@@ -67,6 +67,8 @@ export function stairHeight(point){
     const y=ramp(outerHallSteps,hallZ)??ramp(upperHallSteps,hallZ);
     if(y!==null)return y;
   }
+  // Inside the throne hall the floor is level.
+  if(Math.abs(hallX)<=9.1&&Math.abs(hallZ)<=8.6)return 2.2;
   if(absX<=19.87&&hallZ>=-15.3&&hallZ<=27.2){
     if(absX<=13.55&&hallZ>=-8.5&&hallZ<=22.65)return 1.82+(22.65-hallZ)*.022;
     return 1+(27.2-hallZ)*.014;

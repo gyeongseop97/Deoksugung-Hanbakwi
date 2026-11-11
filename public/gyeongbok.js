@@ -1,5 +1,5 @@
 import {
-  gwanghwamun,gbSites,gbSite,gbCourts,gbLake,gbPond,gbPaths,gbLawns,gbStation,cityHallStation,cityHallBusStop,gbBusStop,subwayStops,
+  gwanghwamun,gbSites,gbSite,gbCourts,gbLake,gbPond,gbPaths,gbLawns,gbStation,cityHallStation,cityHallExit3,cityHallBusStop,gbBusStop,subwayStops,
   gbWoldae,gbHaetae,gbPhotoZone,gbRoyalPavilion,gbUijeongbu,gbBusIsland,gbCrossings,wallHalf,wallNorth,at
 } from "./gyeongbok-layout.js";
 import {solidAt} from "./layout.js";
@@ -9,6 +9,8 @@ import {solidAt} from "./layout.js";
 export const gbSurveyModels=[];
 // Materials that glow after dark; world3d fades them in with the night.
 export const gbNightGlow=[];
+// Buses that pull in to their stop, wait and drive on; world3d moves them with the clock.
+export const gbShuttles=[];
 
 export function buildGyeongbok(T,scene,kit,tools){
   const {box,cylinder,shape,wx,wz,rand,matte}=kit;
@@ -26,7 +28,7 @@ export function buildGyeongbok(T,scene,kit,tools){
     const p=world(east,north);
     return box(color,p.x,base+height/2,p.z,width,height,depth);
   }
-  gbNightGlow.length=0;
+  gbNightGlow.length=0;gbShuttles.length=0;
   const glow=(color,emissive,strength,rest=0)=>{
     const material=new T.MeshStandardMaterial({color,emissive,emissiveIntensity:rest,roughness:.8});
     gbNightGlow.push({material,rest,strength});
@@ -701,6 +703,7 @@ export function buildGyeongbok(T,scene,kit,tools){
   }
   scene.updateMatrixWorld(true);
   subwayExit(cityHallStation,"시청 City Hall",0x00a84d);
+  subwayExit(cityHallExit3,"시청 City Hall",0x00a84d);
   subwayExit(gbStation,"경복궁 Gyeongbokgung",0xef7c1c);
   // Bus stops: a glass shelter with a bench and route sign, and a city bus waiting at the kerb.
   function busStop(stop,title,heading){
@@ -734,9 +737,9 @@ export function buildGyeongbok(T,scene,kit,tools){
     }
     box(0xf6e7a1,5.22,.95,.85,.03,.2,.36,bus);box(0xf6e7a1,5.22,.95,-.85,.03,.2,.36,bus);
     box(0xb3261e,-5.22,1.0,.9,.03,.22,.3,bus);box(0xb3261e,-5.22,1.0,-.9,.03,.22,.3,bus);
-    g.updateMatrixWorld(true);
-    const parked=bus.localToWorld(new T.Vector3(0,0,0));
-    block(parked.x,parked.z,10.6,2.7,stop.angle,3);
+    // The bus keeps its own meshes so it can drive in and out of the stop.
+    bus.traverse(mesh=>{if(mesh.isMesh){mesh.userData.dynamic=true;mesh.castShadow=true;}});
+    gbShuttles.push({bus,stopAt:bus.position.x,x:stop.x,y:stop.y});
   }
   busStop(cityHallBusStop,"시청앞·덕수궁","경복궁");
   busStop(gbBusStop,"경복궁","시청·덕수궁");

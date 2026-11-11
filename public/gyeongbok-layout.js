@@ -72,6 +72,10 @@ export const cityHallStation={
   name:"시청역 2번 출구",x:472.0,y:233,angle:0,
   door:{x:472.0,y:236.6},arrive:{x:473.4,y:239.4,heading:180}
 };
+export const cityHallExit3={
+  name:"시청역 3번 출구",x:472.0,y:183.4,angle:0,
+  door:{x:472.0,y:187},arrive:{x:473.4,y:189.8,heading:180}
+};
 export const cityHallBusStop={
   name:"시청앞·덕수궁 정류장",x:476.4,y:205,angle:Math.PI/2,
   door:{x:474.6,y:205},arrive:{x:474.2,y:207.4,heading:180}
@@ -88,6 +92,7 @@ export const gbBusStop={
 };
 export const subwayStops=[
   {...cityHallStation,id:"city-hall",mode:"subway",to:"gyeongbokgung",destination:"경복궁역",line:"시청역 → 경복궁역"},
+  {...cityHallExit3,id:"city-hall-3",mode:"subway",to:"gyeongbokgung",destination:"경복궁역",line:"시청역 → 경복궁역"},
   {...gbStation,id:"gyeongbokgung",mode:"subway",to:"city-hall",destination:"시청역",line:"경복궁역 → 시청역"},
   {...cityHallBusStop,id:"bus-city-hall",mode:"bus",to:"bus-gyeongbokgung",destination:"경복궁 정류장",line:"시청앞·덕수궁 → 경복궁"},
   {...gbBusStop,id:"bus-gyeongbokgung",mode:"bus",to:"bus-city-hall",destination:"시청앞·덕수궁 정류장",line:"경복궁 → 시청앞·덕수궁"}
@@ -239,7 +244,7 @@ addZone({
   grid:{ox:gbBounds.minX,oy:gbBounds.minY,cols:301,rows:536}
 });
 addLandmarks([
-  ...gbSites,gbStation,cityHallStation,cityHallBusStop,gbBusStop,
+  ...gbSites,gbStation,cityHallStation,cityHallExit3,cityHallBusStop,gbBusStop,
   at(0,-28,"광화문 월대"),at(96,-128,"의정부지 역사유적광장"),at(48,-74,"광화문 앞 횡단보도"),at(-50,-36,"광화문 광장"),at(50,-36,"광화문 광장"),at(0,70,"흥례문 앞마당"),at(0,180,"영제교"),at(0,262,"근정전 마당"),
   at(-128,428,"경회루 연못"),at(12,706,"향원정"),at(0,480,"아미산"),
   ...gbPaths.flatMap(path=>path.points.slice(1,-1).map(point=>({...point,name:path.name})))

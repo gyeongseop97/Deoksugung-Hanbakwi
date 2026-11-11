@@ -9,6 +9,8 @@ import {makePalaceClearance} from "./palace-plantings.js";
 import {makeTreeBuilder} from "./lowpoly-trees.js";
 import {buildGyeongbok} from "./gyeongbok.js";
 import {furnishHall} from "./palace-interiors.js";
+// Rooms people can walk into, for the lighting: centre (map), size, turn and floor height.
+export const hallRooms=[];
 
 export function buildJeongdong(T,scene,kit) {
   const {box,cylinder,shape,wx,wz,rand,matte}=kit;
@@ -643,15 +645,25 @@ export function buildJeongdong(T,scene,kit) {
       // The floor platform, then steps down from the doorway (a surveyed model shows its own).
       const lift=top-raised,drop=fit?top:raised,porch=fit?id/2+fit.porch:(d+1.1)/2;
       const steps=Math.max(0,Math.ceil(drop/.19)-1),riser=drop/(steps+1);
-      if(fit)wallBlock(0,(porch-id/2)/2,iw+1,id+(porch-id/2),top);
+      // A hall whose terrace already carries walkers (groundFloor) needs no platform of its own.
+      const level=spec.groundFloor?0:top;
+      if(spec.groundFloor){
+      }else if(fit)wallBlock(0,(porch-id/2)/2,iw+1,id+(porch-id/2),top);
       else wallBlock(0,0,w+1.4,d+1.1,top);
-      for(let k=1;k<=steps;k++){
+      for(let k=1;k<=steps&&!spec.groundFloor;k++){
         const height=drop-k*riser,front=porch+(k-.5)*.38;
         if(!fit)box(0xb0ab9a,middle,height/2,front,gap+1.3,height,.38,inside);
         wallBlock(middle,front,gap+(fit?3:1.3),.38,top-k*riser);
       }
       furnishHall(T,inside,kit,{style:spec.interior,name:spec.name,w:iw-thick*2,d:id-thick*2,floor:raised+.07,height:room.height-.07,
-        glow:lampMaterial,solid:(lx,lz,bw,bd,high)=>wallBlock(lx,lz,bw,bd,high==null?high:top+high)});
+        glow:lampMaterial,solid:(lx,lz,bw,bd,high)=>wallBlock(lx,lz,bw,bd,high==null?high:level+high)});
+      // Paper lanterns hang from the ceiling; the world lights the room while someone is inside.
+      if(spec.interior!=="reception")for(const side of [-1,1]){
+        box(0x5a4334,side*iw*.24,raised+room.height-.2,0,.03,.4,.03,inside);
+        const lantern=new T.Mesh(new T.BoxGeometry(.36,.46,.36),lampMaterial);
+        lantern.position.set(side*iw*.24,raised+room.height-.62,0);inside.add(lantern);
+      }
+      hallRooms.push({x:origin.x,y:origin.y,angle,w:iw,d:id,floor:top,height:room.height});
       g.userData.door={a:room.a,b:room.b};g.userData.inside=inside;
     }
     if(!spec.gate){
@@ -785,7 +797,7 @@ export function buildJeongdong(T,scene,kit) {
     const g=placed(middle),shift=side*6.4;
     block(g.x+shift*Math.cos(courtAngle),g.z-shift*Math.sin(courtAngle),8.6,10.0,courtAngle);
   }
-  const hallModel=pavilion({...hall,w:18.6,d:17.6,h:5.0,bays:5,angle:courtAngle,raised:1.01,mainHall:true,sign:"殿和中",interior:"throne",lift:.81});
+  const hallModel=pavilion({...hall,w:18.6,d:17.6,h:5.0,bays:5,angle:courtAngle,raised:1.01,mainHall:true,sign:"殿和中",interior:"throne",lift:1.12,groundFloor:true});
   const hallSite={...hall,angle:courtAngle};
   // Block the edges of each raised level and leave both stair openings clear.
   for(const [halfWidth,back,front,top] of [[19.85,-15.3,27.2,1.14],[13.55,-8.5,22.65,2.08]]){

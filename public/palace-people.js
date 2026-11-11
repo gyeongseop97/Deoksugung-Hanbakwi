@@ -60,7 +60,18 @@ const sentries=[[-12.6,-8.6,0xb0302a],[-4.6,-8.6,0x2f5d9e],[4.6,-8.6,0x2f5d9e],[
 const patrol=makeRoute([[-1.3,124],[-1.3,-44],[1.3,-44],[1.3,124]],.92);
 const squad=[[0,0,0xd9a520,"flag"],[-.6,1.7,0xb0302a,"spear"],[.6,1.7,0x2f5d9e,"spear"]];
 
-export function addPalacePeople(T,scene,kit,walkerModels,{floorHeight,labelSprite}){
+// Changing of the guard: for two and a half minutes in every ten the patrol draws up in a
+// line before the gate while the sentries step forward from the piers.
+const CEREMONY_EVERY=600,CEREMONY_LASTS=150,CEREMONY_MARCH=14;
+export function ceremonyAt(clock){
+  const phase=((clock/1000)%CEREMONY_EVERY+CEREMONY_EVERY)%CEREMONY_EVERY;
+  if(phase>=CEREMONY_LASTS)return {active:false,blend:0,phase};
+  return {active:true,phase,blend:Math.min(1,phase/CEREMONY_MARCH,(CEREMONY_LASTS-phase)/CEREMONY_MARCH)};
+}
+const drawnUp=(pose,spot,blend)=>blend<=0?pose:{x:pose.x+(spot.x-pose.x)*blend,y:pose.y+(spot.y-pose.y)*blend,
+  heading:blend>=1?180:pose.heading,stepping:blend<1};
+
+export function addPalacePeople(T,scene,kit,walkerModels,{floorHeight,labelSprite,handheld=false}){
   const {cylinder,box}=kit,people=[];
   // Black felt hat with a red tassel, and a spear or the patrol banner in hand.
   function dress(model,gear){
@@ -89,12 +100,12 @@ export function addPalacePeople(T,scene,kit,walkerModels,{floorHeight,labelSprit
   for(const [index,[east,north,coat]] of sentries.entries()){
     const spot=at(east,north);
     person({id:"sentry-"+index,coat,gear:"spear",label:"수문장",character:"man",look:{hair:"short",outfit:"hanbok",eyes:"round"},
-      where:()=>({x:spot.x,y:spot.y,heading:180,stepping:false})});
+      where:(seconds,blend)=>drawnUp({x:spot.x,y:spot.y,heading:180,stepping:false},{x:spot.x,y:spot.y+2.4},blend)});
   }
   for(const [index,[aside,lag,coat,gear]] of squad.entries()){
     const lane=patrol.lane(aside);
     person({id:"patrol-"+index,coat,gear,label:index?null:"수문군",character:"man",look:{hair:"short",outfit:"hanbok",eyes:"round"},
-      where:seconds=>patrol.pose(lane,seconds-lag)});
+      where:(seconds,blend)=>drawnUp(patrol.pose(lane,seconds-lag),at((index-1)*2.2,-17),blend)});
   }
   const routes=visitorRoutes.map(({stops,speed,pauses})=>makeRoute(stops,speed,pauses));
   let serial=0;
@@ -110,10 +121,10 @@ export function addPalacePeople(T,scene,kit,walkerModels,{floorHeight,labelSprit
 
   // anchor: the walker the camera follows (null indoors). sparse: slow device, show fewer.
   function update(clock,now,delta,anchor,walkers=[],sparse=false){
-    const seconds=clock/1000,near=anchor&&anchor.x>=1000;
+    const seconds=clock/1000,near=anchor&&anchor.x>=1000,{blend}=ceremonyAt(clock);
     for(const one of people){
-      const pose=near?one.where(seconds):null;
-      const reach=sparse?(one.visitor?0:30):50;
+      const pose=near?one.where(seconds,blend):null;
+      const reach=sparse?(one.visitor?0:30):handheld?38:50;
       if(!pose||Math.hypot(pose.x-anchor.x,pose.y-anchor.y)>reach){
         if(one.model?.group.visible)one.model.group.visible=false;
         continue;
