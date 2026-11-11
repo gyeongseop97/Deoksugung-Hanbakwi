@@ -8,6 +8,7 @@ const SIDE = [-1, 1];
 const LEG = [.322, .304];
 const ARM = [.252, .228];
 const SOLE = .124;
+const CHAT_BUBBLE_MS = 6000;
 const FACE_TONES = [
   {top:"#f8d1ad", middle:"#f4c59f", chin:"#e3a880", light:"#fff1d55d", cheek:"#e88e897a", radius:14},
   {top:"#f8c1aa", middle:"#f4b198", chin:"#e39b86", light:"#ffe2ce50", cheek:"#e57678a6", radius:18},
@@ -474,14 +475,14 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
     let offset = 0;
     for (const letter of String(nickname ?? "")) offset = (offset * 31 + letter.charCodeAt(0)) >>> 0;
     return {group,pelvis,chest,torso,waist,faceMesh,ears,headJoint,hairMesh,pin,overcoat,hem,pufferCollar,hanbokDetails,skirt,legs,arms,label,
-      shadow,emote,itemPivot,itemProp:createItemProp(itemPivot),palette,offset,phase:(offset%100)/100,
+      shadow,emote,chatSprite:null,chatMessage:null,itemPivot,itemProp:createItemProp(itemPivot),palette,offset,phase:(offset%100)/100,
       stride:0,sprint:0,seatBlend:0,petBlend:0,appearance:"",lastX:null,lastY:null};
   }
 
   const down = new T.Vector3(0,-1,0), forward = new T.Vector3(0,0,1);
   const target = new T.Vector3(), direction = new T.Vector3(), elbow = new T.Vector3(), bend = new T.Vector3();
   const pole = new T.Vector3(), clasp = new T.Vector3(), globalLower = new T.Quaternion();
-  const emoteAnchor = new T.Vector3();
+  const emoteAnchor = new T.Vector3(), chatAnchor = new T.Vector3();
   const pitch = new T.Quaternion(), inverseChest = new T.Quaternion();
   const xAxis = new T.Vector3(1,0,0);
 
@@ -543,7 +544,49 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
     model.ears.material = earMaterials[blush];
   }
 
-  function update(model, position, {now,clock,delta=1/60,seat,floor=0,emojiTexture,turnEase=1}) {
+  function clearChat(model) {
+    if (!model.chatSprite) return;
+    const {material} = model.chatSprite;
+    model.chatSprite.removeFromParent();
+    material.map.dispose();
+    material.dispose();
+    model.chatSprite = model.chatMessage = null;
+  }
+
+  function updateChat(model, chat, clock, chatTexture) {
+    const age = clock-chat?.at;
+    if (!chatTexture || !chat?.id || typeof chat.text !== "string" || !Number.isFinite(age) || age < -300 || age >= CHAT_BUBBLE_MS) {
+      clearChat(model);
+      return;
+    }
+    if (model.chatMessage?.id !== chat.id || model.chatMessage.text !== chat.text) {
+      clearChat(model);
+      const map = chatTexture(chat.text);
+      if (!map) return;
+      const sprite = new T.Sprite(new T.SpriteMaterial({map,transparent:true,depthWrite:false,toneMapped:false}));
+      sprite.center.set(.5,0);
+      sprite.scale.set(map.image.width/148,map.image.height/148,1);
+      model.group.add(sprite);
+      model.chatSprite = sprite;
+      model.chatMessage = chat;
+    }
+    model.chatSprite.visible = true;
+    model.chatSprite.material.opacity = Math.min(1,(CHAT_BUBBLE_MS-age)/320);
+  }
+
+  function placeChat(model, cameraUp) {
+    const {chatSprite,label,emote} = model;
+    if (!chatSprite) return;
+    const anchor = emote.visible ? emote : label;
+    if (anchor) {
+      anchor.getWorldPosition(chatAnchor).addScaledVector(cameraUp,anchor.scale.y/2+.085);
+      chatSprite.position.copy(model.group.worldToLocal(chatAnchor));
+    } else {
+      chatSprite.position.set(0,2.62,0);
+    }
+  }
+
+  function update(model, position, {now,clock,delta=1/60,seat,floor=0,emojiTexture,chatTexture,turnEase=1}) {
     const {group,pelvis,chest,headJoint,legs,arms,itemPivot,emote} = model;
     const wasVisible = group.visible;
     group.visible = true;
@@ -686,9 +729,11 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
       emote.position.set(emoteAnchor.x,labelY+.49+.036*Math.sin(now*.009),emoteAnchor.z);
       emote.material.opacity = Math.min(1,(3.15-age)*4);
     }
+    updateChat(model,position.chat,clock,chatTexture);
   }
 
   function dispose(model) {
+    clearChat(model);
     model.group.removeFromParent();
     model.shadow.material.dispose();
     model.emote.material.dispose();
@@ -699,5 +744,5 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
     }
   }
 
-  return {create,update,dispose};
+  return {create,update,placeChat,clearChat,dispose};
 }
