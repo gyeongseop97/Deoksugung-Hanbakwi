@@ -1,0 +1,14 @@
+{
+  "name": "deoksugung-hanbakwi",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.13 <25" },
+  "scripts": {
+    "start": "node scripts/preview.mjs",
+    "db:init": "node --env-file-if-exists=.env.local scripts/init-database.mjs"
+  },
+  "dependencies": {
+    "@libsql/client": "0.18.0"
+  }
+}

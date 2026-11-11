@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="멀리 있어도 함께 걷는 덕수궁 돌담길.">
+  <title>덕수궁 한바퀴</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Crect width='48' height='48' rx='10' fill='%231b271f'/%3E%3Cpath d='M24 8 28 20 40 24 28 28 24 40 20 28 8 24 20 20Z' fill='%23e1c687'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/style.css">
+  <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js"}}</script>
+  <script type="module" src="/walk.js"></script>
+</head>
+<body>
+  <header class="top">
+    <div class="brand"><span class="brandmark" aria-hidden="true">✦</span><span>덕수궁 한바퀴<small>DEOKSUGUNG WALK</small></span></div>
+    <div class="top-actions">
+      <button id="character" class="quiet" type="button" aria-haspopup="dialog" aria-controls="character-dialog">캐릭터</button>
+      <button id="invite" class="invite" type="button" disabled><span aria-hidden="true">↗</span> 초대코드</button>
+    </div>
+  </header>
+  <main>
+    <section class="experience" aria-label="함께 걷기">
+      <article class="panel scene-panel">
+        <div class="panel-head">
+          <div><span class="tag">SEOUL · JEONGDONG</span><h1>덕수궁 돌담길</h1></div>
+          <div class="top-actions">
+            <button id="perspective" class="quiet" type="button" aria-pressed="false" title="1인칭과 3인칭 전환">1인칭</button>
+            <button id="night" class="quiet" type="button" aria-pressed="false">☾ 밤</button>
+            <span class="pill" id="provider"><i></i><span>3D 산책</span></span>
+          </div>
+        </div>
+        <div class="scene-wrap">
+          <div id="game" tabindex="0" role="group" aria-label="3D 산책. 조이스틱이나 방향키로 화면 기준 이동, 화면 드래그로 시야 회전">
+            <p id="loading-game">산책길을 열고 있어요.</p>
+            <div class="game-place"><span>정동의 가을</span><strong id="game-place">대한문 앞 매표 광장</strong><small>화면 기준으로 이동 · 드래그로 시야 돌리기</small></div>
+            <span id="game-presence" class="game-presence">방을 선택해 주세요</span>
+            <button id="map-toggle" class="minimap" type="button" aria-label="미니맵, 큰 지도 열기" aria-controls="map-panel" aria-expanded="false">
+              <svg id="mini-world" viewBox="425 259 84 70" aria-hidden="true">
+                <g id="mini-landscape"></g><g id="mini-people"></g>
+                <circle id="mini-pin" r="3.6" fill="#ffe2a0" stroke="#3b2e1a" stroke-width=".8" visibility="hidden"/>
+                <path id="mini-my" d="M0 -4.8 3.4 3 0 1.6 -3.4 3Z" fill="#e5b672" stroke="#fff4da" stroke-width=".75"/>
+              </svg>
+              <span class="mini-north" aria-hidden="true">↑ N</span><span class="mini-label" aria-hidden="true">지도 확대</span>
+            </button>
+            <div id="joystick" class="joystick" role="group" aria-label="이동 조이스틱"><span aria-hidden="true"></span></div>
+            <div class="game-hud">
+              <div class="game-actions">
+                <button id="sit" type="button" class="quiet" hidden>앉기</button>
+                <button id="wish" type="button" class="quiet" aria-haspopup="dialog" aria-controls="wish-drawing" hidden disabled>♢ 소원등 <kbd>E</kbd></button>
+                <button id="pet-cat" type="button" class="quiet activity-button" hidden>쓰다듬기</button>
+                <button id="take-item" type="button" class="quiet activity-button" hidden>받기</button>
+                <button id="use-item" type="button" class="quiet activity-button" hidden>사용하기</button>
+                <button id="museum-door" type="button" class="quiet activity-button" hidden>입장하기</button>
+                <button id="museum-exhibit" type="button" class="quiet activity-button" aria-haspopup="dialog" hidden>작품 설명</button>
+                <button id="hand" type="button" class="quiet" hidden>손잡기</button>
+                <button id="emote-open" type="button" class="quiet" aria-controls="emote-menu" aria-expanded="false">☺ 감정</button>
+                <button id="wave" type="button" class="quiet">인사하기</button>
+                <button id="run" type="button" class="quiet" aria-pressed="false">달리기 <kbd>Shift</kbd></button>
+              </div>
+              <div id="emote-menu" class="emote-menu" role="group" aria-label="감정 이모지" hidden>
+                <button type="button" data-emoji="😊" aria-label="미소">😊</button>
+                <button type="button" data-emoji="❤️" aria-label="하트">❤️</button>
+                <button type="button" data-emoji="👍" aria-label="좋아요">👍</button>
+                <button type="button" data-emoji="😮" aria-label="놀람">😮</button>
+                <button type="button" data-emoji="😢" aria-label="슬픔">😢</button>
+                <button type="button" data-emoji="😠" aria-label="화남">😠</button>
+                <button type="button" data-emoji="✨" aria-label="반짝임">✨</button>
+              </div>
+              <div class="pad game-pad" aria-label="3D 이동 버튼">
+                <button type="button" data-key="ArrowUp" aria-label="앞으로">↑</button>
+                <button type="button" data-key="ArrowLeft" aria-label="왼쪽으로">←</button>
+                <button type="button" data-key="ArrowDown" aria-label="뒤로">↓</button>
+                <button type="button" data-key="ArrowRight" aria-label="오른쪽으로">→</button>
+              </div>
+            </div>
+          </div>
+          <div class="follow-cover" id="follow-cover" hidden></div>
+          <div id="hand-status" class="hand-status" role="status" hidden></div>
+          <div id="hand-offer" class="hand-offer" role="group" aria-label="손잡기 요청" hidden>
+            <p id="hand-message" role="status"></p>
+            <div><button id="hand-decline" type="button" class="quiet">거절</button><button id="hand-accept" type="button" class="primary">수락</button></div>
+          </div>
+          <div class="look-direction" id="look-direction" role="status" hidden>
+            <span class="look-arrow" id="look-arrow" aria-hidden="true">↑</span>
+            <div><strong>동행이 ‘여기 봐’를 보냈어요</strong><small id="look-distance"></small></div>
+          </div>
+        </div>
+        <div class="scene-controls">
+          <div class="camera"><span class="view-icon" aria-hidden="true">◎</span><span><strong id="camera">내 시점</strong><small id="camera-hint">‘여기 봐’로 이 풍경을 건네세요</small></span></div>
+          <div class="camera-actions">
+            <button id="follow" class="quiet" type="button" disabled>동행 보기</button>
+            <button id="look" class="primary" type="button" disabled><span aria-hidden="true">✦</span> 여기 봐</button>
+          </div>
+        </div>
+      </article>
+      <article class="panel map-panel" id="map-panel">
+        <div class="panel-head">
+          <div><span class="tag">02 / WALK MAP</span><h2>산책 지도</h2></div>
+          <div class="top-actions"><span class="pill" id="presence"><i></i><span>연결 중</span></span><button id="close-map" class="quiet" type="button" aria-label="지도 닫기">×</button></div>
+        </div>
+        <div class="map-wrap">
+          <svg id="world" viewBox="58 28 520 397" role="group" tabindex="0" aria-label="덕수궁 산책 지도. 방향키 또는 W A S D로 이동">
+            <defs>
+              <pattern id="grid" width="28" height="28" patternUnits="userSpaceOnUse"><path d="M28 0H0V28" fill="none" stroke="#c7c59a" stroke-opacity=".10"/></pattern>
+              <pattern id="stone" width="20" height="12" patternUnits="userSpaceOnUse"><path d="M0 1h20M0 7h20M5 1v6m10 0v5" stroke="#b59865" stroke-opacity=".5" fill="none"/></pattern>
+              <g id="tree"><circle cx="2" cy="4" r="14" fill="#101c18"/><circle r="14" fill="#31493a" stroke="#6c8060" stroke-width="1"/><circle r="6" fill="#435a45"/><circle cx="-3" cy="-4" r="2" fill="#76825b"/></g>
+            </defs>
+            <g id="map-landscape" aria-hidden="true"></g>
+            <g id="look-pin" aria-hidden="true" visibility="hidden"><circle r="19"/><circle r="4"/></g>
+            <g id="map-people" aria-hidden="true"></g>
+            <g id="my-avatar" class="avatar me"><ellipse cy="11" rx="16" ry="6"/><circle r="14"/><path d="M-7 7a8 8 0 0 1 14 0" class="shoulders"/><circle cy="-3" r="4" class="face"/><text y="-21" text-anchor="middle">나</text></g>
+          </svg>
+          <div class="map-location"><span>현재 위치</span><strong id="location">대한문 앞 매표 광장</strong></div>
+          <div class="pad" aria-label="이동 버튼">
+            <button type="button" data-key="ArrowUp" aria-label="위로">↑</button>
+            <button type="button" data-key="ArrowLeft" aria-label="왼쪽으로">←</button>
+            <button type="button" data-key="ArrowDown" aria-label="아래로">↓</button>
+            <button type="button" data-key="ArrowRight" aria-label="오른쪽으로">→</button>
+          </div>
+        </div>
+        <div class="map-footer"><span><i class="dot mine"></i>나 <i class="dot theirs"></i>동행</span><div class="map-links"><button id="model-credits" class="quiet" type="button" aria-haspopup="dialog">자료 출처</button><button id="entrance-target" class="quiet" type="button">매표소 ↗</button><button id="palace-target" class="quiet" type="button">중화전 ↗</button><button id="museum-target" class="quiet" type="button">전시관 ↗</button></div></div>
+      </article>
+    </section>
+    <footer><span>✦ &nbsp; 덕수궁 한바퀴</span><span>덕수궁 돌담길을 바탕으로 만든 3D 산책 공간</span></footer>
+  </main>
+  <div id="toast" role="status" hidden></div>
+  <dialog id="wish-drawing" aria-labelledby="wish-drawing-title">
+    <div class="dialog-top">
+      <h2 id="wish-drawing-title">소원등 꾸미기</h2>
+      <button id="wish-dismiss" type="button" class="quiet wish-dismiss" aria-label="닫기">×</button>
+    </div>
+    <p class="wish-drawing-guide">네 면에 그림을 그리거나 소원을 적어 보세요.</p>
+    <div class="wish-editor">
+      <div class="wish-face-tabs" role="tablist" aria-label="소원등 면">
+        <button id="wish-face-0" type="button" data-wish-face="0" role="tab" aria-selected="true" aria-controls="wish-panel">
+          <canvas class="wish-paper" width="40" height="56" aria-hidden="true"></canvas><span>앞면</span>
+        </button>
+        <button id="wish-face-1" type="button" data-wish-face="1" role="tab" aria-selected="false" aria-controls="wish-panel" tabindex="-1">
+          <canvas class="wish-paper" width="40" height="56" aria-hidden="true"></canvas><span>오른쪽</span>
+        </button>
+        <button id="wish-face-2" type="button" data-wish-face="2" role="tab" aria-selected="false" aria-controls="wish-panel" tabindex="-1">
+          <canvas class="wish-paper" width="40" height="56" aria-hidden="true"></canvas><span>뒷면</span>
+        </button>
+        <button id="wish-face-3" type="button" data-wish-face="3" role="tab" aria-selected="false" aria-controls="wish-panel" tabindex="-1">
+          <canvas class="wish-paper" width="40" height="56" aria-hidden="true"></canvas><span>왼쪽</span>
+        </button>
+      </div>
+      <div id="wish-panel" class="wish-sheet" role="tabpanel" aria-labelledby="wish-face-0">
+        <canvas id="wish-canvas" class="wish-paper" width="40" height="56" role="img" aria-label="소원등 앞면 그림판"></canvas>
+      </div>
+      <div class="wish-tools">
+        <div class="wish-palette" role="group" aria-label="그림 색"></div>
+        <div class="wish-tool-buttons">
+          <button id="wish-eraser" class="quiet" type="button" aria-pressed="false">지우개</button>
+          <button id="wish-clear" class="quiet" type="button" disabled>이 면 비우기</button>
+        </div>
+      </div>
+    </div>
+    <p id="wish-status" role="status" hidden></p>
+    <div class="dialog-actions wish-drawing-actions">
+      <button id="wish-back" class="quiet" type="button">돌아가기</button>
+      <button id="wish-launch" class="primary" type="button">소원등 날리기</button>
+    </div>
+  </dialog>
+  <dialog id="credits-dialog" aria-labelledby="credits-title">
+    <div class="dialog-top"><span class="tag">DEOKSUGUNG</span><button type="button" class="quiet close" aria-label="닫기">×</button></div>
+    <h2 id="credits-title">자료 출처</h2>
+    <p>국가유산청이 제공한 3D 실측 자료를 웹에서 볼 수 있도록 경량화했습니다.</p>
+    <ul class="credits">
+      <li><a href="https://www.data.go.kr/data/15104816/fileData.do" target="_blank" rel="noopener">석조전 3D 자료</a></li>
+      <li><a href="https://www.data.go.kr/data/15104796/fileData.do" target="_blank" rel="noopener">국가유산청 중화문 3D 자료</a> · <a href="https://www.kogl.or.kr/info/licenseType1.do" target="_blank" rel="noopener">공공누리 제1유형</a></li>
+      <li><a href="https://www.data.go.kr/data/15104823/fileData.do" target="_blank" rel="noopener">정관헌 3D 자료</a></li>
+      <li><a href="https://www.data.go.kr/data/15104838/fileData.do" target="_blank" rel="noopener">중화전 3D 자료</a></li>
+      <li><a href="https://www.data.go.kr/data/15104840/fileData.do" target="_blank" rel="noopener">함녕전 3D 자료</a></li>
+      <li><a href="https://www.data.go.kr/data/15104853/fileData.do" target="_blank" rel="noopener">석어당 3D 자료</a></li>
+    </ul>
+    <p>경내 배치와 나머지 외관은 첨부 지도, 네이버 지도 거리뷰와 <a href="https://royal.khs.go.kr/ROYAL/contents/R701000000.do?schGroupCode=dsg" target="_blank" rel="noopener">궁능유적본부 관람 자료</a>를 참고해 재현했습니다.</p>
+    <p>전시 이미지와 확대 재현한 유물의 출처입니다.</p>
+    <ul id="exhibit-credits" class="credits"></ul>
+  </dialog>
+  <dialog id="exhibit-dialog" aria-labelledby="exhibit-title">
+    <div class="dialog-top"><span class="tag" id="exhibit-gallery"></span><button type="button" class="quiet close" aria-label="닫기">×</button></div>
+    <h2 id="exhibit-title"></h2>
+    <p id="exhibit-period" class="exhibit-period"></p>
+    <img id="exhibit-image" alt="" hidden>
+    <p id="exhibit-description"></p>
+    <a id="exhibit-source" target="_blank" rel="noopener"></a>
+  </dialog>
+  <dialog id="character-dialog" aria-labelledby="character-title">
+    <div class="dialog-top"><h2 id="character-title">캐릭터 꾸미기</h2><button type="button" class="quiet close" aria-label="닫기">×</button></div>
+    <div class="character-settings">
+      <div class="character-preview"><canvas id="character-preview" width="240" height="280" role="img" aria-label="꾸민 캐릭터 미리보기"></canvas></div>
+      <div class="character-options">
+        <fieldset><legend>기본형</legend><div class="options-row">
+          <button type="button" data-character="man" aria-pressed="true">남자</button>
+          <button type="button" data-character="woman" aria-pressed="false">여자</button>
+        </div></fieldset>
+        <fieldset><legend>헤어스타일</legend><div class="options-row">
+          <button type="button" data-feature="hair" data-option="short" aria-pressed="false">짧은 머리</button>
+          <button type="button" data-feature="hair" data-option="bob" aria-pressed="false">단발</button>
+          <button type="button" data-feature="hair" data-option="long" aria-pressed="false">긴 머리</button>
+          <button type="button" data-feature="hair" data-option="bun" aria-pressed="false">올림머리</button>
+        </div></fieldset>
+        <fieldset><legend>눈 모양</legend><div class="options-row">
+          <button type="button" data-feature="eyes" data-option="round" aria-pressed="false">동그란 눈</button>
+          <button type="button" data-feature="eyes" data-option="soft" aria-pressed="false">부드러운 눈</button>
+          <button type="button" data-feature="eyes" data-option="bright" aria-pressed="false">반짝이는 눈</button>
+        </div></fieldset>
+        <fieldset><legend>옷 디자인</legend><div class="options-row">
+          <button type="button" data-feature="outfit" data-option="coat" aria-pressed="false">코트</button>
+          <button type="button" data-feature="outfit" data-option="puffer" aria-pressed="false">패딩</button>
+          <button type="button" data-feature="outfit" data-option="tee" aria-pressed="false">반팔</button>
+          <button type="button" data-feature="outfit" data-option="hanbok" aria-pressed="false">한복</button>
+        </div></fieldset>
+      </div>
+    </div>
+  </dialog>
+  <dialog id="hand-people" aria-labelledby="hand-title">
+    <div class="dialog-top"><span class="tag">WALK TOGETHER</span><button type="button" class="quiet close" aria-label="닫기">×</button></div>
+    <h2 id="hand-title">누구와 손잡을까요?</h2>
+    <div id="hand-list" class="hand-list"></div>
+  </dialog>
+  <dialog id="lobby" aria-labelledby="lobby-title">
+    <form id="lobby-form">
+      <span class="tag">DEOKSUGUNG WALK</span>
+      <h2 id="lobby-title">덕수궁 한바퀴</h2>
+      <p>친구들에게 보일 닉네임을 정하고 산책방에 들어가요.</p>
+      <label for="nickname">닉네임</label>
+      <input id="nickname" type="text" required maxlength="32" placeholder="예: 은행잎" autocomplete="nickname" autofocus>
+      <button id="create-room" class="primary create-room" type="submit" value="create">새 방 만들기</button>
+      <div class="join-room">
+        <label for="join-code">친구에게 받은 초대코드</label>
+        <div><input id="join-code" type="text" maxlength="8" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="8자리 코드"><button id="join-room" class="quiet" type="submit" value="join">입장</button></div>
+      </div>
+      <p id="lobby-status" role="status"></p>
+    </form>
+  </dialog>
+  <dialog id="invite-dialog" aria-labelledby="invite-title">
+    <div class="dialog-top"><span class="tag">WALK TOGETHER</span><button type="button" class="quiet close" aria-label="닫기">×</button></div>
+    <h2 id="invite-title">친구 초대하기</h2>
+    <p>같은 코드를 친구들에게 보내세요. 친구가 코드로 들어오면 이 방에서 만나요.</p>
+    <label for="invite-code">이 방의 초대코드</label>
+    <input id="invite-code" class="invite-code" type="text" readonly>
+    <div class="dialog-actions invite-actions">
+      <button id="leave-room" class="quiet" type="button">방 나가기</button>
+      <button id="copy-link" class="quiet" type="button">링크 복사</button>
+      <button id="copy" class="primary" type="button">코드 복사</button>
+    </div>
+  </dialog>
+</body>
+</html>
