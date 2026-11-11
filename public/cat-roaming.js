@@ -1,38 +1,53 @@
 import {clearSegment,entranceWalk,palace,palacePaths,planWalk,route,spawn,walkable} from "./layout.js";
 
-const palaceTrail=index=>palacePaths[index].points;
-const southernGarden=palaceTrail(14);
-const pond=palaceTrail(5);
-const pavilionWalk=palaceTrail(7);
-const fountainGarden=palaceTrail(17);
-const northWalk=palaceTrail(19);
-const dondeokjeon=palaceTrail(21);
-const dondeokjeonDoor=palaceTrail(22);
+const trails=new Map(palacePaths.map(({name,points})=>[name,points]));
+const palaceTrail=name=>trails.get(name);
+const southernGarden=palaceTrail("남쪽 정원길");
+const pondEast=palaceTrail("연못 동쪽 산책길");
+const pondWest=palaceTrail("연못 서쪽 산책길");
+const pavilionWalk=palaceTrail("정관헌 동쪽 산책길");
+const fountainGarden=palaceTrail("석조전 정원 외곽");
+const northWalk=palaceTrail("석조전 북쪽에서 정관헌까지");
+const dondeokjeon=palaceTrail("돈덕전에서 평성문까지");
+const dondeokjeonDoor=palaceTrail("돈덕전 입구");
 const corridors=[
-  [...entranceWalk,...route.slice(1)],palace.slice(0,10),southernGarden,
-  palaceTrail(4),pond,palaceTrail(6),pavilionWalk,palaceTrail(11),palaceTrail(12),
-  palaceTrail(15),palaceTrail(16),fountainGarden,northWalk,dondeokjeon,dondeokjeonDoor
+  [...entranceWalk,...route.slice(1)],palace.slice(0,10),southernGarden,pondEast,pondWest,
+  pavilionWalk,fountainGarden,northWalk,dondeokjeon,dondeokjeonDoor,
+  ...["금천교에서 중화문까지","대한문 안길","정관헌에서 함녕전까지","융안문 앞길","즉조당에서 중화전까지",
+    "중화전 동쪽","중화전 마당 서쪽 둘레","서쪽 산책길","석조전 서관과 정원","평성문에서 석조전으로"].map(palaceTrail)
 ];
 const areas={
   plaza:entranceWalk.slice(0,2).concat(palace[1]),
   roadEast:route.slice(1,6),roadWest:route.slice(6,12),
-  east:pond.slice(2,10),south:southernGarden.slice(3,10),
-  west:fountainGarden.slice(4,13),north:dondeokjeon.slice(1,10).concat(dondeokjeonDoor.at(-1)),
-  pavilion:pavilionWalk.slice(4,10)
+  east:pondEast.slice(2,10).concat(pondWest.slice(2,7)),south:southernGarden.slice(1,6),
+  west:fountainGarden.slice(2,12),north:dondeokjeon.slice(1,10).concat(dondeokjeonDoor.at(-1)),
+  pavilion:pavilionWalk.slice(5,12)
 };
 const circuits=[
   ["plaza","roadEast","east"],
   ["roadEast","roadWest","plaza"],
-  ["roadWest","roadEast","roadWest"],
+  ["roadWest","roadEast","plaza"],
   ["east","pavilion","plaza"],
   ["south","west","east"],
   ["west","north","south"],
   ["north","pavilion","west"],
   ["pavilion","north","east"],
-  ["plaza","east","south"],
-  ["roadEast","plaza","south"],
-  ["roadWest","roadEast","plaza"],
-  ["east","pavilion","north"]
+  ["plaza","pavilion","east"],
+  ["roadEast","east","roadWest"],
+  ["roadWest","plaza","roadEast"],
+  ["east","west","north"],
+  ["south","pavilion","west"],
+  ["west","east","south"],
+  ["north","west","pavilion"],
+  ["pavilion","west","south"],
+  ["plaza","east","roadEast"],
+  ["roadEast","roadWest","east"],
+  ["roadWest","roadEast","south"],
+  ["east","plaza","pavilion"],
+  ["south","north","east"],
+  ["west","south","north"],
+  ["north","pavilion","south"],
+  ["pavilion","east","west"]
 ];
 
 const metres=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
@@ -103,24 +118,24 @@ function makeNetwork(){
   return {nodes:[...reachable],available,byLocation};
 }
 
-function networkPath(nodes,from,to){
+function networkPath(from,to){
   if(from===to)return [from.point];
-  const distances=new Map([[from,0]]),previous=new Map(),remaining=new Set(nodes);
-  while(remaining.size){
+  const distances=new Map([[from,0]]),previous=new Map(),frontier=new Set([from]);
+  while(frontier.size){
     let current=null,best=Infinity;
-    for(const node of remaining){
+    for(const node of frontier){
       const distance=distances.get(node);
       if(distance<best){current=node;best=distance;}
     }
-    if(!current)return [];
     if(current===to)break;
-    remaining.delete(current);
+    frontier.delete(current);
     for(const edge of current.edges){
       const distance=best+edge.distance;
       if(distance>=(distances.get(edge.to)??Infinity))continue;
-      distances.set(edge.to,distance);previous.set(edge.to,{current,edge});
+      distances.set(edge.to,distance);previous.set(edge.to,{current,edge});frontier.add(edge.to);
     }
   }
+  if(!previous.has(to))return [];
   const steps=[];
   for(let at=to;at!==from;){
     const {current,edge}=previous.get(at);
@@ -160,7 +175,7 @@ export function makeCatRoaming(){
     return null;
   }
   function roam(home,random,index=0){
-    const {nodes,available}=graph(),entry=access(home);
+    const {available}=graph(),entry=access(home);
     const circuit=circuits[index%circuits.length];
     const visits=random()<.5?circuit.slice(1):circuit.slice(1).reverse();
     const legs=[];
@@ -181,11 +196,11 @@ export function makeCatRoaming(){
       for(const area of visits){
         const next=choose(available[area],random);
         if(!next||next===current)continue;
-        const path=networkPath(nodes,current,next);
+        const path=networkPath(current,next);
         if(!path.length)continue;
         add(path,2.8+random()*6.5);current=next;
       }
-      add(networkPath(nodes,current,entry.node),0);
+      add(networkPath(current,entry.node),0);
       add(entry.path.slice().reverse(),0);
     }
     if(!legs.length){
@@ -200,9 +215,12 @@ export function makeCatRoaming(){
     if(!legs.length)legs.push({a:home,b:home,travel:0,pause:6});
     return legs;
   }
-  roam.start=(random,index=0)=>{
+  roam.start=(random,index=0,used=new Set())=>{
     const {available,nodes}=graph(),area=circuits[index%circuits.length][0];
-    return (choose(available[area],random)??choose(nodes,random))?.point??findGround(spawn);
+    const unused=node=>!used.has(keyOf(node.point));
+    const point=(choose(available[area].filter(unused),random)??choose(nodes.filter(unused),random))?.point??findGround(spawn);
+    if(point)used.add(keyOf(point));
+    return point;
   };
   roam.between=between;
   return roam;

@@ -156,8 +156,8 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
   guideMarker.position.set(wx(ticketGuide.x),2.42,wz(ticketGuide.y));
   outdoors.add(guideMarker);
   const museum=addMuseum(T,scene,kit);
-  const parkLife=addParkLife(T,outdoors,{...kit,trees,floorHeight,catWalls,benches,onCatFlee,catSeed});
   const birds=addPalaceBirds(T,outdoors,{...kit,floorHeight},{trees,walls:catWalls,seed:catSeed});
+  const parkLife=addParkLife(T,outdoors,{...kit,trees,floorHeight,catWalls,benches,onCatFlee,catSeed,birds});
 
   const landmarkLoaders=Promise.all([
     import("https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/loaders/GLTFLoader.js"),

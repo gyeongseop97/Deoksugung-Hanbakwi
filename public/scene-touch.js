@@ -1,0 +1,112 @@
+const tapDuration=420;
+const dragSlop=8;
+const buttonSlop=15;
+const surfaceControl="button,a,input,textarea,[contenteditable],#joystick,.emote-menu";
+const editable="input,textarea,[contenteditable]";
+const distance=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+
+export function bindSceneTouch(scene,shell,{canTap,onBegin,onTap,onDrag,onPinch}){
+  const pointers=new Map(),buttons=new Map(),handledClicks=new WeakMap();
+  let pinch=null;
+
+  function resetPinch(){
+    const pair=[...pointers.values()].filter(pointer=>pointer.touch);
+    pinch=pair.length===2?{pair,gap:Math.max(12,distance(...pair))}:null;
+    if(pinch)for(const pointer of pair)pointer.pinched=true;
+  }
+
+  scene.addEventListener("pointerdown",event=>{
+    if((event.button!==0&&event.button!==2)||event.target.closest(surfaceControl))return;
+    const touch=event.pointerType==="touch";
+    if(pointers.size&&(!touch||pointers.size>=2||!pointers.values().next().value.touch))return;
+    if(!pointers.size)onBegin();
+    pointers.set(event.pointerId,{x:event.clientX,y:event.clientY,startX:event.clientX,startY:event.clientY,
+      began:event.timeStamp,touch,tap:event.button===0&&!buttons.size&&canTap(event.timeStamp)});
+    scene.setPointerCapture(event.pointerId);
+    resetPinch();
+  });
+
+  scene.addEventListener("pointermove",event=>{
+    const pointer=pointers.get(event.pointerId);
+    if(!pointer)return;
+    const {x:previousX,y:previousY}=pointer;
+    pointer.x=event.clientX;pointer.y=event.clientY;
+    if(pinch){
+      const gap=Math.max(12,distance(...pinch.pair));
+      onPinch(Math.log(gap/pinch.gap)*7);
+      pinch.gap=gap;
+      return;
+    }
+    if(pointer.pinched)return;
+    if(!pointer.dragged){
+      if(pointer.touch&&event.timeStamp-pointer.began>=tapDuration)return;
+      if(Math.hypot(pointer.x-pointer.startX,pointer.y-pointer.startY)<dragSlop)return;
+      pointer.dragged=true;
+      onDrag(pointer.x-pointer.startX,pointer.y-pointer.startY);
+    }else onDrag(pointer.x-previousX,pointer.y-previousY);
+  });
+
+  function finishScenePointer(event,activate){
+    const pointer=pointers.get(event.pointerId);
+    if(!pointer)return;
+    pointers.delete(event.pointerId);resetPinch();
+    if(activate&&pointer.tap&&!pointer.pinched&&!pointer.dragged&&canTap(pointer.began)&&
+      (!pointer.touch||event.timeStamp-pointer.began<tapDuration)&&
+      Math.hypot(event.clientX-pointer.startX,event.clientY-pointer.startY)<dragSlop)onTap(event.clientX,event.clientY);
+  }
+  scene.addEventListener("pointerup",event=>finishScenePointer(event,true));
+
+  shell.addEventListener("pointerdown",event=>{
+    const button=event.target.closest("button:not([data-key])");
+    if(event.pointerType!=="touch"||event.button!==0||!button||button.disabled)return;
+    for(const pointer of pointers.values())pointer.tap=false;
+    buttons.set(event.pointerId,{button,x:event.clientX,y:event.clientY,moved:false});
+    button.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  });
+  shell.addEventListener("pointermove",event=>{
+    const press=buttons.get(event.pointerId);
+    if(press&&Math.hypot(event.clientX-press.x,event.clientY-press.y)>buttonSlop)press.moved=true;
+  });
+  function finishButton(event,activate){
+    const press=buttons.get(event.pointerId);
+    if(!press)return;
+    buttons.delete(event.pointerId);
+    const {button}=press;
+    handledClicks.set(button,event.timeStamp);
+    if(activate&&!press.moved&&!button.disabled&&
+      Math.hypot(event.clientX-press.x,event.clientY-press.y)<=buttonSlop&&
+      button.contains(button.ownerDocument.elementFromPoint(event.clientX,event.clientY)))button.click();
+  }
+  shell.addEventListener("pointerup",event=>finishButton(event,true));
+  for(const type of ["pointercancel","lostpointercapture"]){
+    scene.addEventListener(type,event=>finishScenePointer(event,false));
+    shell.addEventListener(type,event=>finishButton(event,false));
+  }
+
+  // A native touch click can follow pointerup even after preventDefault.
+  shell.addEventListener("click",event=>{
+    const touch=event.pointerType==="touch"||event.sourceCapabilities?.firesTouchEvents;
+    if(!event.isTrusted||(!touch&&event.detail===0))return;
+    const button=event.target.closest("button");
+    const handledAt=button&&handledClicks.get(button);
+    if(handledAt==null||event.timeStamp-handledAt>750)return;
+    if(touch||(!event.pointerType&&event.sourceCapabilities?.firesTouchEvents!==false)){
+      event.preventDefault();event.stopImmediatePropagation();
+    }
+  },true);
+
+  for(const type of ["contextmenu","dragstart","selectstart"]){
+    shell.addEventListener(type,event=>{if(!event.target.closest(editable))event.preventDefault();});
+  }
+
+  return function clearSceneTouch(){
+    const sceneIds=[...pointers.keys()],pressed=[...buttons];
+    pointers.clear();buttons.clear();pinch=null;
+    for(const id of sceneIds)if(scene.hasPointerCapture(id))scene.releasePointerCapture(id);
+    for(const [id,{button}] of pressed){
+      handledClicks.set(button,performance.now());
+      if(button.hasPointerCapture(id))button.releasePointerCapture(id);
+    }
+  };
+}
