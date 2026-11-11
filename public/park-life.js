@@ -1,7 +1,7 @@
 import {clearSegment,planWalk,solidAt,spawn,walkable} from "./layout.js";
 import {FEED_MS,PET_MS} from "./activities.js";
 import {makeCatRoaming} from "./cat-roaming.js";
-import {gbCatTrails,gbStation} from "./gyeongbok-layout.js";
+import {gbCatTrails,gbPlazaCatTrails,gbStation} from "./gyeongbok-layout.js";
 import {createCatSocial} from "./cat-social.js";
 import {createCatHunts} from "./cat-hunt.js";
 
@@ -593,8 +593,10 @@ export function addParkLife(T,scene,kit){
   const meshes=sharedCatMeshes(T),leg=new T.Object3D(),live=[];
   const roam=makeCatRoaming(),social=createCatSocial({walkable,clearSegment});
   const palaceRoam=makeCatRoaming({trails:gbCatTrails,origin:gbStation.arrive,plan:false});
+  const plazaRoam=makeCatRoaming({trails:gbPlazaCatTrails,origin:gbPlazaCatTrails[0][0],plan:false});
   const hunting=createCatHunts(kit.birds,clearSegment);
-  let seed;
+  let seed,sight=39;
+  const setSparse=value=>{sight=value?24:39;};
   function setSeed(value){
     const next=String(value??"preview");
     if(next===seed)return;
@@ -604,12 +606,14 @@ export function addParkLife(T,scene,kit){
     social.reset();
     hunting.reset();
     const hash=catSeedNumber(seed),random=randomSequence(hash);
-    const count=18+Math.floor(random()*7),palaceCount=30+Math.floor(random()*7),coats=[];
-    while(coats.length<count+palaceCount)coats.push(...shuffled(cats,random).slice(0,count+palaceCount-coats.length));
+    const count=18+Math.floor(random()*7),palaceCount=30+Math.floor(random()*7),plazaCount=4,coats=[];
+    const total=count+palaceCount+plazaCount;
+    while(coats.length<total)coats.push(...shuffled(cats,random).slice(0,total-coats.length));
     const used={homes:new Set(),benches:new Set(),walls:new Set(),trees:new Set()};
     for(const [index,coat] of coats.entries()){
       // The first group lives around Deoksugung, the rest in Gyeongbokgung.
-      const wander=index<count?roam:palaceRoam,origin=index<count?spawn:gbStation.arrive;
+      const wander=index<count?roam:index<count+palaceCount?palaceRoam:plazaRoam;
+      const origin=index<count?spawn:index<count+palaceCount?gbStation.arrive:gbPlazaCatTrails[0][0];
       const rng=randomSequence(hash^Math.imul(index+1,0x9e3779b1));
       const home=wander.start(rng,index,used.homes)??findHome(origin);
       if(!home)continue;
@@ -632,7 +636,12 @@ export function addParkLife(T,scene,kit){
       (actor.blocked||Math.hypot(actor.vx,actor.vy)>2.65));
     const holders=walkers.filter(actor=>!actor.running&&actor.seat==null&&
       actor.item?.kind==="churu"&&actor.item.remaining>0);
-    for(const cat of live){
+    // Only the cats on the walker's own map are simulated; the others pick their shared
+    // routes up again from the clock when someone arrives.
+    const viewer=anchor??walkers[0],palaceSide=viewer?viewer.x>=1000:null;
+    const active=palaceSide===null?live:live.filter(cat=>(cat.x>=1000)===palaceSide);
+    if(active.length!==live.length)for(const cat of live)if((cat.x>=1000)!==palaceSide&&cat.group.visible)cat.group.visible=false;
+    for(const cat of active){
       const previousTime=cat.updatedAt??now,time=Math.max(now,previousTime);
       const feeding=cat.feeding&&time>=cat.feeding.at&&time<cat.feeding.until?cat.feeding:null;
       const held=Math.max(0,Math.min(time,cat.petUntil)-Math.max(previousTime,cat.petFrom));
@@ -722,9 +731,9 @@ export function addParkLife(T,scene,kit){
       cat.canPet=reachable&&!retreat&&!feeding;
       cat.feedable=Boolean(cat.lure&&!cat.lure.returning&&lured&&!paused&&!feeding);
     }
-    const encounters=social.update(live.filter(cat=>!cat.hunt),now);
-    const hunts=hunting.update(live,now,encounters);
-    for(const cat of live){
+    const encounters=social.update(active.filter(cat=>!cat.hunt),now);
+    const hunts=hunting.update(active,now,encounters);
+    for(const cat of active){
       const {time,feeding,paused,onBench,atTree,landTime,seconds,current,patrol,retreat}=cat.frame;
       cat.social=encounters.get(cat.id)??null;
       cat.hunt=hunts.get(cat.id)??null;
@@ -734,7 +743,7 @@ export function addParkLife(T,scene,kit){
       cat.x=x;cat.y=y;
       if(cat.hunt?.jump||cat.hunt?.stage==="rush")cat.canPet=false;
       cat.approach=pose.approach??null;
-      cat.group.visible=Boolean(anchor&&Math.hypot(anchor.x-x,anchor.y-y)<39);
+      cat.group.visible=Boolean(anchor&&Math.hypot(anchor.x-x,anchor.y-y)<sight);
       if(!cat.group.visible)continue;
       const ground=jump?jumpHeight(heightAt(jump.from),heightAt(jump.to),jump.arc,jump.progress):heightAt(pose);
       cat.group.position.set(kit.wx(x),ground,kit.wz(y));
@@ -849,5 +858,5 @@ export function addParkLife(T,scene,kit){
   }
   // How many cats live on each map (used when checking a build).
   const census=()=>({deoksugung:live.filter(cat=>cat.x<1000).length,gyeongbokgung:live.filter(cat=>cat.x>=1000).length});
-  return {update,nearestCat,nearestFeedCat,pet,feed,resetInteractions,setSeed,census};
+  return {update,nearestCat,nearestFeedCat,pet,feed,resetInteractions,setSeed,census,setSparse};
 }

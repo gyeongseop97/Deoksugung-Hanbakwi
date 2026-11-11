@@ -260,7 +260,7 @@ export function addPalaceBirds(T,parent,kit,{trees=[],walls=[],seed}={}){
     batch(wingGeometry(T,1),spots.length,"Bird right wings",feather)];
   const batches=[body,bill,...wings],part=new T.Object3D(),root=new T.Object3D(),joint=new T.Object3D();
   const matrix=new T.Matrix4(),attached=new T.Matrix4(),color=new T.Color();
-  let roomSeed,checkAt=0,walkers=[],groundAt=-Infinity,groundSnapshot;
+  let roomSeed,checkAt=0,walkers=[],groundAt=-Infinity,groundSnapshot,sparse=false;
 
   function setSeed(value){
     const next=String(value??"preview");
@@ -408,8 +408,11 @@ export function addPalaceBirds(T,parent,kit,{trees=[],walls=[],seed}={}){
         .map(player=>({x:player.x,y:player.y,height:floor(player),running:player.running}));
     }
     for(const mesh of batches)mesh.count=0;
-    for(const bird of birds){
+    // Birds never leave their own palace, so the flock on the other map is skipped outright.
+    const palaceSide=viewer?viewer.x>=1000:null;
+    for(const [index,bird] of birds.entries()){
       bird.onGround=null;
+      if(palaceSide!==null&&(bird.home.x>=1000)!==palaceSide||sparse&&index%2)continue;
       let pose=bird.escape?escapePose(bird,clock):null;
       if(!pose){
         const phase=modulo(clock+bird.offset,bird.patrol.time);
@@ -429,5 +432,6 @@ export function addPalaceBirds(T,parent,kit,{trees=[],walls=[],seed}={}){
   }
   const census=()=>({deoksugung:birds.filter(bird=>bird.home.x<1000).length,gyeongbokgung:birds.filter(bird=>bird.home.x>=1000).length,
     touring:birds.filter(bird=>bird.patrol.legs.some(leg=>leg.mode==="flight"&&distance(leg.from,leg.to)>20)).length});
-  return {update,setSeed,groundTargets,scare,census};
+  const setSparse=value=>{sparse=Boolean(value);};
+  return {update,setSeed,groundTargets,scare,census,setSparse};
 }

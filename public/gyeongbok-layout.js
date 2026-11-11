@@ -117,8 +117,7 @@ function inPond(east,north){
 // trails share end points so the whole palace forms one connected network.
 const trail=points=>points.map(([east,north])=>at(east,north));
 export const gbCatTrails=[
-  [[-60,-30],[0,-30],[60,-30],[60,-50],[-60,-50],[-60,-30]],
-  [[0,-30],[0,0],[0,60],[0,112],[0,135],[0,160],[0,205],[0,232],[0,262]],
+  [[0,0],[0,60],[0,112],[0,135],[0,160],[0,205],[0,232],[0,262]],
   [[-96,36],[-70,60],[-36,96],[0,112]],
   [[-70,60],[-110,110],[-180,120],[-210,140],[-220,180],[-170,220],[-120,240],[-56,246]],
   [[0,112],[40,116],[100,110],[150,150],[190,200],[160,260],[110,280],[62,300]],
@@ -138,12 +137,29 @@ export const gbCatTrails=[
   [[-50,706],[-120,700],[-170,760],[-120,830],[-30,830]],
   [[-58,488],[-60,560],[-120,640],[-120,700]]
 ].map(trail);
+// The square outside the gate has its own few cats; the terrace steps keep them out of the palace.
+export const gbPlazaCatTrails=[
+  [[-60,-30],[-24,-30],[-24,-54],[0,-54],[24,-54],[24,-30],[60,-30],[60,-50],[24,-54]],
+  [[-24,-54],[-60,-50],[-60,-30]]
+].map(trail);
 // Places where flocks of pigeons and magpies gather.
 export const gbBirdGrounds=[
-  [0,-30],[0,70],[-30,160],[30,206],[0,256],[-36,300],[36,300],[-58,446],[-120,300],[0,436],
+  [40,-30],[0,70],[-30,160],[30,206],[0,256],[-36,300],[36,300],[-58,446],[-120,300],[0,436],
   [100,280],[150,180],[-150,160],[0,540],[12,772],[-64,700],[84,700],[-90,56],[-150,236],[60,560],
   [-128,494],[-200,400],[120,470],[0,846],[-150,780],[150,790]
 ].map(([east,north])=>at(east,north));
+// Woldae: the ceremonial stone terrace that runs south from Gwanghwamun.
+export const gbWoldae={half:14.7,south:-50,north:-5.7,tier:.19};
+export const gbHaetae=[-1,1].map(side=>({side,east:side*19.6,north:-48}));
+// Standing here offers a souvenir photograph in front of the throne hall.
+export const gbPhotoZone={...at(0,263,"근정전 포토존"),heading:180,reach:3.4,
+  tripod:at(1.7,255.7),shot:{from:{...at(1.7,256.5),height:1.3},to:{...at(-.5,300),height:4.6},fov:52}};
+// Night floodlights: the nearest three are lit while a walker is in the palace.
+export const gbLightSpots=[
+  [0,-12,5,620,60],[0,128,4.5,520,55],[0,226,4.5,520,55],[0,281,5.5,900,75],[0,360,4,420,50],[0,404,4,420,50],
+  [0,446,4,420,50],[-64,428,5,900,80],[-86,330,4,420,50],[104,330,4,380,48],[108,464,4,420,50],
+  [12,722,4.5,700,70],[22,774,4,420,50],[-72,797,4,380,48]
+].map(([east,north,height,power,range])=>({...at(east,north),height,power,range}));
 export const sparklerStall={...at(-50,402,"경회루 스파클 좌판")};
 export const wishPond={...at(gbPond.east,gbPond.north,"향원정"),reach:gbPond.radius+12};
 // Shortcut buttons while in Gyeongbokgung.
@@ -167,7 +183,7 @@ addZone({
 });
 addLandmarks([
   ...gbSites,gbStation,cityHallStation,
-  at(0,-30,"광화문 광장"),at(0,70,"흥례문 앞마당"),at(0,180,"영제교"),at(0,262,"근정전 마당"),
+  at(0,-28,"광화문 월대"),at(-50,-36,"광화문 광장"),at(50,-36,"광화문 광장"),at(0,70,"흥례문 앞마당"),at(0,180,"영제교"),at(0,262,"근정전 마당"),
   at(-128,428,"경회루 연못"),at(12,706,"향원정"),at(0,480,"아미산"),
   ...gbPaths.flatMap(path=>path.points.slice(1,-1).map(point=>({...point,name:path.name})))
 ]);

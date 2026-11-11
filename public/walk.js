@@ -10,7 +10,7 @@ import {isInsideMuseum,museumBounds,museumGalleries,museumGalleryAt,museumHall} 
 import {museumExhibits} from "./museum-catalog.js";
 import {nearbyPalaceGuide} from "./palace-guide.js";
 import {bindSceneTouch} from "./scene-touch.js";
-import {subwayStops,gbSites,gbBounds,gbLake,gbPond,gbPaths,gbCourts,gbLawns,gbShortcuts,wishPond,inGyeongbok,wallHalf,wallNorth,at as palaceAt} from "./gyeongbok-layout.js";
+import {subwayStops,gbSites,gbBounds,gbLake,gbPond,gbPaths,gbCourts,gbLawns,gbShortcuts,wishPond,gbPhotoZone,inGyeongbok,wallHalf,wallNorth,at as palaceAt} from "./gyeongbok-layout.js";
 
 const $=id=>document.getElementById(id);
 const token=()=>Array.from(crypto.getRandomValues(new Uint8Array(16)),byte=>byte.toString(16).padStart(2,"0")).join("");
@@ -199,6 +199,7 @@ const directions=["앞","오른쪽 앞","오른쪽","오른쪽 뒤","뒤","왼�
 const rosterDialog=$("roster-dialog"),targetDialog=$("look-target-dialog");
 const trackPins=[$("track-pin"),$("mini-track-pin")];
 function setText(node,value){if(node.textContent!==value)node.textContent=value;}
+const sceneTitle=document.querySelector(".scene-title");
 function shownPlace(point){
   const place=placeName(point);
   return isInsideMuseum(point.x,point.y)&&place!=="덕수궁 전시관"?"미술관 · "+place:place;
@@ -885,6 +886,43 @@ const wishDrawing=makeWishDrawing(art=>{
   me.wishArt=art?.some(Boolean)?art:null;
   dirty=true;toast("소원등을 띄웠어요.");
 });
+// Souvenir photo in the throne-hall court: face the camera, wave, and save the picture.
+let photoBusy=false,lastScene=null;
+function nearPhotoZone(){
+  return Boolean(world&&session&&me.seat==null&&near(gbPhotoZone,me.x,me.y)<gbPhotoZone.reach);
+}
+function savePhoto(picture){
+  const image=new Image();
+  image.onload=()=>{
+    const canvas=document.createElement("canvas"),bar=Math.round(image.height*.11),day=new Date();
+    canvas.width=image.width;canvas.height=image.height+bar;
+    const ctx=canvas.getContext("2d");
+    ctx.fillStyle="#f4efe2";ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.drawImage(image,0,0);
+    ctx.fillStyle="#26322b";ctx.textBaseline="middle";
+    ctx.font=`bold ${Math.round(bar*.42)}px "Malgun Gothic", sans-serif`;
+    ctx.fillText("경복궁 근정전",bar*.4,image.height+bar*.52);
+    ctx.textAlign="right";ctx.font=`${Math.round(bar*.3)}px "Malgun Gothic", sans-serif`;
+    ctx.fillText(`${session?.nickname??""} · ${day.getFullYear()}.${day.getMonth()+1}.${day.getDate()} · 덕수궁 한바퀴`,
+      canvas.width-bar*.4,image.height+bar*.52);
+    const link=document.createElement("a"),two=value=>String(value).padStart(2,"0");
+    link.download=`gyeongbokgung-${day.getFullYear()}${two(day.getMonth()+1)}${two(day.getDate())}.jpg`;
+    link.href=canvas.toDataURL("image/jpeg",.92);
+    link.click();
+    toast("기념사진을 저장했어요.");
+  };
+  image.src=picture;
+}
+$("photo").addEventListener("click",()=>{
+  if(photoBusy||!nearPhotoZone()||!lastScene)return;
+  photoBusy=true;resetInput();
+  Object.assign(me,{x:gbPhotoZone.x,y:gbPhotoZone.y,heading:gbPhotoZone.heading,vx:0,vy:0,wave:gameTime()});
+  dirty=true;toast("하나, 둘, 셋!");
+  setTimeout(()=>{
+    photoBusy=false;
+    if(world&&lastScene&&nearPhotoZone())savePhoto(world.snapshot(lastScene,gbPhotoZone.shot));
+  },1100);
+});
 function openWish(){
   if(!nearWishFountain())return;
   resetInput();$("wish-status").hidden=true;wishDrawing.open();
@@ -1067,6 +1105,7 @@ function updateActivities(time,guideNearby){
   const busy=Boolean(queuedFeed||me.item&&time-me.item.started<ITEMS[me.item.kind].duration);
   const pickup=station&&station.kind!==me.item?.kind?(station.kind==="churu"?"츄르 사기":ITEMS[station.kind].name+" 받기"):null;
   setActivity("take-item",pickup,busy);
+  setActivity("photo",eligible&&nearPhotoZone()?"사진 찍기":null,photoBusy);
   const spec=eligible&&me.item&&ITEMS[me.item.kind];
   if(spec&&me.item.kind==="churu"){
     const cat=feedCatNearby();
@@ -1186,11 +1225,15 @@ function frame(now){
     setActivity("sit",seatEnabled?seatLabel:null,me.seat==null&&!bench?.choice);
     attr($("sit"),"aria-pressed",me.seat!=null);
     setText($("game-place"),$("location").textContent);
-    setText($("game-season"),inGyeongbok(me.x,me.y)?"경복궁의 가을":"정동의 가을");
+    const atPalace=inGyeongbok(me.x,me.y);
+    setText($("game-season"),atPalace?"경복궁의 가을":"정동의 가을");
+    setText(sceneTitle,atPalace?"경복궁":"덕수궁 돌담길");
+    setText(sceneTitle.previousElementSibling,atPalace?"SEOUL · JONGNO":"SEOUL · JEONGDONG");
     refreshShortcuts();
     updateHandControls();updateLocationGuides(time);updateMaps(self,others);
   }
-  world?.render({me:self,peers:[...others.values()],view:ownView,firstPerson,guideNearby,destination:course.at(-1),clock:time},now);
+  lastScene={me:self,peers:[...others.values()],view:ownView,firstPerson,guideNearby,destination:course.at(-1),clock:time};
+  world?.render(lastScene,now);
 }
 
 const svgNS="http://www.w3.org/2000/svg";

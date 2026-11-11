@@ -9,8 +9,9 @@ import { addStands, makeItemProps } from "./street-stands.js";
 import { addMuseum, stairHeight } from "./museum.js";
 import { PET_MS, FEED_MS, jumpLift } from "./activities.js";
 import { makeWalkerModels } from "./walker-model.js";
-import { gbSurveyModels } from "./gyeongbok.js";
-import { gbSite, gwanghwamun, inGyeongbok } from "./gyeongbok-layout.js";
+import { gbSurveyModels, gbNightGlow } from "./gyeongbok.js";
+import { gbSite, gwanghwamun, inGyeongbok, gbLightSpots } from "./gyeongbok-layout.js";
+import { addPalacePeople } from "./palace-people.js";
 import { decodeWishFace, WISH_WIDTH, WISH_HEIGHT, WISH_COLORS, WISH_FLIGHT_MS } from "./wish-art.js";
 
 export function makeWorld(container,{onCatFlee,catSeed}={}) {
@@ -126,6 +127,23 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     scene.add(light);
     return light;
   });
+  // The same three lights serve both maps: at Gyeongbokgung they move to the halls nearest the walker.
+  const lightHomes=spotLights.map((light,i)=>({position:light.position.clone(),range:light.distance,power:i===2?720:126}));
+  let lightPower=lightHomes.map(home=>home.power);
+  function placeLights(anchor){
+    if(!inGyeongbok(anchor.x,anchor.y)){
+      spotLights.forEach((light,i)=>{light.position.copy(lightHomes[i].position);light.distance=lightHomes[i].range;});
+      lightPower=lightHomes.map(home=>home.power);
+      return;
+    }
+    const nearest=gbLightSpots.map(spot=>({spot,gap:Math.hypot(spot.x-anchor.x,spot.y-anchor.y)})).sort((a,b)=>a.gap-b.gap);
+    spotLights.forEach((light,i)=>{
+      const {spot}=nearest[i];
+      light.position.set(wx(spot.x),spot.height,wz(spot.y));light.distance=spot.range;
+    });
+    lightPower=nearest.slice(0,spotLights.length).map(({spot})=>spot.power);
+  }
+  const palacePeople=addPalacePeople(T,scene,kit,walkerModels,{floorHeight:point=>floorHeight(point),labelSprite:(...args)=>labelSprite(...args)});
   const nightSky=addNightSky(T,heavens,rand);
   const dayHorizon=new T.Color(0xcce4f0),nightHorizon=new T.Color(0x23384f);
   const dayZenith=new T.Color(0x367ec5),nightZenith=new T.Color(0x080e21);
@@ -349,6 +367,10 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     if(element.hidden===show)element.hidden=!show;
   }
   let cameraAnchor=null,cameraDistance=0,prevTime=0,governedAt=0,cullAt=0;
+  // Last resort on a slow device: draw fewer birds and only the cats close by.
+  function thinWildlife(sparse){
+    quality.sparse=sparse;birds.setSparse(sparse);parkLife.setSparse(sparse);
+  }
   function govern(now){
     const elapsed=now-(governedAt||now);
     governedAt=now;
@@ -364,10 +386,12 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
         quality.ratio=Math.max(quality.min,quality.ratio*.87);
         renderer.setPixelRatio(quality.ratio);resize();
       }else if(quality.shadows&&quality.frame>30)quality.shadows=false;
+      else if(!quality.shadows&&!quality.sparse&&quality.frame>30)thinWildlife(true);
       quality.frame=19;
     }else if(quality.frame<17.6&&++quality.calm>=5&&now>(quality.raiseAfter??0)){
       quality.calm=0;
-      if(!quality.shadows)quality.shadows=true;
+      if(quality.sparse)thinWildlife(false);
+      else if(!quality.shadows)quality.shadows=true;
       else if(quality.ratio<quality.max-.01){
         quality.ratio=Math.min(quality.max,quality.ratio*1.08);
         renderer.setPixelRatio(quality.ratio);resize();
@@ -391,9 +415,10 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     if(!indoors&&now>=cullAt){
       // Fog hides everything past half a kilometre, so those map cells are not drawn at all.
       cullAt=now+260;
-      const cx=wx(anchor.x),cz=wz(anchor.y);
+      const cx=wx(anchor.x),cz=wz(anchor.y),reach=quality.sparse?300:540;
+      placeLights(anchor);
       for(const chunk of chunks){
-        const visible=Math.hypot(chunk.x-cx,chunk.z-cz)-chunk.radius<540;
+        const visible=Math.hypot(chunk.x-cx,chunk.z-cz)-chunk.radius<reach;
         if(chunk.object.visible!==visible)chunk.object.visible=visible;
       }
     }
@@ -411,12 +436,14 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     if(shadowed)aimShadow(wx(anchor.x),0,wz(anchor.y));
     govern(now);
     lampMaterial.emissiveIntensity=.03+night*2.15;
-    spotLights.forEach((light,i)=>{light.intensity=night*(i===2?720:126);});
+    spotLights.forEach((light,i)=>{light.intensity=night*lightPower[i];});
+    for(const {material,rest,strength} of gbNightGlow)material.emissiveIntensity=rest+night*strength;
     const roster=[me,...peers],present=new Set(roster.map(player=>player.id));
     if(!indoors){drawWater(now*.001,night);drawPond(now*.001,night);nightSky(night);drawPalaceSky(now,night);birds.update(clock,delta,roster);}
     for(const {id,feed} of roster)if(feed&&feed.at<=clock&&feed.at+FEED_MS>clock)parkLife.feed(feed.id,feed.at,id);
     for(const {pet} of roster)if(pet&&pet.at<=clock&&pet.at+PET_MS>clock)parkLife.pet(pet.id,pet.at);
     parkLife.update(clock,indoors?null:anchor,roster);
+    palacePeople.update(clock,now,delta,indoors?null:anchor,roster,Boolean(quality.sparse));
     for(const [id,model] of models){
       if(present.has(id))continue;
       walkerModels.dispose(model);
@@ -545,8 +572,21 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     for(const model of models.values())walkerModels.clearChat(model);
     selfChat.hidden=true;selfChat.textContent="";
   }
+  // A souvenir photograph: one frame from a fixed camera, returned as a JPEG data URL.
+  function snapshot(state,{from,to,fov=50}){
+    render(state,performance.now());
+    const previous=camera.fov,marker=guideMarker.visible;
+    camera.fov=fov;camera.updateProjectionMatrix();
+    camera.position.set(wx(from.x),from.height,wz(from.y));
+    camera.lookAt(wx(to.x),to.height,wz(to.y));
+    guideMarker.visible=false;
+    renderer.render(scene,camera);
+    const picture=renderer.domElement.toDataURL("image/jpeg",.92);
+    guideMarker.visible=marker;camera.fov=previous;camera.updateProjectionMatrix();
+    return picture;
+  }
   const renderStats=()=>({...renderer.info.render,geometries:renderer.info.memory.geometries,textures:renderer.info.memory.textures});
-  return {render,pick,previewWalker,clearChat,floorHeight,groundHeight,renderStats,benches,stations,parkLife,birds,museum};
+  return {render,pick,previewWalker,clearChat,floorHeight,groundHeight,renderStats,snapshot,benches,stations,parkLife,birds,palacePeople,museum};
 }
 
 // The world is assembled from tens of thousands of small boxes and cylinders. Drawing each

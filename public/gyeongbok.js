@@ -1,16 +1,18 @@
 import {
   gwanghwamun,gbSites,gbSite,gbCourts,gbLake,gbPond,gbPaths,gbLawns,gbStation,cityHallStation,subwayStops,
-  wallHalf,wallNorth,at
+  gbWoldae,gbHaetae,gbPhotoZone,wallHalf,wallNorth,at
 } from "./gyeongbok-layout.js";
 import {solidAt} from "./layout.js";
 
 // Survey models can replace these hand-built halls later: drop "<id>.glb" into public/ and
 // add the id here. world3d loads each file and hides the modeled group when it arrives.
 export const gbSurveyModels=[];
+// Materials that glow after dark; world3d fades them in with the night.
+export const gbNightGlow=[];
 
 export function buildGyeongbok(T,scene,kit,tools){
   const {box,cylinder,shape,wx,wz,rand,matte}=kit;
-  const {pavilion,roof,wall,coveredWall,plot,ribbon,tree,treeMix,treeFits,bench,nameplate,block,flat,uvScale,
+  const {pavilion:timberHall,roof,wall,coveredWall,plot,ribbon,tree,treeMix,treeFits,bench,nameplate,block,flat,uvScale,
     treeKit,treeClearance,waterMaterial,pathClear,materials}=tools;
   const world=(east,north)=>({x:wx(gwanghwamun.x+east),z:wz(gwanghwamun.y-north)});
   const rect=(west,east,south,north)=>[at(west,south),at(east,south),at(east,north),at(west,north)];
@@ -23,6 +25,83 @@ export function buildGyeongbok(T,scene,kit,tools){
   function slab(color,east,north,width,depth,height,base=0){
     const p=world(east,north);
     return box(color,p.x,base+height/2,p.z,width,height,depth);
+  }
+  gbNightGlow.length=0;
+  const glow=(color,emissive,strength,rest=0)=>{
+    const material=new T.MeshStandardMaterial({color,emissive,emissiveIntensity:rest,roughness:.8});
+    gbNightGlow.push({material,rest,strength});
+    return material;
+  };
+  // Paper windows lit from inside, and the red-and-blue silk of cheongsachorong lanterns.
+  const paper=glow(0xd9d0b6,0xffb260,.95),silkRed=glow(0xb5382f,0xff5a3c,1.5,.05),silkBlue=glow(0x2f4f9a,0x4a7dff,1.4,.05);
+  const unitBox=new T.BoxGeometry(1,1,1),shade=new T.CylinderGeometry(1,1,1,8);
+  // Dancheong: the painted band of lotus medallions that runs under palace eaves.
+  function dancheongTexture(){
+    const c=document.createElement("canvas");c.width=256;c.height=64;
+    const ctx=c.getContext("2d");
+    ctx.fillStyle="#2f6f58";ctx.fillRect(0,0,256,64);
+    for(let i=0;i<4;i++){
+      const x=i*64,disc=(radius,color)=>{ctx.fillStyle=color;ctx.beginPath();ctx.arc(x+32,32,radius,0,7);ctx.fill();};
+      ctx.fillStyle="#b7402f";ctx.fillRect(x,0,64,9);ctx.fillRect(x,55,64,9);
+      ctx.fillStyle="#e9dfc4";ctx.fillRect(x,9,64,3);ctx.fillRect(x,52,64,3);
+      ctx.fillStyle="#46966f";
+      ctx.beginPath();ctx.moveTo(x,14);ctx.lineTo(x+15,32);ctx.lineTo(x,50);ctx.fill();
+      ctx.beginPath();ctx.moveTo(x+64,14);ctx.lineTo(x+49,32);ctx.lineTo(x+64,50);ctx.fill();
+      disc(16,"#2d5fa8");disc(11,"#e9dfc4");disc(7,"#c8452f");disc(3,"#e2b43c");
+    }
+    const map=new T.CanvasTexture(c);map.colorSpace=T.SRGBColorSpace;map.wrapS=T.RepeatWrapping;map.anisotropy=4;
+    return map;
+  }
+  const dancheong=new T.MeshStandardMaterial({map:dancheongTexture(),roughness:.82});
+  function band(group,x,y,z,length,turn=0){
+    const mesh=new T.Mesh(new T.BoxGeometry(length,.36,.05),dancheong);
+    mesh.position.set(x,y,z);mesh.rotation.y=turn;group.add(uvScale(mesh,length/3.2,1));
+  }
+  const xAxis=new T.Vector3(1,0,0),upAxis=new T.Vector3(0,1,0),run=new T.Vector3();
+  const plaster=0xe6e0d0;
+  // White-plastered hip ridges with their row of japsang guardian figures.
+  function hips(group,width,depth,ridge,y,rise,upto,figures){
+    const point=(sx,sz,t)=>[sx*(width/2*(1-t)+ridge*t),y+rise*(.36*t+.64*t*t)+.43*(1-t)**2+.12,sz*depth/2*(1-t)];
+    for(const sx of [-1,1])for(const sz of [-1,1]){
+      for(let i=0;i<6;i++){
+        const a=point(sx,sz,upto*i/6),b=point(sx,sz,upto*(i+1)/6);
+        run.set(b[0]-a[0],b[1]-a[1],b[2]-a[2]);
+        const piece=box(plaster,(a[0]+b[0])/2,(a[1]+b[1])/2,(a[2]+b[2])/2,run.length()+.06,.24,.3,group);
+        piece.quaternion.setFromUnitVectors(xAxis,run.normalize());
+      }
+      for(let i=0;i<figures;i++){
+        const [x,height,z]=point(sx,sz,upto*(.08+i*.06));
+        cylinder(0x77736a,x,height+.28,z,.085,.34,5,group,.45);
+        box(0x6b675f,x,height+.5,z,.13,.11,.13,group);
+      }
+      const [x,height,z]=point(sx,sz,0);
+      box(0x565a55,x,height+.14,z,.3,.36,.3,group);
+    }
+  }
+  // Palace finish on top of the shared timber hall: plastered ridges, ridge-end ornaments,
+  // japsang, a dancheong band under the eaves and paper-backed lattice doors.
+  function pavilion(spec){
+    const group=timberHall(spec),{w,d,h,bays}=spec,raised=spec.raised??.39;
+    const width=w+(spec.open?3.2:2.5),depth=d+2.36,y=raised+h+.54;
+    const rise=spec.rise??(spec.mainHall?3.05:spec.open?2.35:2.04),hip=spec.gate||spec.mainHall||Boolean(spec.hip);
+    const ridge=width*(hip?.30:.42),figures=w>26?5:w>15?4:3;
+    box(plaster,0,y+rise+.24,0,ridge*2+.5,.46,.4,group);
+    box(0x2f3a3b,0,y+rise+.5,0,ridge*2+.56,.09,.46,group);
+    for(const side of [-1,1])box(0x4b504c,side*(ridge+.3),y+rise+.5,0,.34,.78,.42,group);
+    hips(group,width,depth,ridge,y,rise,1,figures);
+    if(spec.stories===2)hips(group,w+2.0,d+1.95,(w+2.0)*.42,raised+h*.52,1.22,1-.8*d/(d+1.95),Math.max(2,figures-2));
+    if(spec.kind==="museum")return group;
+    for(const side of [-1,1]){
+      band(group,0,raised+h+.2,side*(d*.52+.21),w+.7);
+      box(0x356c56,side*(w/2+.02),raised+h+.2,0,.34,.31,d*1.04,group);
+      band(group,side*(w/2+.22),raised+h+.2,0,d*1.04+.4,Math.PI/2);
+    }
+    if(!spec.gate&&!spec.hollow&&!spec.open)for(const side of [-1,1])for(let i=0;i<bays;i++){
+      const pane=new T.Mesh(unitBox,paper);
+      pane.position.set(-w/2+(i+.5)*w/bays,raised+h*.55,side*(d*.50+.075));
+      pane.scale.set(w/bays*.82-.06,h*.5,.012);group.add(pane);
+    }
+    return group;
   }
   function masonry(east,north,width,depth,height,base=0){
     const p=world(east,north);
@@ -179,14 +258,40 @@ export function buildGyeongbok(T,scene,kit,tools){
     head.rotation.set(.06,headTurn,0);
     return statue;
   }
-  for(const side of [-1,1]){
-    slab(0xa29c8e,side*27,-22,3.1,4.3,.4);
-    slab(0xb1ab9c,side*27,-22,2.6,3.8,.72,.4);
-    slab(0xbab4a5,side*27,-22,2.8,4.0,.14,1.12);
-    solid(side*27,-22,3.1,4.3,3.4);
-    const p=world(side*27,-22),statue=haetae(-side*.5);
+  for(const {side,east,north} of gbHaetae){
+    slab(0xa29c8e,east,north,3.1,4.3,.4);
+    slab(0xb1ab9c,east,north,2.6,3.8,.72,.4);
+    slab(0xbab4a5,east,north,2.8,4.0,.14,1.12);
+    solid(east,north,3.1,4.3,3.4);
+    const p=world(east,north),statue=haetae(-side*.5);
     statue.position.set(p.x,1.26,p.z);statue.scale.setScalar(1.2);statue.name="광화문 해태상";
     scene.add(statue);
+  }
+
+  // Woldae: a low two-step stone terrace with railings and the raised royal path, leading
+  // from the square up to the three arches.
+  {
+    const {half,south,north,tier}=gbWoldae,mid=(south+north)/2,length=north-south;
+    slab(0xa7a192,0,mid-.3,half*2+1.2,length+.6,tier);
+    solid(0,mid-.3,half*2+1.2,length+.6,tier);
+    slab(stoneTint,0,mid,half*2,length,tier,tier);
+    solid(0,mid,half*2,length,tier*2);
+    slab(0xcbc4b1,0,mid,7.2,length,.03,tier*2);
+    for(const edge of [-3.6,3.6])slab(0x9d978a,edge,mid,.16,length,.035,tier*2);
+    // One more step inside the arches, where the terrace meets the gate floor.
+    slab(0xa7a192,0,north+.45,21.2,.9,tier);
+    solid(0,north+.45,21.2,.9,tier);
+    for(const side of [-1,1]){
+      const east=side*(half-.2),count=Math.round(length/2.3);
+      for(let i=0;i<=count;i++){
+        const n=south+.2+i*(length-.4)/count;
+        slab(0xbdb6a4,east,n,.26,.26,.95,tier*2);
+        slab(0xc8c1af,east,n,.34,.34,.1,tier*2+.95);
+      }
+      slab(0xb5ae9c,east,mid,.16,length-.4,.14,tier*2+.66);
+      slab(0xb5ae9c,east,mid,.14,length-.4,.3,tier*2+.1);
+      solid(east,mid,.3,length,tier*2+1.1);
+    }
   }
 
   // ---- Buildings ------------------------------------------------------------------------
@@ -226,6 +331,31 @@ export function buildGyeongbok(T,scene,kit,tools){
       if(Math.abs(i)<2)continue;
       for(const n of [south+.3,north-.3])slab(0xc1b9a6,i*half/6.2,n,.3,.3,.8,top);
     }
+    for(const n of [south+.3,north-.3])for(const side of [-1,1])slab(0xc1b9a6,side*half*4/6.2,n,half*4/6.2,.14,.12,top+.56);
+    for(const side of [-1,1]){
+      const count=Math.round((north-south-.6)/3.4);
+      for(let i=0;i<=count;i++){
+        const n=south+.3+i*(north-south-.6)/count;
+        if(Math.abs(n-300)>=3.3)slab(0xc1b9a6,side*(half-.3),n,.3,.3,.8,top);
+      }
+      for(const [a,b] of [[south+.3,296.7],[303.3,north-.3]])slab(0xc1b9a6,side*(half-.3),(a+b)/2,.14,b-a,.12,top+.56);
+    }
+  }
+  // Bronze water vats at the terrace corners and incense burners before the hall.
+  for(const sx of [-1,1]){
+    for(const n of [285.6,314.4]){
+      const p=world(sx*20,n);
+      cylinder(0xa9a394,p.x,tier*2+.12,p.z,.66,.24,8);
+      cylinder(0x4b4a40,p.x,tier*2+.5,p.z,.5,.52,14,scene,1.16);
+      cylinder(0x2a2c29,p.x,tier*2+.765,p.z,.52,.02,14);
+      solid(sx*20,n,1.3,1.3,tier*2+.8);
+    }
+    const p=world(sx*11.5,285);
+    for(let leg=0;leg<3;leg++)cylinder(0x4b4a40,p.x+Math.cos(leg*2.094)*.26,tier*2+.2,p.z+Math.sin(leg*2.094)*.26,.05,.4,6);
+    cylinder(0x54524a,p.x,tier*2+.62,p.z,.3,.48,12,scene,1.25);
+    cylinder(0x4b4a40,p.x,tier*2+.95,p.z,.4,.18,12,scene,.35);
+    cylinder(0x6a675c,p.x,tier*2+1.1,p.z,.07,.14,8);
+    solid(sx*11.5,285,.8,.8,tier*2+1.1);
   }
   const hallGroup=pavilion({...throne,h:12.4,raised:.5,rise:4.1,hip:true});
   hallGroup.position.y=tier*2;groups.set(throne.id,hallGroup);
@@ -311,23 +441,128 @@ export function buildGyeongbok(T,scene,kit,tools){
     slab(0x7b4b38,east,(bridge.south+bridge.north)/2,.14,bridge.north-bridge.south,.85,.1);
     solid(east,(bridge.south+bridge.north)/2,.14,bridge.north-bridge.south,.95);
   }
+  // A two-storey hexagonal pavilion: curved tile roofs with lifted corners, a railed
+  // veranda on each floor and paper-backed lattice windows all round.
   const hex=world(pond.east,pond.north),tower=new T.Group();
   tower.position.set(hex.x,0,hex.z);scene.add(tower);
-  const tile=0x384344,timber=0x864d39;
-  cylinder(0xb4ae9e,0,.35,0,5.0,.7,6,tower);
-  cylinder(timber,0,2.4,0,3.5,3.4,6,tower);
-  cylinder(0x476e5b,0,2.5,0,3.56,1.5,6,tower);
-  cylinder(tile,0,4.75,0,5.9,1.3,6,tower,.52);
-  cylinder(timber,0,6.6,0,2.7,2.5,6,tower);
-  cylinder(0x476e5b,0,6.7,0,2.76,1.1,6,tower);
-  cylinder(tile,0,9.0,0,5.0,2.4,6,tower,.04);
-  cylinder(0x9c8a52,0,10.5,0,.22,.9,8,tower);
-  for(let i=0;i<6;i++){
-    const a=i*Math.PI/3+Math.PI/6;
-    cylinder(0x8f4936,Math.cos(a)*4.3,2.1,Math.sin(a)*4.3,.17,3.6,8,tower);
+  const tile=0x384344,timber=0x864d39,hexCorner=(i,radius)=>[Math.cos(i*Math.PI/3+Math.PI/6)*radius,Math.sin(i*Math.PI/3+Math.PI/6)*radius];
+  function hexRoof(radius,y,rise,inner){
+    const data=[],levels=5,cols=6;
+    const surface=(i,t,u)=>{
+      const [ax,az]=hexCorner(i,1),[bx,bz]=hexCorner(i+1,1),r=radius*(1-t)+inner*t;
+      return [(ax+(bx-ax)*u)*r,y+rise*(.3*t+.7*t*t)+Math.abs(u*2-1)**3*.55*(1-t)**2,(az+(bz-az)*u)*r];
+    };
+    const rib=(a,b,radius,color)=>{
+      run.set(b[0]-a[0],b[1]-a[1],b[2]-a[2]);
+      const piece=cylinder(color,(a[0]+b[0])/2,(a[1]+b[1])/2+.04,(a[2]+b[2])/2,radius,run.length()+.04,6,tower);
+      piece.quaternion.setFromUnitVectors(upAxis,run.normalize());
+    };
+    for(let i=0;i<6;i++){
+      for(let a=0;a<levels;a++)for(let b=0;b<cols;b++){
+        const v1=surface(i,a/levels,b/cols),v2=surface(i,(a+1)/levels,b/cols);
+        const v3=surface(i,(a+1)/levels,(b+1)/cols),v4=surface(i,a/levels,(b+1)/cols);
+        data.push(...v1,...v2,...v3,...v1,...v3,...v4);
+      }
+      for(let a=0;a<4;a++){
+        rib(surface(i,a/4,0),surface(i,(a+1)/4,0),.11,0x2f3a3b);
+        for(let b=1;b<8;b++)if(a<3)rib(surface(i,a*.3,b/8),surface(i,(a+1)*.3,b/8),.06,b%3?0x394543:0x53615f);
+      }
+    }
+    const geometry=new T.BufferGeometry();
+    geometry.setAttribute("position",new T.Float32BufferAttribute(data,3));geometry.computeVertexNormals();
+    shape(geometry,tile,0,0,0,tower).material.side=T.DoubleSide;
   }
-  block(hex.x,hex.z,7.6,7.6);
+  // One storey: a hexagonal room with windows, six pillars and a railing around its veranda.
+  function hexFloor(base,height,room,posts,deck){
+    cylinder(0x6a4a3a,0,base+.1,0,deck,.2,6,tower);
+    cylinder(timber,0,base+.2+height/2,0,room,height,6,tower);
+    for(let i=0;i<6;i++){
+      const middle=i*Math.PI/3+Math.PI/3,apothem=room*Math.cos(Math.PI/6),side=room*.78;
+      const turn=Math.PI/2-middle,cx=Math.cos(middle),cz=Math.sin(middle);
+      const pane=new T.Mesh(unitBox,paper);
+      pane.position.set(cx*(apothem+.03),base+.2+height*.56,cz*(apothem+.03));pane.scale.set(side,height*.6,.02);pane.rotation.y=turn;tower.add(pane);
+      for(let bar=-3;bar<=3;bar++){
+        const lattice=box(0x285548,cx*(apothem+.05)-cz*bar*side/7,base+.2+height*.56,cz*(apothem+.05)+cx*bar*side/7,.05,height*.6,.04,tower);
+        lattice.rotation.y=turn;
+      }
+      for(const level of [.3,.56,.82]){
+        const lattice=box(0x4f7662,cx*(apothem+.05),base+.2+height*level,cz*(apothem+.05),side,.05,.04,tower);
+        lattice.rotation.y=turn;
+      }
+      box(0x476e5b,cx*(apothem+.02),base+.2+height*.14,cz*(apothem+.02),side,height*.24,.05,tower).rotation.y=turn;
+      const [px,pz]=hexCorner(i,posts);
+      cylinder(0x8f4936,px,base+.2+height/2,pz,.16,height,8,tower);
+      box(0x35664f,px,base+.2+height-.1,pz,.5,.3,.5,tower);
+      const rail=deck*Math.cos(Math.PI/6)-.12;
+      for(const [level,thick] of [[.92,.07],[.5,.05]]){
+        box(0x7b4b38,cx*rail,base+.2+level,cz*rail,deck*.98,thick,.07,tower).rotation.y=turn;
+      }
+      for(let bar=-3;bar<=3;bar++)box(0x8a5a44,cx*rail-cz*bar*deck/7.2,base+.66,cz*rail+cx*bar*deck/7.2,.05,.5,.05,tower);
+    }
+  }
+  cylinder(0xb4ae9e,0,.35,0,5.6,.7,6,tower);
+  cylinder(0xa59f90,0,.76,0,5.3,.12,6,tower);
+  hexFloor(.8,3.3,3.1,4.25,4.7);
+  hexRoof(6.5,4.35,1.5,2.7);
+  hexFloor(5.2,2.5,2.45,2.75,3.2);
+  hexRoof(5.3,7.95,2.7,.2);
+  cylinder(0x4b504c,0,10.72,0,.42,.3,6,tower,.6);
+  cylinder(0x9c8a52,0,11.1,0,.3,.5,8,tower,.45);
+  cylinder(0x9c8a52,0,11.45,0,.12,.24,8,tower,.2);
+  block(hex.x,hex.z,8.2,8.2);
   groups.set("hyangwonjeong",tower);
+
+  // ---- Cheongsachorong lanterns ----------------------------------------------------------
+  // Red-over-blue silk lanterns on wooden posts line the royal road and both ponds.
+  function chorong(east,north){
+    const point=at(east,north);
+    if(solidAt(point.x,point.y))return;
+    const p=world(east,north),hang=p.x+(east<0?.4:-.4);
+    cylinder(0x5a4334,p.x,1.22,p.z,.05,2.44,6);
+    box(0x5a4334,(p.x+hang)/2,2.4,p.z,.52,.05,.05);
+    for(const [material,y] of [[silkRed,2.08],[silkBlue,1.86]]){
+      const silk=new T.Mesh(shade,material);
+      silk.position.set(hang,y,p.z);silk.scale.set(.15,.22,.15);scene.add(silk);
+    }
+    cylinder(0xc9a64a,hang,2.21,p.z,.1,.04,8);
+    cylinder(0xc9a64a,hang,1.74,p.z,.1,.04,8);
+    box(0xb5382f,hang,1.6,p.z,.03,.24,.03);
+    block(p.x,p.z,.2,.2,0,2.5);
+  }
+  for(const side of [-1,1]){
+    for(let north=14;north<=124;north+=12.2)chorong(side*6.3,north);
+    for(let north=147;north<=225;north+=13)chorong(side*6.6,north);
+    for(let north=240;north<=272;north+=10.5)chorong(side*10.5,north);
+    for(let north=466;north<=600;north+=22)chorong(side*4.4-6,north+20);
+  }
+  for(let north=373;north<=480;north+=11.6)chorong(gbLake.east+3.2,north);
+  for(let east=gbLake.west+10;east<gbLake.east;east+=14.5)chorong(east,gbLake.south-3.4);
+  for(let i=0;i<16;i++){
+    const angle=i*Math.PI/8+.2;
+    chorong(gbPond.east+Math.cos(angle)*(gbPond.radius+3.4),gbPond.north+Math.sin(angle)*(gbPond.radius+3.4));
+  }
+
+  // ---- Photo spot in the throne-hall court -------------------------------------------------
+  {
+    const spot={x:wx(gbPhotoZone.x),z:wz(gbPhotoZone.y)},lens=gbPhotoZone.tripod;
+    cylinder(0xe2c36a,spot.x,.045,spot.z,1.15,.02,28);
+    cylinder(0xb7ab95,spot.x,.05,spot.z,.92,.022,28);
+    const x=wx(lens.x),z=wz(lens.y);
+    for(let leg=0;leg<3;leg++){
+      const stick=cylinder(0x2e3336,x+Math.cos(leg*2.094+.5)*.2,.56,z+Math.sin(leg*2.094+.5)*.2,.022,1.16,6);
+      stick.rotation.set(Math.sin(leg*2.094+.5)*.33,0,-Math.cos(leg*2.094+.5)*.33);
+    }
+    box(0x25292c,x,1.2,z,.26,.18,.16);
+    cylinder(0x15181a,x,1.2,z-.13,.07,.12,12).rotation.x=Math.PI/2;
+    box(0xc9a64a,x+.08,1.31,z,.06,.04,.06);
+    block(x,z,.5,.5,0,1.4);
+    const board=world(3.4,262.4);
+    box(0x5a4334,board.x,.55,board.z,.07,1.1,.07);
+    box(0x2f4b3f,board.x,1.25,board.z,1.2,.5,.06);
+    nameplate("포토존",scene,board.x,1.25,board.z-.04,1.1,.42,"#2f4b3f","#f0dca8").rotation.y=Math.PI;
+    nameplate("포토존",scene,board.x,1.25,board.z+.04,1.1,.42,"#2f4b3f","#f0dca8");
+    block(board.x,board.z,.3,.3,0,1.5);
+  }
 
   // ---- Subway exits ----------------------------------------------------------------------
   function subwayExit(station,title,stripe){
