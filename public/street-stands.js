@@ -1,4 +1,5 @@
 import {addObstacle,route,stoneFountain} from "./layout.js";
+import {sparklerStall} from "./gyeongbok-layout.js";
 
 export const SPARKLER_SECONDS=8;
 
@@ -222,7 +223,12 @@ export function addStands(T,scene,{wx,wz,box,cylinder}){
     stations.push({kind:shop.kind,name:shop.name,x:x+sideX*approach,y:y+sideY*approach});
   }
 
-  const {x,y}=sparklerStand;
+  sparklerStandAt(sparklerStand,"분수 스파클","분수 스파클 좌판");
+  // A second stall beside the Gyeonghoeru pond in Gyeongbokgung.
+  sparklerStandAt(sparklerStall,"경회루 스파클","경회루 스파클 좌판");
+  return stations;
+
+  function sparklerStandAt({x,y},title,name){
   const stand=new T.Group();stand.position.set(wx(x),0,wz(y));stand.rotation.y=Math.PI;scene.add(stand);
   box(0xbcb6a3,0,.043,0,4.3,.085,3.4,stand);
   box(0x425847,0,.49,0,2.95,.97,1.32,stand);
@@ -237,7 +243,7 @@ export function addStands(T,scene,{wx,wz,box,cylinder}){
     box(color,(i-4.5)*.35,2.54,.016,.353,.09,1.83,stand).rotation.x=.12;
     box(color,(i-4.5)*.35,2.37,.91,.353,.18,.075,stand);
   }
-  sign(stand,"분수 스파클","SPARKLER",2.46,0,1.92,.735,"#415b44","#ffe6b0");
+  sign(stand,title,"SPARKLER",2.46,0,1.92,.735,"#415b44","#ffe6b0");
   for(let i=0;i<3;i++){
     const bundleX=(i-1)*.75;
     cylinder(0x85654f,bundleX,1.17,0,.16,.23,8,stand,.85);
@@ -249,8 +255,8 @@ export function addStands(T,scene,{wx,wz,box,cylinder}){
   }
   batchDetails(stand);
   addObstacle(x,y,3.08,1.45,Math.PI,2.62);
-  stations.push({kind:"sparkler",name:"분수 스파클 좌판",x,y:y-1.85});
-  return stations;
+  stations.push({kind:"sparkler",name,x,y:y-1.85});
+  }
 }
 
 export function makeItemProps(T,{box,cylinder,shape}){

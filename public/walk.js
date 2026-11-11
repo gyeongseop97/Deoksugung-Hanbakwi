@@ -10,7 +10,7 @@ import {isInsideMuseum,museumBounds,museumGalleries,museumGalleryAt,museumHall} 
 import {museumExhibits} from "./museum-catalog.js";
 import {nearbyPalaceGuide} from "./palace-guide.js";
 import {bindSceneTouch} from "./scene-touch.js";
-import {subwayStops,gbSites,gbBounds,gbLake,gbPond,gbPaths,gbCourts,gbLawns,inGyeongbok,wallHalf,wallNorth,at as palaceAt} from "./gyeongbok-layout.js";
+import {subwayStops,gbSites,gbBounds,gbLake,gbPond,gbPaths,gbCourts,gbLawns,gbShortcuts,wishPond,inGyeongbok,wallHalf,wallNorth,at as palaceAt} from "./gyeongbok-layout.js";
 
 const $=id=>document.getElementById(id);
 const token=()=>Array.from(crypto.getRandomValues(new Uint8Array(16)),byte=>byte.toString(16).padStart(2,"0")).join("");
@@ -730,18 +730,32 @@ function walkTo(target,seat=null){
   if(!steps.length){toast("걸을 수 있는 길을 터치해 주세요.");return;}
   course=steps;seatClaim=null;pendingSeat=seat;
 }
-const mapDestinations={
-  "entrance-target":{...ticketApproach,x:ticketApproach.x+1,y:ticketApproach.y-2.4,heading:entranceHeading},
-  "fountain-target":{name:"정동 분수대",x:fountain.x+4.8,y:fountain.y+5.3,heading:318},
-  "palace-target":{...court,heading:normalize(Math.atan2(hall.x-court.x,court.y-hall.y)*180/Math.PI)}
-};
-for(const [id,destination] of Object.entries(mapDestinations))$(id).addEventListener("click",()=>{
+const shortcutButtons=["entrance-target","fountain-target","palace-target"];
+const mapDestinations=[
+  {label:"매표소",aria:"매표소로 순간이동",...ticketApproach,x:ticketApproach.x+1,y:ticketApproach.y-2.4,heading:entranceHeading},
+  {label:"분수대",aria:"정동 분수대로 순간이동",name:"정동 분수대",x:fountain.x+4.8,y:fountain.y+5.3,heading:318},
+  {label:"중화전",aria:"중화전으로 순간이동",...court,heading:normalize(Math.atan2(hall.x-court.x,court.y-hall.y)*180/Math.PI)}
+];
+// The three shortcut buttons follow the map the walker is on.
+const shortcutsHere=()=>inGyeongbok(me.x,me.y)?gbShortcuts:mapDestinations;
+let shownShortcuts=null;
+function refreshShortcuts(){
+  const shortcuts=shortcutsHere();
+  if(shortcuts===shownShortcuts)return;
+  shownShortcuts=shortcuts;
+  shortcutButtons.forEach((id,index)=>{
+    $(id).textContent=shortcuts[index].label;
+    $(id).setAttribute("aria-label",shortcuts[index].aria);
+  });
+}
+shortcutButtons.forEach((id,index)=>$(id).addEventListener("click",()=>{
+  const destination=shortcutsHere()[index];
   if(!session||!walkable(destination.x,destination.y))return;
   const linkId=myLink()?.id??(queuedHand?.action==="offer"?queuedHand.id:null);
   if(linkId){queuedHand={action:"release",id:linkId};changeLinks(links);}
   movePlayerTo(destination,destination.name);
   setMap(false);focusGame();
-});
+}));
 
 const joystick=$("joystick");
 function beginManualMove(){
@@ -855,11 +869,13 @@ function move(x,y){
   dirty=true;return true;
 }
 function nearWishFountain(){
-  return Boolean(world&&session&&me.seat==null&&near(fountain,me.x,me.y)<13);
+  // Lanterns rise from the Jeongdong fountain and from the pond around Hyangwonjeong.
+  return Boolean(world&&session&&me.seat==null&&
+    (near(fountain,me.x,me.y)<13||near(wishPond,me.x,me.y)<wishPond.reach));
 }
 const wishDrawing=makeWishDrawing(art=>{
   const time=gameTime();
-  const message=!nearWishFountain()?"분수 가까이에서 소원등을 날릴 수 있어요.":
+  const message=!nearWishFountain()?"정동 분수나 향원정 연못 가까이에서 소원등을 날릴 수 있어요.":
     time-me.wish<2800?"잠시 뒤에 다시 날려 주세요.":"";
   const status=$("wish-status");
   status.textContent=message;status.hidden=!message;
@@ -1171,6 +1187,7 @@ function frame(now){
     attr($("sit"),"aria-pressed",me.seat!=null);
     setText($("game-place"),$("location").textContent);
     setText($("game-season"),inGyeongbok(me.x,me.y)?"경복궁의 가을":"정동의 가을");
+    refreshShortcuts();
     updateHandControls();updateLocationGuides(time);updateMaps(self,others);
   }
   world?.render({me:self,peers:[...others.values()],view:ownView,firstPerson,guideNearby,destination:course.at(-1),clock:time},now);

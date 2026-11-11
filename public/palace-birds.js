@@ -1,5 +1,6 @@
 import {clearSegment,court,fountain,palacePond,pavilions,route,solidAt,stoneFountain,ticketApproach,walkable} from "./layout.js";
 import {isInsideMuseum} from "./visit-layout.js";
+import {gbBirdGrounds,gbBounds,inGyeongbok} from "./gyeongbok-layout.js";
 
 const species={
   pigeon:{body:0x9296a4,belly:0xadb0bb,head:0x626b7a,neck:0x528076,throat:0x776481,
@@ -20,6 +21,11 @@ const flocks=[
   [palacePond,[[14,6],[-16,-2,"magpie"],[-10,17],[13,-17,"magpie"]]],
   [jeonggwanheon,[[-14,5,"magpie"],[11,9]]]
 ];
+// Gyeongbokgung gets a flock at each gathering place, with the group size varying by spot.
+const flockShape=[[4,-2],[5,1],[1,4,"magpie"],[8,-6],[9,4],[5,8],[2,-8,"magpie"]];
+gbBirdGrounds.forEach((anchor,index)=>flocks.push([anchor,flockShape.slice(0,3+index%5)]));
+const outOfBounds=(x,y)=>inGyeongbok(x,y)?x<gbBounds.minX+8||x>gbBounds.maxX-8||y<gbBounds.minY+8||y>gbBounds.maxY-8:
+  x<45||x>560||y<30||y>420;
 const spots=flocks.flatMap(([anchor,members])=>members.map(([dx,dy,kind="pigeon"],index)=>({
   anchor,dx,dy,kind,cruises:index===0&&members.length>=4||index===4&&members.length>=7
 })));
@@ -62,7 +68,7 @@ function flightClear(leg,length){
   const steps=Math.max(12,Math.ceil(length/.4));
   for(let i=1;i<steps;i++){
     const {x,y,height}=flightPoint(leg,i/steps);
-    if(x<45||x>560||y<30||y>420||solidAt(x,y,height-.09))return false;
+    if(outOfBounds(x,y)||solidAt(x,y,height-.09))return false;
   }
   return true;
 }
@@ -148,6 +154,13 @@ function feedingGrounds(random){
     if(!ground(x,y)||![[1.6,0],[-1.6,0],[0,1.6],[0,-1.6]].every(([dx,dy])=>ground(x+dx,y+dy)))continue;
     if(grounds.some(spot=>distance(spot,{x,y})<9))continue;
     grounds.push({x,y});
+  }
+  // The same again across the far larger Gyeongbokgung grounds.
+  for(let attempt=0,found=0;attempt<1600&&found<90;attempt++){
+    const x=gbBounds.minX+60+random()*480,y=gbBounds.minY+30+random()*930;
+    if(!ground(x,y)||![[1.6,0],[-1.6,0],[0,1.6],[0,-1.6]].every(([dx,dy])=>ground(x+dx,y+dy)))continue;
+    if(grounds.some(spot=>distance(spot,{x,y})<12))continue;
+    grounds.push({x,y});found++;
   }
   return grounds;
 }
@@ -414,5 +427,7 @@ export function addPalaceBirds(T,parent,kit,{trees=[],walls=[],seed}={}){
     }
     for(const mesh of batches){mesh.instanceMatrix.needsUpdate=true;if(mesh.instanceColor)mesh.instanceColor.needsUpdate=true;}
   }
-  return {update,setSeed,groundTargets,scare};
+  const census=()=>({deoksugung:birds.filter(bird=>bird.home.x<1000).length,gyeongbokgung:birds.filter(bird=>bird.home.x>=1000).length,
+    touring:birds.filter(bird=>bird.patrol.legs.some(leg=>leg.mode==="flight"&&distance(leg.from,leg.to)>20)).length});
+  return {update,setSeed,groundTargets,scare,census};
 }

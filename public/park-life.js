@@ -1,6 +1,7 @@
 import {clearSegment,planWalk,solidAt,spawn,walkable} from "./layout.js";
 import {FEED_MS,PET_MS} from "./activities.js";
 import {makeCatRoaming} from "./cat-roaming.js";
+import {gbCatTrails,gbStation} from "./gyeongbok-layout.js";
 import {createCatSocial} from "./cat-social.js";
 import {createCatHunts} from "./cat-hunt.js";
 
@@ -591,6 +592,7 @@ function fallingLeaves(T,scene,kit){
 export function addParkLife(T,scene,kit){
   const meshes=sharedCatMeshes(T),leg=new T.Object3D(),live=[];
   const roam=makeCatRoaming(),social=createCatSocial({walkable,clearSegment});
+  const palaceRoam=makeCatRoaming({trails:gbCatTrails,origin:gbStation.arrive,plan:false});
   const hunting=createCatHunts(kit.birds,clearSegment);
   let seed;
   function setSeed(value){
@@ -602,14 +604,16 @@ export function addParkLife(T,scene,kit){
     social.reset();
     hunting.reset();
     const hash=catSeedNumber(seed),random=randomSequence(hash);
-    const count=18+Math.floor(random()*7),coats=[];
-    while(coats.length<count)coats.push(...shuffled(cats,random).slice(0,count-coats.length));
+    const count=18+Math.floor(random()*7),palaceCount=30+Math.floor(random()*7),coats=[];
+    while(coats.length<count+palaceCount)coats.push(...shuffled(cats,random).slice(0,count+palaceCount-coats.length));
     const used={homes:new Set(),benches:new Set(),walls:new Set(),trees:new Set()};
     for(const [index,coat] of coats.entries()){
+      // The first group lives around Deoksugung, the rest in Gyeongbokgung.
+      const wander=index<count?roam:palaceRoam,origin=index<count?spawn:gbStation.arrive;
       const rng=randomSequence(hash^Math.imul(index+1,0x9e3779b1));
-      const home=roam.start(rng,index,used.homes)??findHome(spawn);
+      const home=wander.start(rng,index,used.homes)??findHome(origin);
       if(!home)continue;
-      const ground=roam(home,rng,index);
+      const ground=wander(home,rng,index);
       if(!ground.length)continue;
       const spec=index<cats.length?coat:{...coat,id:coat.id+"-"+(index+1),name:coat.name+" "+(index-cats.length+2),
         size:coat.size*(.88+rng()*.11)};
@@ -843,5 +847,7 @@ export function addParkLife(T,scene,kit){
       cat.feeding=null;cat.pose=null;cat.approach=null;cat.social=null;cat.hunt=null;cat.petPose=null;cat.rejoin=null;
     }
   }
-  return {update,nearestCat,nearestFeedCat,pet,feed,resetInteractions,setSeed};
+  // How many cats live on each map (used when checking a build).
+  const census=()=>({deoksugung:live.filter(cat=>cat.x<1000).length,gyeongbokgung:live.filter(cat=>cat.x>=1000).length});
+  return {update,nearestCat,nearestFeedCat,pet,feed,resetInteractions,setSeed,census};
 }

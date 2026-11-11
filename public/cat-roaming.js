@@ -34,15 +34,16 @@ function findGround(point){
   return null;
 }
 
-function exactWalk(from,to){
+function exactWalk(from,to,plan=true){
   if(clearSegment(from,to,.24))return [from,to];
+  if(!plan)return [];
   const planned=planWalk(from,to);
   if(!planned.length||!close(planned.at(-1),to))return [];
   const points=[from,...planned.slice(0,-1),to];
   return points.every((point,i)=>!i||clearSegment(points[i-1],point,.24))?points:[];
 }
 
-function makeNetwork(){
+function makeNetwork(corridors,origin,plan){
   const nodes=[],byLocation=new Map();
   function nodeFor(point){
     const key=keyOf(point);
@@ -64,7 +65,7 @@ function makeNetwork(){
     const stops=trail.map(nodeFor).filter(Boolean);
     for(let i=1;i<stops.length;i++){
       const a=stops[i-1],b=stops[i];
-      if(a!==b&&!a.edges.some(edge=>edge.to===b))link(a,b,exactWalk(a.point,b.point));
+      if(a!==b&&!a.edges.some(edge=>edge.to===b))link(a,b,exactWalk(a.point,b.point,plan));
     }
   }
   // Paths drawn independently can meet a metre or two apart. Connect their real walkable junctions.
@@ -72,7 +73,10 @@ function makeNetwork(){
     if(b.index<=a.index||metres(a.point,b.point)>5.5||a.edges.some(edge=>edge.to===b))continue;
     if(clearSegment(a.point,b.point,.24))link(a,b,[a.point,b.point]);
   }
-  const reachable=new Set(),start=nodeFor(spawn);
+  // The origin may sit beside the trails rather than on one; begin from the nearest linked stop.
+  const reachable=new Set(),first=nodeFor(origin);
+  const start=first?.edges.length?first:nodes.reduce((best,node)=>
+    node.edges.length&&(!best||metres(node.point,origin)<metres(best.point,origin))?node:best,null)??first;
   if(start){
     const queue=[start];reachable.add(start);
     for(let i=0;i<queue.length;i++)for(const {to} of queue[i].edges){
@@ -108,9 +112,11 @@ function networkPath(from,to){
   return [from.point,...steps.reverse().flat()];
 }
 
-export function makeCatRoaming(){
+// Each map has its own trail network. plan=false links only stops in plain sight of each
+// other, which keeps start-up quick on the much larger Gyeongbokgung grid.
+export function makeCatRoaming({trails=corridors,origin=spawn,plan=true}={}){
   let network;
-  const graph=()=>network??=makeNetwork();
+  const graph=()=>network??=makeNetwork(trails,origin,plan);
   const cachedPaths=new Map();
   function between(from,to){
     if(!onGround(from)||!onGround(to))return [];
@@ -118,7 +124,7 @@ export function makeCatRoaming(){
     const key=keyOf(from)+"/"+keyOf(to);
     if(!cachedPaths.has(key)){
       if(cachedPaths.size>=192)cachedPaths.clear();
-      cachedPaths.set(key,exactWalk(from,to));
+      cachedPaths.set(key,exactWalk(from,to,plan));
     }
     const path=cachedPaths.get(key);
     return path.length?[from,...path.slice(1,-1),to]:[];
@@ -227,7 +233,7 @@ export function makeCatRoaming(){
     const unused=node=>!used.has(keyOf(node.point));
     // Spread starting points over the whole map instead of a few named areas.
     const free=nodes.filter(unused);
-    const point=(free.length?free[(Math.floor(random()*free.length)+index*7)%free.length]:null)?.point??findGround(spawn);
+    const point=(free.length?free[(Math.floor(random()*free.length)+index*7)%free.length]:null)?.point??findGround(origin);
     if(point)used.add(keyOf(point));
     return point;
   };
