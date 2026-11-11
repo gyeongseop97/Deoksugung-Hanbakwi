@@ -31,10 +31,11 @@ function initialAvatar(){
 const me=initialAvatar(),people=new Map(),markers=new Map(),seenSignals=new Map(),formations=new Map();
 let ownView=initialView(),following=null,world,worldLoading,worldFailed=false;
 let firstPerson=localStorage.getItem("jeongdong-first-person")==="true";
-let session=null,active=true,joining=false,syncTimer,lastPost=0,lastSync=0,lastWishSynced=0,dirty=true;
+let session=null,active=true,joining=false,lastPost=0,lastWishSynced=0,dirty=true;
+let syncTimer,syncDue=Infinity,syncInFlight=null,syncStarted=-Infinity,syncFailures=0;
 let links=[],queuedSignal=null,queuedHand=null,queuedFeed=null,lookDirection,toastTimer;
 let course=[],pendingSeat=null,seatClaim=null,thumb=[0,0],thumbId,orbit=null;
-let clockOffset=null,roundTrip=65,renderTime=0;
+let clockOffset=null,roundTrip=65;
 let runToggled=false,shiftHeld=false;
 const keys=new Set();
 const vectors={ArrowUp:[0,-1],ArrowDown:[0,1],ArrowLeft:[-1,0],ArrowRight:[1,0],w:[0,-1],s:[0,1],a:[-1,0],d:[1,0]};
@@ -184,6 +185,7 @@ $("look").addEventListener("click",()=>{
   if(!people.size)return;
   if(following)setFollowing(null);
   queuedSignal={id:token(),view:{...ownView},point:{x:me.x,y:me.y}};
+  wakeSync();
   toast("친구들에게 이 지점을 보냈어요.");
 });
 function readLookSignals(serverTime){
@@ -234,7 +236,7 @@ function updateHandControls(){
 }
 $("hand").addEventListener("click",()=>{
   const link=myLink();
-  if(link){queuedHand={action:"release",id:link.id};return;}
+  if(link){queuedHand={action:"release",id:link.id};wakeSync();return;}
   const candidates=handCandidates();
   if(candidates.length===1){offerHand(candidates[0]);return;}
   if(!candidates.length)return;
@@ -253,9 +255,10 @@ $("hand").addEventListener("click",()=>{
 function offerHand(person){
   if(!person){toast("친구에게 조금 더 가까이 가 주세요.");return;}
   queuedHand={action:"offer",id:token(),peer:person.id,side:handSide(me,{...person.avatar,...person.position})};
+  wakeSync();
 }
 $("hand-decline").addEventListener("click",()=>{
-  const link=myLink();if(link)queuedHand={action:"release",id:link.id};
+  const link=myLink();if(link){queuedHand={action:"release",id:link.id};wakeSync();}
 });
 $("hand-accept").addEventListener("click",()=>{
   const link=myLink(),leader=link&&people.get(link.leader);
@@ -263,6 +266,7 @@ $("hand-accept").addEventListener("click",()=>{
   const side=handSide(leader.avatar,me);
   if(!side){toast("서로 가까운, 걸을 수 있는 곳에서 손을 잡아 주세요.");return;}
   queuedHand={action:"accept",id:link.id,side};
+  wakeSync();
 });
 
 function changeLinks(next){
@@ -301,10 +305,38 @@ function updateClock(serverTime,sent,received){
   clockOffset=clockOffset==null?offset:clockOffset+Math.max(-40,Math.min(40,offset-clockOffset))*.14;
   roundTrip+=(received-sent-roundTrip)*.14;
 }
+function clearSyncTimer(){
+  clearTimeout(syncTimer);syncTimer=undefined;syncDue=Infinity;
+}
+function scheduleSync(delay){
+  if(!active||!session||syncInFlight===session)return;
+  const due=performance.now()+delay;
+  if(syncDue<=due)return;
+  clearSyncTimer();syncDue=due;
+  syncTimer=setTimeout(()=>{clearSyncTimer();sync();},delay);
+}
+function movingCadence(){
+  // Keep busy public rooms from multiplying database traffic as people join.
+  return session.mode==="open"?96+Math.min(44,Math.max(0,people.size-5)*5):
+    68+Math.min(22,Math.max(0,people.size-8)*2);
+}
+function wakeSync(){
+  if(!session||document.hidden||syncFailures)return;
+  scheduleSync(Math.max(0,syncStarted+movingCadence()-performance.now()));
+}
+function syncCadence(){
+  const fast=dirty||myLink()||queuedHand||queuedSignal||queuedFeed||seatClaim||moving(me)||me.blocked||
+    [...people.values()].some(person=>moving(person.avatar)||person.avatar.blocked);
+  if(fast)return movingCadence();
+  return session.mode==="open"?(people.size?195+Math.min(55,Math.max(0,people.size-5)*5):330):
+    (people.size?120:250);
+}
 async function sync(){
   const visit=session;
-  if(!active||!visit)return;
+  if(!active||!visit||syncInFlight===visit)return;
+  syncInFlight=visit;
   const sent=performance.now(),signal=queuedSignal,hand=queuedHand,claim=seatClaim,feed=queuedFeed;
+  syncStarted=sent;
   const post=dirty||signal||hand||claim||feed||Date.now()-lastPost>=3800;
   const base={room:visit.room,id:visit.id,key:visit.key};
   const avatar=post?{...me}:null;
@@ -319,8 +351,8 @@ async function sync(){
     if(!response.ok)throw Error(data.error);
     const received=performance.now();
     updateClock(data.serverTime,sent,received);
-    lastSync=Date.now();
-    if(post){lastPost=lastSync;lastWishSynced=avatar.wish;}
+    syncFailures=0;
+    if(post){lastPost=Date.now();lastWishSynced=avatar.wish;}
     if(queuedSignal===signal)queuedSignal=null;
     if(queuedHand===hand)queuedHand=null;
     const confirmed=data.walkers.find(row=>row.id===visit.id)?.avatar;
@@ -343,17 +375,14 @@ async function sync(){
     $("follow").disabled=$("look").disabled=!people.size;
   }catch{
     if(!active||session!==visit)return;
-    dirty=true;
-    if(Date.now()-lastSync>2700){
-      people.clear();changeLinks([]);setFollowing(null);
-      $("follow").disabled=$("look").disabled=true;
-    }
+    dirty=true;syncFailures++;
     setPresence("다시 연결 중");
   }finally{
+    if(syncInFlight===visit)syncInFlight=null;
     if(active&&session===visit){
-      const fast=Boolean(myLink()||queuedHand||queuedSignal||queuedFeed||seatClaim||moving(me)||[...people.values()].some(p=>moving(p.avatar)));
-      const cadence=visit.mode==="open"?(fast?115:people.size?250:430):(fast?85:people.size?150:320);
-      syncTimer=setTimeout(sync,document.hidden?1150:Math.max(18,cadence-(performance.now()-sent)));
+      const delay=document.hidden?1150:syncFailures?Math.min(1500,200*2**Math.min(3,syncFailures-1)):
+        Math.max(5,syncCadence()-(performance.now()-sent));
+      scheduleSync(delay);
     }
   }
 }
@@ -382,7 +411,7 @@ function showProfile(){
 }
 function returnToLobby(message=""){
   const old=session;
-  leaveBeacon();session=null;clearTimeout(syncTimer);resetInput();
+  leaveBeacon();session=null;clearSyncTimer();resetInput();
   queuedSignal=queuedHand=queuedFeed=null;people.clear();changeLinks([]);seenSignals.clear();setFollowing(null);
   lookDirection=null;$("look-direction").hidden=true;setLookPin(null);
   $("invite").disabled=$("look").disabled=$("follow").disabled=true;
@@ -411,10 +440,12 @@ async function enterRoom(action,code){
     const sent=performance.now();
     const response=await request("/api/rooms",{action,code,nickname:name,id,key,avatar,view}),data=await response.json();
     if(!response.ok)throw Error(data.error);
-    updateClock(data.serverTime,sent,performance.now());renderTime=0;
+    clockOffset=null;roundTrip=65;
+    updateClock(data.serverTime,sent,performance.now());
     session={room:data.room,code:data.code,mode:data.mode??"private",id,key,...data.profile};
     Object.assign(me,avatar,{nickname:session.nickname,coat:session.coat});
-    ownView=view;applyNight(view);dirty=true;lastWishSynced=0;lastPost=lastSync=Date.now();
+    ownView=view;applyNight(view);dirty=true;lastWishSynced=0;lastPost=Date.now();
+    syncStarted=-Infinity;syncFailures=0;
     people.clear();links=[];seenSignals.clear();formations.clear();resetInput();
     $("location").textContent=ticketApproach.name;
     localStorage.setItem("jeongdong-nickname",session.nickname);
@@ -429,7 +460,7 @@ async function enterRoom(action,code){
     world?.parkLife.resetInteractions();
     loadWorld();focusGame();
     if(action==="create")openInvite();
-    sync();
+    scheduleSync(0);
   }catch(error){
     $("lobby-status").textContent=error.message==="Failed to fetch"?"연결을 확인한 뒤 다시 시도해 주세요.":error.message;
   }finally{
@@ -477,7 +508,11 @@ $("copy").addEventListener("click",()=>copyInvite(false));
 $("copy-link").addEventListener("click",()=>copyInvite(true));
 document.querySelectorAll("dialog .close").forEach(button=>button.addEventListener("click",()=>button.closest("dialog").close()));
 $("model-credits").addEventListener("click",()=>$("credits-dialog").showModal());
-window.addEventListener("pagehide",()=>{active=false;clearTimeout(syncTimer);leaveBeacon();});
+window.addEventListener("pagehide",()=>{active=false;clearSyncTimer();leaveBeacon();});
+document.addEventListener("visibilitychange",()=>{
+  clearSyncTimer();scheduleSync(document.hidden?1150:0);
+});
+window.addEventListener("online",()=>{if(!document.hidden)scheduleSync(0);});
 window.addEventListener("pageshow",event=>{
   if(!event.persisted)return;
   active=true;
@@ -761,7 +796,7 @@ $("use-item").addEventListener("click",()=>{
     resetInput();
     me.heading=normalize(Math.atan2(cat.x-me.x,me.y-cat.y)*180/Math.PI);
     queuedFeed={id:cat.id,claim:token(),at:time};
-    Object.assign(me,{vx:0,vy:0,running:false,blocked:false});dirty=true;focusGame();
+    Object.assign(me,{vx:0,vy:0,running:false,blocked:false});dirty=true;wakeSync();focusGame();
     return;
   }
   me.item={...me.item,remaining:me.item.remaining-1,started:time};
@@ -780,7 +815,7 @@ $("museum-door").addEventListener("click",()=>{
   Object.assign(me,{x:destination.x,y:destination.y,heading:destination.heading,vx:0,vy:0,blocked:false,running:false});
   ownView={...ownView,pan:destination.heading,tilt:0};
   $("location").textContent=inside?"석조전 서관":"덕수궁 전시관";
-  dirty=true;focusGame();
+  dirty=true;wakeSync();focusGame();
 });
 $("museum-exhibit").addEventListener("click",()=>{
   const exhibit=session&&!following&&nearbyExhibit();
@@ -860,12 +895,13 @@ function walkCourse(speed){
   if(!advanced){course=[];pendingSeat=null;}
   else if(arriving)course.shift();
   if(!course.length&&pendingSeat!=null){
-    if(near(pendingSeat.approach,me.x,me.y)<.4){seatClaim=pendingSeat;dirty=true;}
+    if(near(pendingSeat.approach,me.x,me.y)<.4){seatClaim=pendingSeat;dirty=true;wakeSync();}
     pendingSeat=null;
   }
 }
 function motion(now,elapsed){
   const oldX=me.x,oldY=me.y,link=myLink(),follower=amFollowingHands();
+  const wasMoving=moving(me)||me.blocked,wasBlocked=me.blocked,wasRunning=me.running;
   const leader=follower&&people.get(link.leader);
   const pace=runToggled||shiftHeld;
   const speed=elapsed*(pace?6.675:2.58);
@@ -892,6 +928,7 @@ function motion(now,elapsed){
   if(me.vx!==vx||me.vy!==vy||me.blocked!==blocked||me.running!==running){
     Object.assign(me,{vx,vy,blocked,running});dirty=true;
   }
+  if(wasMoving!==(moving(me)||blocked)||wasBlocked!==blocked||wasRunning!==running)wakeSync();
   return leader?leader.stepping||moved:moved||blocked;
 }
 function actors(now,stepping){
@@ -917,8 +954,7 @@ function frame(now){
   requestAnimationFrame(frame);
   if(!session)return;
   const time=gameTime(now);
-  renderTime=Math.max(renderTime,time-130-Math.min(170,roundTrip*.68));
-  smoothPeople(people,elapsed,time,time-renderTime);
+  smoothPeople(people,elapsed,time,roundTrip);
   const stepping=motion(now,elapsed);
   const {self,others}=actors(now,stepping);
   const focus=following?others.get(following):null;
