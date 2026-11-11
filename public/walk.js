@@ -3,11 +3,12 @@ import {
   middle,hall,stoneHall,stoneFountain,city,pavilions,estateOutline,nearest,distance as near,walkable,clearSegment,planWalk
 } from "./layout.js";
 import {normalize,angleDelta,hexCoat,moving,receivePeople,smoothPeople,handPosition,handSide,pairFits} from "./people.js";
-import {ITEMS,PET_MS,FEED_MS} from "./activities.js";
+import {ITEMS,PET_MS,FEED_MS,JUMP_MS} from "./activities.js";
 import {makeWishDrawing} from "./wish-drawing.js";
 import {WISH_FLIGHT_MS} from "./wish-art.js";
 import {isInsideMuseum,museumBounds,museumGalleries,museumGalleryAt,museumHall} from "./visit-layout.js";
 import {museumExhibits} from "./museum-catalog.js";
+import {nearbyPalaceGuide} from "./palace-guide.js";
 
 const $=id=>document.getElementById(id);
 const token=()=>Array.from(crypto.getRandomValues(new Uint8Array(16)),byte=>byte.toString(16).padStart(2,"0")).join("");
@@ -25,7 +26,7 @@ function initialAvatar(){
       if(choices.includes(saved?.[feature]))look[feature]=saved[feature];
     }
   }catch{}
-  return {x:ticketApproach.x+1,y:ticketApproach.y-2.4,heading:entranceHeading,vx:0,vy:0,wish:0,wishOrigin:null,wishHeading:0,wishArt:null,wave:0,emote:null,chat:null,
+  return {x:ticketApproach.x+1,y:ticketApproach.y-2.4,heading:entranceHeading,vx:0,vy:0,wish:0,wishOrigin:null,wishHeading:0,wishArt:null,wave:0,jump:0,emote:null,chat:null,
     seat:null,seatSide:null,item:null,blushUntil:0,blushLevel:0,pet:null,feed:null,running:false,blocked:false,character,look};
 }
 const me=initialAvatar(),people=new Map(),markers=new Map(),seenSignals=new Map(),lookPings=new Map(),formations=new Map();
@@ -129,6 +130,23 @@ $("night").addEventListener("click",()=>{
   ownView={...ownView,night:!ownView.night};
   localStorage.setItem("jeongdong-night",String(ownView.night));dirty=true;applyNight(ownView);
 });
+const zoomLimit=3,zoomStep=.75;
+function updateZoomButtons(){
+  $("zoom-out").disabled=ownView.zoom<=-zoomLimit;
+  $("zoom-in").disabled=ownView.zoom>=zoomLimit;
+}
+function adjustZoom(change){
+  if(!session)return;
+  const zoom=Math.max(-zoomLimit,Math.min(zoomLimit,ownView.zoom+change));
+  if(zoom===ownView.zoom)return;
+  ownView={...ownView,zoom};dirty=true;updateZoomButtons();
+}
+$("zoom-in").addEventListener("click",()=>{adjustZoom(zoomStep);focusGame();});
+$("zoom-out").addEventListener("click",()=>{adjustZoom(-zoomStep);focusGame();});
+$("game").addEventListener("wheel",event=>{
+  if(!session||!event.deltaY||event.target.closest("button"))return;
+  event.preventDefault();adjustZoom(-Math.sign(event.deltaY)*zoomStep);
+},{passive:false});
 
 const characterOptions=[...document.querySelectorAll("[data-character]")];
 const appearanceOptions=[...document.querySelectorAll("[data-feature]")];
@@ -564,7 +582,7 @@ async function enterRoom(action,code){
     updateClock(data.serverTime,sent,performance.now());
     session={room:data.room,code:data.code,mode:data.mode??"private",id,key,...data.profile};
     Object.assign(me,avatar,{nickname:session.nickname,coat:session.coat});
-    ownView=view;applyNight(view);dirty=true;lastWishSynced=0;lastPost=Date.now();
+    ownView=view;applyNight(view);updateZoomButtons();dirty=true;lastWishSynced=0;lastPost=Date.now();
     updateChatSend();
     syncStarted=-Infinity;syncFailures=0;
     people.clear();links=[];formations.clear();resetLocationGuides();resetInput();
@@ -580,6 +598,7 @@ async function enterRoom(action,code){
     $("lobby-status").textContent="";entryFlow.hidden=true;gameShell.hidden=false;
     world?.parkLife.setSeed(session.room);
     world?.parkLife.resetInteractions();
+    world?.birds.setSeed(session.room);
     loadWorld();focusGame();
     if(action==="create")openInvite();
     scheduleSync(0);
@@ -648,6 +667,14 @@ $("run").addEventListener("click",()=>{
   if(amFollowingHands())return;
   runToggled=!runToggled;markPace();$("game").focus({preventScroll:true});
 });
+function jump(){
+  const time=gameTime();
+  if(!session||!world||feedingLocked(time)||time-me.jump<JUMP_MS)return;
+  if(pendingSeat)course=[];
+  pendingSeat=seatClaim=null;stand();
+  me.jump=time;dirty=true;wakeSync();focusGame();
+}
+$("jump").addEventListener("click",jump);
 function stand(){if(me.seat!=null){me.seat=me.seatSide=null;dirty=true;}}
 function benchNearby(){
   let choice=null,nearby=false,gap=3.8;
@@ -746,6 +773,9 @@ window.addEventListener("keydown",event=>{
   if(event.target.closest("dialog"))return;
   if(event.key==="Escape"){setMap(false);setEmotes(false);}
   if(!session||event.target.closest("input"))return;
+  if(event.code==="Space"&&!event.target.closest("button,a")&&!event.ctrlKey&&!event.metaKey&&!event.altKey){
+    event.preventDefault();if(!event.repeat)jump();return;
+  }
   const key=event.key.length===1?event.key.toLowerCase():event.key;
   if(event.key==="Shift")shiftHeld=true;
   if(key==="f"&&!event.repeat&&!$("sit").hidden){interactBench();return;}
@@ -885,6 +915,15 @@ function openVisitorGuide(){
   $("visitor-guide-dialog").showModal();
 }
 $("visitor-guide").addEventListener("click",openVisitorGuide);
+$("landmark-guide").addEventListener("click",()=>{
+  const guide=session&&world&&nearbyPalaceGuide(me);
+  if(!guide)return;
+  resetInput();
+  $("landmark-guide-title").textContent=guide.title;
+  $("landmark-guide-description").textContent=guide.description;
+  $("landmark-guide-source").href=guide.source;
+  $("landmark-guide-dialog").showModal();
+});
 $("pet-cat").addEventListener("click",()=>{
   if(!session||myLink()?.active||me.seat!=null)return;
   const time=gameTime(),cat=world?.parkLife.nearestCat(me.x,me.y);
@@ -925,7 +964,7 @@ $("use-item").addEventListener("click",()=>{
 });
 function movePlayerTo(destination,place){
   resetInput();stand();
-  Object.assign(me,{x:destination.x,y:destination.y,heading:destination.heading,vx:0,vy:0,blocked:false,running:false});
+  Object.assign(me,{x:destination.x,y:destination.y,heading:destination.heading,vx:0,vy:0,blocked:false,running:false,jump:0});
   ownView={...ownView,pan:destination.heading,tilt:0};
   $("location").textContent=place;dirty=true;wakeSync();
 }
@@ -966,6 +1005,10 @@ function updateActivities(time,guideNearby){
   const eligible=world&&session;
   const feeding=feedingLocked(time);
   setActivity("visitor-guide",guideNearby?"관람 안내 읽기":null);
+  const landmark=eligible&&nearbyPalaceGuide(me);
+  setActivity("landmark-guide",landmark?"설명 읽기":null);
+  if(landmark)attr($("landmark-guide"),"aria-label",landmark.title+" 설명 읽기");
+  $("jump").disabled=!eligible||feeding||time-me.jump<JUMP_MS;
   const atFountain=nearWishFountain();
   if($("wish").hidden===Boolean(atFountain))$("wish").hidden=$("wish").disabled=!atFountain;
   const cat=eligible&&me.seat==null&&!myLink()?.active&&world.parkLife.nearestCat(me.x,me.y);
