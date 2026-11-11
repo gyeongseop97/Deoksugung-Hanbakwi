@@ -64,6 +64,12 @@ Vercel이 게임 화면과 방 API를 제공하고, Turso의 **libSQL** 데이�
 
 동기화 지연을 줄이려면 Vercel의 **Settings → Functions → Function Regions**에서 Turso 데이터베이스와 가까운 지역을 선택한 뒤 다시 배포합니다. [Vercel 함수 지역 설정](https://vercel.com/docs/functions/configuring-functions/region)
 
+## 경복궁 맵과 지하철
+
+덕수궁 매표소 앞 **시청역 2번 출구**에서 **지하철 타기**를 누르면 경복궁역 5번 출구로 이동합니다. 경복궁 맵은 광화문부터 신무문까지 실제 크기(약 500m × 880m)로 배치했고, 같은 방에 있는 친구와 서로 다른 궁에 있어도 접속은 유지됩니다.
+
+경복궁 전각은 직접 모델링한 것입니다. 국가유산청 실측 모델을 넣으려면 웹용 GLB로 변환한 파일을 `public/<건물 id>.glb` 이름으로 두고([건물 id 목록](public/gyeongbok-layout.js)), [`public/gyeongbok.js`](public/gyeongbok.js)의 `gbSurveyModels` 목록에 그 id를 추가하세요. 파일이 열리면 해당 전각만 실측 모델로 바뀝니다. 예: `geunjeongjeon.glb`, `gyeonghoeru.glb`, `gwanghwamun.glb`.
+
 ## 화면 품질과 성능
 
 기기 성능에 맞춰 해상도와 그림자가 자동으로 조절됩니다. 프레임이 떨어지면 해상도를 먼저 낮추고, 여유가 생기면 다시 올립니다. 항상 최고 품질로 보려면 주소 끝에 `?quality=max`를 붙여 주세요.

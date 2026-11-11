@@ -5,7 +5,8 @@ import {isInsideMuseum} from "./public/visit-layout.js";
 const json = (data, status = 200) => Response.json(data,{status,headers:{"Cache-Control":"no-store"}});
 const validId = (value) => typeof value==="string" && /^[a-f0-9]{32}$/.test(value);
 const finite = (value,min,max) => typeof value==="number" && value>=min && value<=max;
-const validPoint = (point) => point && finite(point.x,0,600) && finite(point.y,0,450);
+// The Deoksugung map spans 600 x 450 m; the Gyeongbokgung map sits east of it at x 1400-2000.
+const validPoint = (point) => point && finite(point.x,0,2100) && finite(point.y,0,1100);
 const validTime = (value) => finite(value,0,9999999999999);
 const reactions = new Set(["😊","😂","❤️","👍","😮","😢","😠","✨"]);
 const hairStyles = new Set(["short","bob","long","bun"]);
