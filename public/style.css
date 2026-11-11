@@ -123,6 +123,9 @@ dialog input,dialog code{display:block;width:100%;padding:9px;border-radius:7px;
 .panel-head .scene-title{font-size:clamp(24px,3.2vw,42px);margin:3px 0 0;line-height:1.12}
 .scene-wrap,.map-wrap{height:clamp(440px,43vw,680px)}
 #game{position:absolute;inset:0;overflow:hidden;touch-action:none;cursor:grab;background:linear-gradient(150deg,#546f63,#263d30)}
+#game-shell :is(.top,.experience){-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+#game-shell :is(input,textarea,[contenteditable]){-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
+#game-shell button{touch-action:manipulation}
 #game:active{cursor:grabbing}
 #game canvas{display:block;width:100%;height:100%;position:absolute;inset:0}
 #loading-game{position:absolute;z-index:1;inset:0;display:grid;place-items:center;margin:0}
@@ -132,6 +135,7 @@ dialog input,dialog code{display:block;width:100%;padding:9px;border-radius:7px;
 .game-place span{color:#ecd39d;font-size:10px;letter-spacing:.14em}
 .game-place strong{font-size:20px;margin-block:2px}
 .game-place small{color:#dedfcb;font-size:11px}
+.game-place .touch-controls-hint{display:none}
 .look-actions{display:flex;align-items:center;flex-wrap:wrap;gap:5px;max-width:100%}
 .look-actions button{min-height:36px;padding:5px 8px;font-size:12px;pointer-events:auto}
 .zoom-tools{display:flex;gap:3px}
@@ -189,6 +193,8 @@ dialog input,dialog code{display:block;width:100%;padding:9px;border-radius:7px;
   .game-place{padding:7px 9px}
   .game-place strong{font-size:17px}
   .game-place small{font-size:10px}
+  .game-place .desktop-controls-hint{display:none}
+  .game-place .touch-controls-hint{display:block}
   .look-actions button{min-height:44px;font-size:11px}
   .look-actions .zoom-tools button{min-width:44px}
   #jump kbd{display:none}
