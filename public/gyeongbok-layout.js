@@ -185,7 +185,8 @@ export const wishPond={...at(gbPond.east,gbPond.north,"향원정"),reach:gbPond.
 export const gbShortcuts=[
   {label:"경복궁역",aria:"경복궁역으로 순간이동",...at(-96.5,36,"경복궁역 5번 출구"),heading:60},
   {label:"근정전",aria:"근정전으로 순간이동",...at(0,258,"근정전 마당"),heading:0},
-  {label:"향원정",aria:"향원정으로 순간이동",...at(12,752,"향원정"),heading:180}
+  {label:"향원정",aria:"향원정으로 순간이동",...at(12,752,"향원정"),heading:180},
+  {label:"정류장",aria:"경복궁 정류장으로 순간이동",...gbBusStop.arrive,name:gbBusStop.name}
 ];
 
 export function gyeongbokWalkable(x,y){

@@ -736,7 +736,7 @@ function walkTo(target,seat=null){
   if(!steps.length){toast("걸을 수 있는 길을 터치해 주세요.");return;}
   course=steps;seatClaim=null;pendingSeat=seat;
 }
-const shortcutButtons=["entrance-target","fountain-target","palace-target"];
+const shortcutButtons=["entrance-target","fountain-target","palace-target","stop-target"];
 const mapDestinations=[
   {label:"매표소",aria:"매표소로 순간이동",...ticketApproach,x:ticketApproach.x+1,y:ticketApproach.y-2.4,heading:entranceHeading},
   {label:"분수대",aria:"정동 분수대로 순간이동",name:"정동 분수대",x:fountain.x+4.8,y:fountain.y+5.3,heading:318},
@@ -749,14 +749,18 @@ function refreshShortcuts(){
   const shortcuts=shortcutsHere();
   if(shortcuts===shownShortcuts)return;
   shownShortcuts=shortcuts;
+  // A map may offer fewer shortcuts than there are buttons; the spare ones stay hidden.
   shortcutButtons.forEach((id,index)=>{
-    $(id).textContent=shortcuts[index].label;
-    $(id).setAttribute("aria-label",shortcuts[index].aria);
+    const shortcut=shortcuts[index];
+    $(id).hidden=!shortcut;
+    if(!shortcut)return;
+    $(id).textContent=shortcut.label;
+    $(id).setAttribute("aria-label",shortcut.aria);
   });
 }
 shortcutButtons.forEach((id,index)=>$(id).addEventListener("click",()=>{
   const destination=shortcutsHere()[index];
-  if(!session||!walkable(destination.x,destination.y))return;
+  if(!session||!destination||!walkable(destination.x,destination.y))return;
   const linkId=myLink()?.id??(queuedHand?.action==="offer"?queuedHand.id:null);
   if(linkId){queuedHand={action:"release",id:linkId};changeLinks(links);}
   movePlayerTo(destination,destination.name);
