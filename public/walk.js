@@ -699,7 +699,7 @@ function walkTo(target,seat=null){
 }
 const mapDestinations={
   "entrance-target":{...ticketApproach,x:ticketApproach.x+1,y:ticketApproach.y-2.4,heading:entranceHeading},
-  "fountain-target":{...stoneFountain,y:stoneFountain.y+10,heading:0},
+  "fountain-target":{name:"정동 분수대",x:fountain.x+4.8,y:fountain.y+5.3,heading:318},
   "palace-target":{...court,heading:normalize(Math.atan2(hall.x-court.x,court.y-hall.y)*180/Math.PI)}
 };
 for(const [id,destination] of Object.entries(mapDestinations))$(id).addEventListener("click",()=>{
