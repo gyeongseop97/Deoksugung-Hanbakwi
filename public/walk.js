@@ -1,5 +1,5 @@
 import {
-  route,palacePaths,palaceCourts,palaceGardens,palacePond,palaceWalls,fountain,spawn,ticket,ticketApproach,gate,bridge,court,
+  route,palacePaths,palaceCourts,palaceGardens,palacePond,palaceWalls,fountain,ticket,ticketApproach,ticketGuide,gate,bridge,court,
   middle,hall,stoneHall,stoneFountain,city,pavilions,estateOutline,nearest,distance as near,walkable,clearSegment,planWalk
 } from "./layout.js";
 import {normalize,angleDelta,hexCoat,moving,receivePeople,smoothPeople,handPosition,handSide,pairFits} from "./people.js";
@@ -11,7 +11,8 @@ import {museumExhibits} from "./museum-catalog.js";
 
 const $=id=>document.getElementById(id);
 const token=()=>Array.from(crypto.getRandomValues(new Uint8Array(16)),byte=>byte.toString(16).padStart(2,"0")).join("");
-const initialView=()=>({pan:252,tilt:0,zoom:0,night:localStorage.getItem("jeongdong-night")==="true"});
+const entranceHeading=285;
+const initialView=()=>({pan:entranceHeading,tilt:0,zoom:0,night:localStorage.getItem("jeongdong-night")==="true"});
 const lookChoices={hair:["short","bob","long","bun"],eyes:["round","soft","bright"],outfit:["coat","puffer","tee","hanbok"]};
 const defaultHair=character=>character==="woman"?"long":"short";
 function initialAvatar(){
@@ -24,7 +25,7 @@ function initialAvatar(){
       if(choices.includes(saved?.[feature]))look[feature]=saved[feature];
     }
   }catch{}
-  return {x:spawn.x,y:spawn.y,heading:252,vx:0,vy:0,wish:0,wishOrigin:null,wishHeading:0,wishArt:null,wave:0,emote:null,
+  return {x:ticketApproach.x+1,y:ticketApproach.y-2.4,heading:entranceHeading,vx:0,vy:0,wish:0,wishOrigin:null,wishHeading:0,wishArt:null,wave:0,emote:null,
     seat:null,seatSide:null,item:null,blushUntil:0,blushLevel:0,pet:null,feed:null,running:false,blocked:false,character,look};
 }
 const me=initialAvatar(),people=new Map(),markers=new Map(),seenSignals=new Map(),formations=new Map();
@@ -415,7 +416,7 @@ async function enterRoom(action,code){
     Object.assign(me,avatar,{nickname:session.nickname,coat:session.coat});
     ownView=view;applyNight(view);dirty=true;lastWishSynced=0;lastPost=lastSync=Date.now();
     people.clear();links=[];seenSignals.clear();formations.clear();resetInput();
-    $("location").textContent=spawn.name;
+    $("location").textContent=ticketApproach.name;
     localStorage.setItem("jeongdong-nickname",session.nickname);
     sessionStorage.setItem("jeongdong-room-mode",session.mode);
     if(session.code)sessionStorage.setItem("jeongdong-room-code",session.code);
@@ -424,7 +425,8 @@ async function enterRoom(action,code){
     $("invite").disabled=false;
     $("invite").textContent=session.mode==="open"?"오픈서버":"↗ 초대코드";
     $("lobby-status").textContent="";entryFlow.hidden=true;gameShell.hidden=false;
-    world?.parkLife.resetInteractions?.();
+    world?.parkLife.setSeed(session.room);
+    world?.parkLife.resetInteractions();
     loadWorld();focusGame();
     if(action==="create")openInvite();
     sync();
@@ -640,7 +642,11 @@ $("game").addEventListener("pointermove",event=>{
 });
 $("game").addEventListener("pointerup",event=>{
   if(!orbit||orbit.id!==event.pointerId)return;
-  if(orbit.tap&&!orbit.dragged&&!keys.size&&thumbId===undefined)walkTo(world?.pick(event.clientX,event.clientY));
+  if(orbit.tap&&!orbit.dragged&&!keys.size&&thumbId===undefined){
+    const target=world?.pick(event.clientX,event.clientY);
+    if(target?.guide&&nearVisitorGuide())openVisitorGuide();
+    else walkTo(target);
+  }
   orbit=null;
 });
 $("game").addEventListener("contextmenu",event=>{
@@ -718,6 +724,16 @@ function nearbyExhibit(){
   return closest;
 }
 function focusGame(){$("game").focus({preventScroll:true});}
+function nearVisitorGuide(){
+  const point=ticketGuide.approach;
+  return Boolean(world&&session&&!following&&near(point,me.x,me.y)<3&&clearSegment(me,point));
+}
+function openVisitorGuide(){
+  if(!nearVisitorGuide())return;
+  resetInput();
+  $("visitor-guide-dialog").showModal();
+}
+$("visitor-guide").addEventListener("click",openVisitorGuide);
 $("pet-cat").addEventListener("click",()=>{
   if(!session||following||myLink()?.active||me.seat!=null)return;
   const time=gameTime(),cat=world?.parkLife.nearestCat(me.x,me.y);
@@ -790,12 +806,13 @@ function setActivity(id,label,disabled=false){
   if(button.disabled!==disabled)button.disabled=disabled;
   if(label&&button.textContent!==label)button.textContent=label;
 }
-function updateActivities(time){
+function updateActivities(time,guideNearby){
   if(me.item&&me.item.remaining===0&&time-me.item.started>=ITEMS[me.item.kind].duration){
     me.item=null;dirty=true;
   }
   const eligible=world&&session&&!following;
   const feeding=feedingLocked(time);
+  setActivity("visitor-guide",guideNearby?"관람 안내 읽기":null);
   const atFountain=nearWishFountain();
   if($("wish").hidden===Boolean(atFountain))$("wish").hidden=$("wish").disabled=!atFountain;
   const cat=eligible&&me.seat==null&&!myLink()?.active&&world.parkLife.nearestCat(me.x,me.y);
@@ -907,7 +924,8 @@ function frame(now){
   const focus=following?others.get(following):null;
   const view=focus?people.get(following).view:ownView;
   if(Boolean(view.night)!==($("night").getAttribute("aria-pressed")==="true"))applyNight(view);
-  updateActivities(time);
+  const guideNearby=nearVisitorGuide();
+  updateActivities(time,guideNearby);
   const seatEnabled=world&&session&&!following&&!myLink()?.active&&!feedingLocked(time);
   const bench=seatEnabled&&me.seat==null&&!pendingSeat&&!seatClaim?benchNearby():null;
   const seatLabel=me.seat!=null?"일어나기":seatClaim?"자리 확인 중":pendingSeat?"벤치로 이동 중":
@@ -917,7 +935,7 @@ function frame(now){
   const place=focus?placeName(focus):$("location").textContent;
   if($("game-place").textContent!==place)$("game-place").textContent=place;
   updateHandControls();updateLookDirection(now);updateMaps(self,others);
-  world?.render({me:self,peers:[...others.values()],focus,view,firstPerson,destination:course.at(-1),clock:time},now);
+  world?.render({me:self,peers:[...others.values()],focus,view,firstPerson,guideNearby,destination:course.at(-1),clock:time},now);
 }
 
 const svgNS="http://www.w3.org/2000/svg";
@@ -1050,7 +1068,7 @@ if(nickname.value&&(savedCode&&(!suppliedCode||suppliedCode===savedCode)||savedO
 function loadWorld(){
   if(world||worldLoading)return;
   worldLoading=import("/world3d.js").then(({makeWorld})=>{
-    world=makeWorld($("game"),{onCatFlee});worldFailed=false;
+    world=makeWorld($("game"),{onCatFlee,catSeed:session?.room});worldFailed=false;
     drawDestinations(world);$("loading-game").hidden=true;
     if($("character-dialog").open)refreshCharacterPreview();
   }).catch(()=>{
