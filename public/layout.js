@@ -155,9 +155,9 @@ export const palacePond = {
 export const palacePlantings=[
   {point:mapPoint([173,392]),kind:"pine",height:4.4,spread:4.9,phase:.36},
   {point:mapPoint([307,392]),kind:"pine",height:4.7,spread:5.4,phase:1.65},
-  {point:mapPoint([151,457]),kind:"pine",height:4.3,spread:4.7,phase:3.03},
-  {point:mapPoint([325,469]),kind:"ginkgo",height:11.6,spread:7.2,phase:.66},
-  {point:mapPoint([329,578]),kind:"ginkgo",height:11.2,spread:7.0,phase:2.36},
+  {point:mapPoint([168,533]),kind:"pine",height:4.3,spread:4.7,phase:3.03},
+  {point:mapPoint([333,477]),kind:"ginkgo",height:11.6,spread:7.2,phase:.66},
+  {point:mapPoint([321,555]),kind:"ginkgo",height:11.2,spread:7.0,phase:2.36},
   {point:mapPoint([468,565]),kind:"zelkova",height:12.6,spread:10.3,phase:2.43},
   {point:mapPoint([462,625]),kind:"maple",height:8.1,spread:7.2,phase:4.8},
   {point:mapPoint([742,504]),kind:"zelkova",height:10.8,spread:8.4,phase:.98},
