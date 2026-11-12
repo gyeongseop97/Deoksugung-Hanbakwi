@@ -194,10 +194,10 @@
       <article class="panel map-panel" id="map-panel">
         <div class="panel-head">
           <div><span class="tag">02 / WALK MAP</span><h2>산책 지도</h2></div>
-          <div class="top-actions"><button class="pill" id="presence" type="button" aria-label="접속자 목록 열기" aria-haspopup="dialog" aria-controls="roster-dialog"><i aria-hidden="true"></i><span>접속자</span></button><button id="close-map" class="quiet" type="button" aria-label="지도 닫기">×</button></div>
+          <div class="top-actions"><button id="overview-map" class="quiet" type="button" aria-pressed="false" aria-controls="world">전체 지도</button><button class="pill" id="presence" type="button" aria-label="접속자 목록 열기" aria-haspopup="dialog" aria-controls="roster-dialog"><i aria-hidden="true"></i><span>접속자</span></button><button id="close-map" class="quiet" type="button" aria-label="지도 닫기">×</button></div>
         </div>
         <div class="map-wrap">
-          <svg id="world" viewBox="58 28 520 397" role="group" tabindex="0" aria-label="덕수궁 산책 지도. 방향키 또는 W A S D로 이동">
+          <svg id="world" viewBox="58 28 520 397" role="group" tabindex="0" aria-label="덕수궁에서 경복궁까지 이어지는 산책 지도. 방향키 또는 W A S D로 이동">
             <defs>
               <pattern id="grid" width="28" height="28" patternUnits="userSpaceOnUse"><path d="M28 0H0V28" fill="none" stroke="#c7c59a" stroke-opacity=".10"/></pattern>
               <pattern id="stone" width="20" height="12" patternUnits="userSpaceOnUse"><path d="M0 1h20M0 7h20M5 1v6m10 0v5" stroke="#b59865" stroke-opacity=".5" fill="none"/></pattern>
@@ -314,6 +314,7 @@
     <ul class="credits">
       <li><a href="https://gwanghwamun.seoul.go.kr/ghm/facility/list.do?codeId=CODE_08&amp;mid=1011&amp;siteGrpKey=ghm&amp;siteId=ghm" target="_blank" rel="noopener">서울시 광화문광장 시설 위치안내</a></li>
       <li><a href="https://gwanghwamun.seoul.go.kr/ghm/contents/16.do?mid=1009" target="_blank" rel="noopener">서울시 광화문광장 오시는 길</a></li>
+      <li><a href="https://mediahub.seoul.go.kr/archives/2001581" target="_blank" rel="noopener">서울시 세종대로 사람숲길</a> · <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap 기여자</a></li>
     </ul>
     <p>경내 배치와 외관은 <a href="https://royal.khs.go.kr/ROYAL/contents/R701000000.do?schGroupCode=dsg" target="_blank" rel="noopener">궁능유적본부 관람 지도</a>와 <a href="https://look360.kr/vr/deoksugung_go_kr/deoksugung_go_kr/4736" target="_blank" rel="noopener">덕수궁 360도 파노라마</a>, 첨부 지도와 네이버 지도 거리뷰를 참고해 재현했습니다.</p>
     <p>전시 이미지와 확대 재현한 유물의 출처입니다.</p>
