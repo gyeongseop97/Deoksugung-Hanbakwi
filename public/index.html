@@ -17,17 +17,12 @@
 <body>
   <main id="entry-flow" class="entry-flow" aria-label="산책 시작">
     <div class="entry-frame">
-      <div class="entry-brand"><span class="brandmark" aria-hidden="true">✦</span><span>서울 궁 한바퀴</span><span class="entry-brand-english" lang="en">Seoul Palace Walk</span></div>
       <section id="profile-step" class="entry-profile" aria-labelledby="profile-title">
         <figure class="entry-cover">
-          <img src="./deoksugung-cover.webp" alt="가을빛이 물든 덕수궁 대한문" width="1200" height="800" fetchpriority="high">
-          <figcaption>서울 정동 · 대한문</figcaption>
+          <img src="./seoul-palace-cover.jpg" alt="서울 궁 한바퀴 · 가을빛이 물든 서울의 궁궐" width="1536" height="1024" fetchpriority="high">
         </figure>
         <form id="profile-form" class="entry-profile-form">
-          <div class="entry-heading">
-            <h1 id="profile-title" tabindex="-1">산책 준비</h1>
-            <p>산책에서 쓸 닉네임과 캐릭터를 정해 주세요.</p>
-          </div>
+          <h1 id="profile-title" tabindex="-1">산책 준비</h1>
           <label class="entry-field" for="nickname">
             <span>닉네임</span>
             <input id="nickname" name="nickname" type="text" required maxlength="32" placeholder="예: 은행잎" autocomplete="nickname" enterkeyhint="next">
@@ -39,13 +34,18 @@
               <label><input type="radio" name="entry-character" value="woman"><span>여자</span></label>
             </div>
           </fieldset>
-          <button id="profile-confirm" class="entry-confirm primary" type="submit">확인 <span aria-hidden="true">→</span></button>
-          <button id="profile-transfer-open" class="quiet" type="button" aria-haspopup="dialog">이어하기 코드</button>
+          <div class="entry-actions">
+            <button id="profile-confirm" class="entry-confirm primary" type="submit">확인 <span aria-hidden="true">→</span></button>
+            <button id="profile-transfer-open" class="quiet" type="button" aria-haspopup="dialog">이어하기 코드</button>
+          </div>
           <p id="profile-status" class="entry-status" role="status"></p>
         </form>
       </section>
       <section id="server-step" class="entry-server" aria-labelledby="server-title" hidden>
-        <button id="server-back" class="entry-back" type="button"><span aria-hidden="true">←</span> 프로필 수정</button>
+        <div class="entry-server-nav">
+          <button id="server-back" class="entry-back" type="button"><span aria-hidden="true">←</span> 프로필 수정</button>
+          <img class="entry-wordmark" src="./seoul-palace-wordmark.png" alt="서울 궁 한바퀴" width="576" height="190">
+        </div>
         <div class="entry-server-head">
           <h1 id="server-title" tabindex="-1">서버 선택</h1>
           <p id="server-profile" hidden></p>
@@ -80,7 +80,7 @@
   </main>
   <div id="game-shell" hidden>
   <header class="top">
-    <h1 class="brand"><span class="brandmark" aria-hidden="true">✦</span><span>서울 궁 한바퀴</span></h1>
+    <h1 class="brand"><img src="./seoul-palace-wordmark.png" alt="서울 궁 한바퀴" width="576" height="190" decoding="async"></h1>
     <div class="top-game-actions">
       <div id="mobile-view-controls"></div>
       <div class="top-actions" id="game-room-controls">
@@ -428,6 +428,7 @@
       <h2 id="visitor-guide-title">서울 궁 한바퀴 관람 안내</h2>
       <button type="button" class="quiet close" aria-label="닫기">×</button>
     </div>
+    <img class="visitor-guide-plaque" src="./seoul-palace-plaque.png" alt="" width="768" height="169" loading="lazy" decoding="async">
     <p class="guide-intro">대한문 매표소에서 출발해 세종대로와 광화문광장을 거쳐 경복궁까지 걸어갈 수 있어요. 대한문 앞 횡단보도를 건너 <strong>서울광장 쪽 인도</strong>를 따라 광화문으로 갈 수도 있어요. <strong>전체 지도</strong>에서 장소 이름을 누르면 그곳으로 걸어갑니다.</p>
     <button id="tutorial-replay" type="button" class="quiet">처음 조작 안내 다시 보기</button>
     <div class="visitor-guide-list">

@@ -1,4 +1,4 @@
-import {minigamePickup,minigameTuhoJar,traditionalGames} from "./traditional-games.js";
+import {minigamePickup,minigameTuhoJars,traditionalGames} from "./traditional-games.js";
 import {addObstacle} from "./layout.js";
 
 const signs={
@@ -6,6 +6,12 @@ const signs={
   jegi:{ink:"#3c7063",mark:"#ecdc94"},
   kite:{ink:"#567b89",mark:"#ffdfa0"}
 };
+
+const tuhoCeramics=[
+  {name:"옹기",clay:0x805139,base:0x573827,trim:0xa4714c,edge:0xb99565,pattern:0xc29365,roughness:.70},
+  {name:"청자",clay:0x729585,base:0x456c62,trim:0x9bb2a0,edge:0xb0c4ae,pattern:0xc4d0ac,roughness:.49},
+  {name:"백자",clay:0xe4d6b8,base:0xa49a83,trim:0x547491,edge:0xd3c8ac,pattern:0x426381,roughness:.43}
+];
 
 function icon(ctx,id,x,y,size){
   ctx.save();ctx.translate(x,y);ctx.scale(size/44,size/44);
@@ -51,17 +57,19 @@ function propKit(T,group){
   return {mesh,box,band};
 }
 
-function tuhoJar(T,group){
+function tuhoJar(T,group,ceramic){
   const {mesh,box,band}=propKit(T,group);
   const profile=[[0,0],[.24,0],[.32,.045],[.41,.26],[.43,.42],[.38,.60],[.35,.66],[.39,.73],
     [.41,.775],[.34,.778],[.32,.73],[.28,.66],[.33,.54],[.37,.42],[.34,.24],[.24,.064],[0,.062]];
-  mesh(new T.LatheGeometry(profile.map(([x,y])=>new T.Vector2(x,y)),24),0x794e39,0,0,0);
-  for(const [y,r,color] of [[.08,.344,0xa77650],[.28,.412,0x926348],[.43,.426,0xbc8d5a],[.74,.400,0xa77d55],[.769,.388,0xc39965]])
+  const vessel=mesh(new T.LatheGeometry(profile.map(([x,y])=>new T.Vector2(x,y)),28),ceramic.clay,0,0,0);
+  vessel.material.roughness=ceramic.roughness;
+  for(const [y,r,color] of [[.055,.325,ceramic.base],[.28,.412,ceramic.trim],[.43,.426,ceramic.trim],
+    [.74,.395,ceramic.edge],[.769,.385,ceramic.edge]])
     band(color,0,y,0,r,.017);
   for(let i=0;i<16;i++){
     const a=i*Math.PI/8;
-    const glaze=box(i%2?0xc59665:0xa3724e,Math.cos(a)*.426,.481,Math.sin(a)*.426,.067,.044,.015);
-    glaze.rotation.y=Math.PI/2-a;glaze.rotation.z=Math.PI/4;
+    const glaze=box(i%2?ceramic.pattern:ceramic.trim,Math.cos(a)*.417,.468,Math.sin(a)*.417,.067,.044,.011);
+    glaze.rotation.y=Math.PI/2-a;glaze.rotation.z=(i%2?1:-1)*Math.PI/4;
   }
 }
 
@@ -95,6 +103,11 @@ function throwLine(T,root,game,{wx,wz},groundAt){
     const point={x:game.point.x+i*.47,y:game.point.y};
     const mark=box(i===0?0xf0d29a:0xc9aa79,wx(point.x),groundAt(point)+.036,wz(point.y),i===0?.41:.30,.016,.09);
     mark.castShadow=false;
+  }
+  for(const target of minigameTuhoJars(game))for(const side of [-1,1]){
+    const point={x:target.x+side*.09,y:game.point.y-.34};
+    const mark=box(0xdfbe85,wx(point.x),groundAt(point)+.033,wz(point.y),.048,.013,.27);
+    mark.rotation.y=side*.65;mark.castShadow=false;
   }
   root.add(group);
 }
@@ -135,10 +148,10 @@ export function registerMinigameProps(groundAt){
     const at=id==="tuho"?minigamePickup(game):{x:point.x+3.2,y:point.y};
     const floor=groundAt(at)+.02;
     if(id==="tuho"){
-      const target=minigameTuhoJar(game),jar={...target,floor:groundAt(target)+.014};
-      anchors.set(id,{...at,floor,jar});
+      const jars=minigameTuhoJars(game).map(target=>({...target,floor:groundAt(target)+.014}));
+      anchors.set(id,{...at,floor,jars});
       addObstacle(at.x,at.y,.51,.51,0,floor+.54);
-      addObstacle(jar.x,jar.y,.86,.86,0,jar.floor+.79);
+      for(const jar of jars)addObstacle(jar.x,jar.y,.86,.86,0,jar.floor+jar.height);
     }else{
       anchors.set(id,{...at,floor});
       addObstacle(at.x,at.y,1.40,.78,0,floor+.58);
@@ -151,7 +164,7 @@ export function addMinigameMarkers(T,root,{wx,wz},gameIds,groundAt,propAnchors){
   for(const game of traditionalGames){
     const {id,name,point}=game;
     if(!gameIds.includes(id))continue;
-    const {ink,mark}=signs[id],floor=groundAt(point),x=wx(point.x),z=wz(point.y);
+    const {ink,mark}=signs[id],diskAt=id==="tuho"?{x:point.x,y:point.y+1.65}:point;
     const display=propAnchors?.get(id),signAt=display??{x:point.x+2.7,y:point.y};
     const label=painted(T,400,108,ctx=>{
       ctx.fillStyle="#21342c";ctx.strokeStyle="#f2cd86";ctx.lineWidth=4;
@@ -173,14 +186,18 @@ export function addMinigameMarkers(T,root,{wx,wz},gameIds,groundAt,propAnchors){
     const disk=new T.Mesh(new T.PlaneGeometry(2.25,2.25),new T.MeshBasicMaterial({
       map:medallion,transparent:true,opacity:.87,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-3,toneMapped:false
     }));
-    disk.rotation.x=-Math.PI/2;disk.position.set(x,floor+.07,z);root.add(disk);
+    disk.rotation.x=-Math.PI/2;disk.position.set(wx(diskAt.x),groundAt(diskAt)+.07,wz(diskAt.y));root.add(disk);
     if(!display)continue;
     const props=new T.Group();props.name=id==="tuho"?"투호 화살통":"제기 진열대";
     props.position.set(wx(display.x),display.floor,wz(display.y));
     if(id==="tuho"){
       tuhoPickup(T,props);
-      const jar=new T.Group();jar.name="투호 항아리";
-      jar.position.set(wx(display.jar.x),display.jar.floor,wz(display.jar.y));tuhoJar(T,jar);root.add(jar);
+      for(const [index,target] of display.jars.entries()){
+        const ceramic=tuhoCeramics[index%tuhoCeramics.length],jar=new T.Group();
+        jar.name="투호 항아리 · "+ceramic.name;
+        jar.position.set(wx(target.x),target.floor,wz(target.y));
+        tuhoJar(T,jar,ceramic);root.add(jar);
+      }
       throwLine(T,root,game,{wx,wz},groundAt);
     }
     else jegiSetup(T,props);

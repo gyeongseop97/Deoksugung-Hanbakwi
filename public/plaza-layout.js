@@ -69,6 +69,8 @@ export const sajikRoad={south:529,north:551,crossX:-13,crossWidth:10.5};
 export const haechiBasin={west:-29,east:-14,south:97,north:138,rampEnd:120,depth:2.05};
 
 const bed=(id,kind,points)=>({id,kind,outline:polygon(points)});
+export const yukjoLawn=bed("yukjo-lawn","lawn",
+  [[-33,449],[-12,449],[-9,454],[-9,493],[-13,499],[-32,499],[-36,495],[-36,454]]);
 export const plazaBeds=[
   bed("forest-west","grove",[[-43,20],[-28,21],[-25,33],[-27,57],[-36,64],[-49,56],[-50,40],[-48,26]]),
   bed("forest-nook","grove",[[-49,66],[-44,64],[-44,86],[-47,94],[-51,87]]),
@@ -83,7 +85,7 @@ export const plazaBeds=[
   bed("time-pocket","mixed",[[-29,378],[-23,380],[-22,393],[-27,399],[-35,395],[-34,386]]),
   bed("pine-grove","pine",[[-46,408],[-30,407],[-27,418],[-32,434],[-47,445],[-55,438],[-53,422]]),
   bed("north-west-grove","pine",[[-57,467],[-46,476],[-40,489],[-41,507],[-47,518],[-58,510],[-63,499],[-61,482]]),
-  bed("yukjo-lawn","lawn",[[-33,449],[-12,449],[-9,454],[-9,493],[-13,499],[-32,499],[-36,495],[-36,454]]),
+  yukjoLawn,
   bed("north-lawn-edge","mixed",[[-5.7,514],[.7,513],[2.8,516],[4.4,522],[3.3,526],[-1.6,528],[-6.4,525]]),
   bed("woldae-west","lawn",[[-54,565],[-37,562],[-31,570],[-31,595],[-59,596],[-60,578]]),
   bed("woldae-east","lawn",[[5,567],[22,563],[30,572],[31,594],[6,596]])
@@ -96,6 +98,10 @@ export function insidePlazaPolygon(x,y,points){
     if((a.y>y)!==(b.y>y)&&x<(b.x-a.x)*(y-a.y)/(b.y-a.y)+a.x)inside=!inside;
   }
   return inside;
+}
+
+export function inKiteLawn(x,y){
+  return insidePlazaPolygon(x,y,yukjoLawn.outline);
 }
 
 export function plazaGroundHeight(position){

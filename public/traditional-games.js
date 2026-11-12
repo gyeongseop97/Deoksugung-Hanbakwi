@@ -1,5 +1,5 @@
 import {at as palaceAt} from "./gyeongbok-layout.js";
-import {plazaAt} from "./plaza-layout.js";
+import {inKiteLawn,plazaAt} from "./plaza-layout.js";
 
 export const MINIGAME_LOBBY_MS=9000;
 export const MINIGAME_RESULT_MS=24000;
@@ -8,12 +8,18 @@ export const MINIGAME_AIM_METRES=.045;
 export const MINIGAME_LANE_DEPTH=1.55;
 export const MINIGAME_PICKUP_REACH=2.25;
 export const TUHO_ARROWS=10;
-export const TUHO_ANGLE_LIMIT=55;
-export const JEGI_FLIGHT_MS=1100;
+export const TUHO_ANGLE_LIMIT=180;
+export const JEGI_FLIGHT_TIMES=[1100,1370,960,1240,1020,1430,1160];
 export const JEGI_CATCH_EARLY=190;
 export const JEGI_CATCH_LATE=240;
 export const JEGI_CATCH_REACH=1.35;
 export const JEGI_KICK_COOLDOWN=260;
+export const KITE_FLIGHT_ACTIONS=["fly","unspool","reel","hold"];
+export const KITE_START_LINE_CM=240;
+export const KITE_MIN_LINE_CM=165;
+export const KITE_MAX_LINE_CM=1600;
+export const KITE_RELEASE_CM_PER_SECOND=320;
+export const KITE_REEL_CM_PER_SECOND=420;
 const gravity=9.81,throwHeight=1.35,throwLift=4.55,rimHeight=.79;
 const rimTime=(throwLift+Math.sqrt(throwLift**2+2*gravity*(throwHeight-rimHeight)))/gravity;
 export const TUHO_RIM_MS=rimTime*1000;
@@ -28,12 +34,12 @@ export const aimTolerance={
 };
 
 const games=[
-  {id:"tuho",name:"투호",place:"경복궁 근정전 마당 서쪽",point:palaceAt(-23,262),beats:12,beatMs:5500,targetMs:2690,perfect:220,good:525,
-    hint:"화살통에서 화살 10개를 받아요. 던지는 선에 서서 방향을 맞추고, 던지기를 꾹 눌렀다 떼세요.",action:"화살 던지기"},
+  {id:"tuho",name:"투호",place:"경복궁 근정전 마당 서쪽 담장",point:palaceAt(-39.5,268),beats:12,beatMs:5500,targetMs:2690,perfect:220,good:525,
+    hint:"화살통에서 화살을 받고, 선에 서서 화면을 돌려 조준하세요. 던지기를 누른 채 힘을 맞춘 뒤 놓으세요.",action:"던지기"},
   {id:"jegi",name:"제기차기",place:"경복궁 근정전 마당 동쪽",point:palaceAt(23,262),beats:32,beatMs:2000,targetMs:1310,perfect:140,good:320,
-    hint:"제기를 올려 차고, 발 앞까지 다시 내려올 때 이어서 차세요.",action:"제기 차기"},
-  {id:"kite",name:"연날리기",place:"광화문광장 육조마당",point:plazaAt(-19,477),beats:24,beatMs:3000,targetMs:1760,perfect:195,good:440,
-    hint:"아바타를 움직여 연이 떠밀리는 쪽을 따라가세요. 줄이 팽팽해질 때 당기면 연이 높이 올라가요.",action:"줄 당기기"}
+    hint:"제기를 올려 차고, 발 앞까지 다시 내려올 때 이어서 차세요.",action:"제기차기"},
+  {id:"kite",name:"연날리기",place:"광화문광장 육조마당 잔디",point:plazaAt(-24,477),beats:24,beatMs:3000,targetMs:1760,perfect:195,good:440,
+    hint:"잔디에서 뛰면서 줄을 풀면 바람을 타고 연이 올라가요.",action:"연 띄우기"}
 ];
 export const traditionalGames=games;
 export const minigameById=id=>games.find(game=>game.id===id)??null;
@@ -41,12 +47,23 @@ export const minigameDuration=game=>game.beats*game.beatMs;
 
 export function nearbyMinigame(point){
   if(!point)return null;
+  if(inKiteLawn(point.x,point.y))return minigameById("kite");
   let nearest=null,gap=MINIGAME_REACH;
   for(const game of games){
+    if(game.id==="kite")continue;
     const distance=Math.hypot(point.x-game.point.x,point.y-game.point.y);
     if(distance<=gap){nearest=game;gap=distance;}
   }
   return nearest;
+}
+
+export const kiteFlying=record=>KITE_FLIGHT_ACTIONS.includes(record?.action);
+
+export function kiteLineMetres(record,clock){
+  const elapsed=Math.max(0,clock-record.at)/1000;
+  const speed=record.action==="unspool"?KITE_RELEASE_CM_PER_SECOND:
+    record.action==="reel"?-KITE_REEL_CM_PER_SECOND:0;
+  return Math.max(KITE_MIN_LINE_CM,Math.min(KITE_MAX_LINE_CM,record.power+speed*elapsed))/100;
 }
 
 export function atMinigameLane(game,point){
@@ -59,15 +76,17 @@ export function minigameAim(game,point){
 }
 
 export function minigamePickup(game){
-  return {x:game.point.x-2.48,y:game.point.y+.25};
+  return {x:game.point.x-3.85,y:game.point.y+2.1};
 }
 
 export function atTuhoLine(game,point){
   return Boolean(point&&Math.abs(point.x-game.point.x)<=4.5&&Math.abs(point.y-game.point.y)<=.72);
 }
 
-export function minigameTuhoJar(game){
-  return {x:game.point.x,y:game.point.y-4.6,height:rimHeight};
+export function minigameTuhoJars(game){
+  return [[-2.25,4.75],[0,5.55],[2.25,6.35]].map(([side,depth])=>({
+    x:game.point.x+side,y:game.point.y-depth,height:rimHeight
+  }));
 }
 
 export function tuhoProjectile(point,angle,power,elapsedMs){
@@ -82,18 +101,23 @@ export function tuhoLanding(point,angle,power){
 }
 
 export function tuhoScores(game,point,angle,power){
-  const landing=tuhoLanding(point,angle,power),jar=minigameTuhoJar(game);
-  return Math.hypot(landing.x-jar.x,landing.y-jar.y)<=.36;
+  const landing=tuhoLanding(point,angle,power);
+  return minigameTuhoJars(game).some(jar=>Math.hypot(landing.x-jar.x,landing.y-jar.y)<=.36);
 }
 
-export function jegiHeight(elapsedMs){
-  const time=Math.max(0,elapsedMs)/1000,flight=JEGI_FLIGHT_MS/1000;
+export function jegiFlightMs(count=1){
+  return JEGI_FLIGHT_TIMES[Math.max(0,count-1)%JEGI_FLIGHT_TIMES.length];
+}
+
+export function jegiHeight(elapsedMs,count=1){
+  const time=Math.max(0,elapsedMs)/1000,flight=jegiFlightMs(count)/1000;
   return Math.max(.18,.18+gravity*time*(flight-time)/2);
 }
 
 export function jegiNextCount(previous,point,at){
-  if(!previous?.count||at-previous.at>JEGI_FLIGHT_MS+JEGI_CATCH_LATE)return 1;
-  const landed=at-previous.at>=JEGI_FLIGHT_MS-JEGI_CATCH_EARLY;
+  const flight=jegiFlightMs(previous?.count),elapsed=at-(previous?.at??0);
+  if(!previous?.count||elapsed>flight+JEGI_CATCH_LATE)return 1;
+  const landed=elapsed>=flight-JEGI_CATCH_EARLY;
   const close=Math.hypot(point.x-previous.x,point.y-previous.y)<=JEGI_CATCH_REACH;
   return landed&&close?previous.count+1:0;
 }

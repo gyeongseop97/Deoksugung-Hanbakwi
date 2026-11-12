@@ -67,7 +67,7 @@ let syncTimer,syncDue=Infinity,syncInFlight=null,syncStarted=-Infinity,syncFailu
 let links=[],queuedSignal=null,queuedHand=null,queuedFeed=null,queuedChat=null,toastTimer;
 let queuedBus=null,queuedBike=null,lastBusHeading=null;
 let fountainShow=null,clinks=[],queuedShow=null,queuedClink=null;
-let queuedMinigame=null,queuedPhoto=null,roomPhoto=null;
+let queuedMinigame=null,queuedPhoto=null,roomPhoto=null,minigameKiteCuts=[];
 const heardClinks=new Set();
 let parkedBikes=[];
 let lastChatAt=0;
@@ -105,7 +105,7 @@ const minigames=makeMinigames({
     }
     queuedMinigame=command;wakeSync();
   },
-  now:()=>gameTime(),self:()=>session?.id,getAvatar:()=>me,focusGame
+  now:()=>gameTime(),self:()=>session?.id,getAvatar:()=>me,getView:()=>ownView,focusGame
 });
 const photoMode=bindPhotoMode($("photo-controls"),{
   getAvatar:()=>me,getView:()=>ownView,getClock:gameTime,getRoster:nearbyPhotoPeople,canMove:canMovePhoto,
@@ -738,6 +738,7 @@ async function sync(){
     confirmRoomPhoto(data.photoSession,photo);
     if(queuedMinigame===minigame)queuedMinigame=null;
     minigames.receive(data.minigames??[],minigame,data.minigameResult,data.minigameFree??[]);
+    minigameKiteCuts=data.minigameKiteCuts??[];
     const link=myLink();
     if(hand?.action==="offer"&&!link)toast("가까이 있는 친구에게 다시 손을 내밀어 주세요.");
     if(hand?.action==="accept"&&!link?.active)toast("손잡기 요청이 끝났어요. 가까이에서 다시 요청해 주세요.");
@@ -793,6 +794,7 @@ function returnToLobby(message=""){
   queuedBus=queuedBike=lastBusHeading=selectedBus=null;
   fountainShow=queuedShow=queuedClink=null;clinks=[];heardClinks.clear();nextShowAudio=0;
   queuedPhoto=roomPhoto=queuedMinigame=null;minigames.reset();photoMode.close();tutorial.close();
+  minigameKiteCuts=[];
   lastBuskingBeat=-1;umbrellaFolded=false;environment.liveWeather=null;
   parkedBikes=[];
   sound.bus(null);sound.plazaShow(null);
@@ -1031,7 +1033,9 @@ function refreshShortcuts(){
 }
 shortcutButtons.forEach((id,index)=>$(id).addEventListener("click",()=>{
   const destination=shortcutsHere()[index];
-  if(!session||riding||clinkLocked(gameTime())||!destination||!walkable(destination.x,destination.y))return;
+  if(!session||riding||clinkLocked(gameTime())||!destination)return;
+  const feet=platformAt(destination.x,destination.y)+stepUp;
+  if(!walkable(destination.x,destination.y,feet))return;
   if(me.bus||isCycling(me)||queuedBus||queuedBike){
     toast(isCycling(me)?"따릉이에서 내린 뒤 순간이동할 수 있어요.":"버스에서 내린 뒤 순간이동할 수 있어요.");return;
   }
@@ -1688,7 +1692,7 @@ function updateActivities(time,guideNearby){
   const available=eligible&&!riding&&me.seat==null&&!myLink()?.active;
   const venue=available&&!minigames.active()&&minigames.nearby(me);
   const arrows=venue?.id==="tuho"&&near(minigamePickup(venue),me.x,me.y)<=MINIGAME_PICKUP_REACH&&!minigames.arrows();
-  setActivity("minigame",arrows?"투호 화살 받기":venue?venue.name:null);
+  setActivity("minigame",arrows?"투호 화살 받기":venue?.id==="kite"?venue.action:venue?venue.name:null);
   setActivity("hanbok-rental",available&&passport.nearRental(me)?"한복 대여소":null);
   setActivity("photo-join",world&&joinablePhoto(time)?"단체 사진 함께 찍기 · "+Math.ceil((roomPhoto.shootAt-time)/1000)+"초":null);
   const feeding=feedingLocked(time);
@@ -1884,7 +1888,8 @@ function frame(now){
   }
   lastScene={me:self,peers:[...others.values()],parkedBikes,view:ownView,firstPerson:firstPerson&&!photoMode.camera,
     photoCamera:photoMode.camera,environment,guideNearby,destination:course.at(-1),clock:time,fountainShow,
-    minigames:minigames.states(),minigameAction:minigames.localAction(),minigameFree:minigames.freeStates(),
+    minigames:minigames.states(),minigameAction:minigames.localAction(),
+    minigameFree:minigameKiteCuts.concat(minigames.freeStates()),
     minigameAimPreview:minigames.aimPreview()};
   world?.render(lastScene,now);
   photoMode.update(time);

@@ -33,7 +33,13 @@ const schema=[
     room TEXT NOT NULL, game TEXT NOT NULL, player TEXT NOT NULL, request TEXT NOT NULL, at INTEGER NOT NULL,
     PRIMARY KEY (room,game,player,request)
   )`,
-  "CREATE INDEX IF NOT EXISTS minigame_free_requests_recent ON minigame_free_requests(room,at)"
+  "CREATE INDEX IF NOT EXISTS minigame_free_requests_recent ON minigame_free_requests(room,at)",
+  `CREATE TABLE IF NOT EXISTS minigame_kite_cuts (
+    room TEXT NOT NULL, player TEXT NOT NULL, request TEXT NOT NULL, at INTEGER NOT NULL,
+    x REAL NOT NULL, y REAL NOT NULL, angle REAL NOT NULL, power INTEGER NOT NULL, points INTEGER NOT NULL,
+    PRIMARY KEY (room,player,request)
+  )`,
+  "CREATE INDEX IF NOT EXISTS minigame_kite_cuts_recent ON minigame_kite_cuts(room,at)"
 ];
 
 const readyDatabases=new WeakMap();

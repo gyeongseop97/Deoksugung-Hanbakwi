@@ -1,15 +1,23 @@
 import {JUMP_MS} from "../public/activities.js";
-import {JEGI_CATCH_EARLY,JEGI_CATCH_LATE,JEGI_CATCH_REACH,JEGI_FLIGHT_MS,JEGI_KICK_COOLDOWN,KITE_GUSTS,MINIGAME_LOBBY_MS,
+import {JEGI_CATCH_EARLY,JEGI_CATCH_LATE,JEGI_CATCH_REACH,JEGI_FLIGHT_TIMES,JEGI_KICK_COOLDOWN,KITE_GUSTS,MINIGAME_LOBBY_MS,
+  KITE_FLIGHT_ACTIONS,KITE_MAX_LINE_CM,KITE_MIN_LINE_CM,KITE_REEL_CM_PER_SECOND,KITE_RELEASE_CM_PER_SECOND,KITE_START_LINE_CM,
   MINIGAME_PICKUP_REACH,MINIGAME_REACH,MINIGAME_RESULT_MS,TUHO_ANGLE_LIMIT,TUHO_ARROWS,aimTolerance,atMinigameLane,
   atTuhoLine,minigameAim,minigameById,minigameChallenge,minigameDuration,minigamePickup,tuhoScores} from "../public/traditional-games.js";
+import {inKiteLawn} from "../public/plaza-layout.js";
 
 const validId=value=>typeof value==="string"&&/^[a-f0-9]{32}$/.test(value);
-const hitGrace=1100,clockLead=260,actionLifetime=1800,poseReach=1.45;
-const isFreeAction=action=>action==="collect"||action==="throw"||action==="kick";
+const hitGrace=1100,clockLead=260,actionLifetime=1800,kiteCutLifetime=7000,poseReach=1.45;
+const kiteSpatialActions=["fly","unspool","reel"];
+const kiteActions=[...kiteSpatialActions,"hold","land","cut"];
+const isFreeAction=action=>action==="collect"||action==="throw"||action==="kick"||kiteActions.includes(action);
 const validAt=at=>Number.isSafeInteger(at)&&at>=0&&at<1e13;
 const validPose=({x,y})=>Number.isFinite(x)&&Number.isFinite(y);
 
 function validFreeCommand(game,command){
+  if(kiteActions.includes(command.action)){
+    return game.id==="kite"&&(!kiteSpatialActions.includes(command.action)||
+      validPose(command)&&inKiteLawn(command.x,command.y));
+  }
   if(command.action==="collect")return game.id==="tuho";
   if(!validAt(command.at)||!validPose(command))return false;
   if(command.action==="kick")return game.id==="jegi"&&atMinigameLane(game,command);
@@ -35,25 +43,63 @@ export function validMinigame(command){
 }
 
 const squared=term=>`(${term})*(${term})`;
-const walkerAtVenue=`w.room=? AND w.id=? AND w.player_key=? AND w.updated>=?
+const roomWalker=`w.room=? AND w.id=? AND w.player_key=? AND w.updated>=?`;
+const walkerReady=`${roomWalker}
   AND json_extract(w.avatar,'$.seat') IS NULL AND json_extract(w.avatar,'$.bus') IS NULL
   AND (json_extract(w.avatar,'$.bike') IS NULL OR json_type(w.avatar,'$.bike.parked') IS 'object')
-  AND COALESCE(json_extract(w.avatar,'$.jump'),0)<=?
+  AND COALESCE(json_extract(w.avatar,'$.jump'),0)<=?`;
+const walkerAtVenue=`${walkerReady}
   AND ${squared("json_extract(w.avatar,'$.x')-?")} + ${squared("json_extract(w.avatar,'$.y')-?")}<=?`;
-const venueArguments=({room,id,key,online,now},game)=>[
-  room,id,key,online,now-JUMP_MS,game.point.x,game.point.x,game.point.y,game.point.y,MINIGAME_REACH**2
+const roomWalkerArguments=({room,id,key,online})=>[room,id,key,online];
+const readyArguments=context=>[...roomWalkerArguments(context),context.now-JUMP_MS];
+const venueArguments=(context,game)=>[
+  ...readyArguments(context),game.point.x,game.point.x,game.point.y,game.point.y,MINIGAME_REACH**2
 ];
 const walkerNearPose=`${squared("json_extract(w.avatar,'$.x')-?")}+${squared("json_extract(w.avatar,'$.y')-?")}<=?`;
 const poseArguments=({x,y},reach=poseReach)=>[x,x,y,y,reach**2];
 const matchFor=command=>command.action==="start"?command.id:command.round;
 const seenFreeRequest=`SELECT 1 FROM minigame_free_requests WHERE room=? AND game=? AND player=? AND request=?`;
+const jegiFlight=`CASE MAX(0,minigame_free.count-1) % ${JEGI_FLIGHT_TIMES.length}
+  ${JEGI_FLIGHT_TIMES.map((duration,index)=>`WHEN ${index} THEN ${duration}`).join(" ")} END`;
+const kiteInFlight=KITE_FLIGHT_ACTIONS.map(action=>`'${action}'`).join(",");
+
+function kiteStatement(db,context,request){
+  const {room,id,now,minigame:command}=context;
+  if(command.action==="fly")return db.prepare(`
+    INSERT INTO minigame_free (room,game,player,request,action,at,x,y,angle,power,points,count,arrows)
+    SELECT w.room,'kite',w.id,?,'fly',?,?,?,0,?,0,0,0
+    FROM walkers w WHERE ${walkerReady} AND ${walkerNearPose} AND NOT EXISTS (${seenFreeRequest})
+    ON CONFLICT(room,game,player) DO UPDATE SET request=excluded.request,action=excluded.action,
+      at=excluded.at,x=excluded.x,y=excluded.y,angle=0,power=excluded.power,points=0
+    WHERE minigame_free.action NOT IN (${kiteInFlight}) AND minigame_free.at<=excluded.at
+  `).bind(command.id,now,command.x,command.y,KITE_START_LINE_CM,...readyArguments(context),...poseArguments(command),...request);
+  const spatial=kiteSpatialActions.includes(command.action);
+  const length=`MAX(${KITE_MIN_LINE_CM},MIN(${KITE_MAX_LINE_CM},
+    power+CAST(MAX(0,${now}-at)*(CASE action WHEN 'unspool' THEN ${KITE_RELEASE_CM_PER_SECOND}
+      WHEN 'reel' THEN -${KITE_REEL_CM_PER_SECOND} ELSE 0 END)/1000.0 AS INTEGER)))`;
+  return db.prepare(`
+    UPDATE minigame_free SET request=?,
+      action=CASE WHEN ?='hold' AND minigame_free.action='reel' AND ${length}<=${KITE_MIN_LINE_CM}
+        THEN 'land' ELSE ? END,
+      at=?,power=${length},x=json_extract(w.avatar,'$.x'),y=json_extract(w.avatar,'$.y'),
+      angle=COALESCE(json_extract(w.avatar,'$.heading'),0),
+      points=COALESCE(json_extract(w.avatar,'$.running'),0)
+    FROM walkers w WHERE minigame_free.room=? AND minigame_free.game='kite' AND minigame_free.player=?
+      AND minigame_free.action IN (${kiteInFlight}) AND minigame_free.action<>?
+      AND ${spatial?`${walkerReady} AND ${walkerNearPose}`:roomWalker}
+      AND NOT EXISTS (${seenFreeRequest})
+  `).bind(command.id,command.action,command.action,now,room,id,command.action,
+    ...(spatial?[...readyArguments(context),...poseArguments(command)]:roomWalkerArguments(context)),...request);
+}
 
 function freePlayStatements(db,context,game){
   const {room,id,now,minigame:command}=context;
   const request=[room,game.id,id,command.id],venue=venueArguments(context,game);
   const {at,x,y,angle,power}=command;
   let action;
-  if(command.action==="collect"){
+  if(game.id==="kite"){
+    action=kiteStatement(db,context,request);
+  }else if(command.action==="collect"){
     action=db.prepare(`
       INSERT INTO minigame_free (room,game,player,request,action,at,x,y,angle,power,points,count,arrows)
       SELECT w.room,?,w.id,?,'collect',?,json_extract(w.avatar,'$.x'),json_extract(w.avatar,'$.y'),0,0,0,0,?
@@ -75,8 +121,8 @@ function freePlayStatements(db,context,game){
     }else{
       const elapsed="(excluded.at-minigame_free.at)";
       const far=`${squared("excluded.x-minigame_free.x")}+${squared("excluded.y-minigame_free.y")}`;
-      const count=`CASE WHEN minigame_free.count=0 OR ${elapsed}>${JEGI_FLIGHT_MS+JEGI_CATCH_LATE} THEN 1
-        WHEN ${elapsed}>=${JEGI_FLIGHT_MS-JEGI_CATCH_EARLY} AND ${far}<=${JEGI_CATCH_REACH**2}
+      const count=`CASE WHEN minigame_free.count=0 OR ${elapsed}>(${jegiFlight})+${JEGI_CATCH_LATE} THEN 1
+        WHEN ${elapsed}>=(${jegiFlight})-${JEGI_CATCH_EARLY} AND ${far}<=${JEGI_CATCH_REACH**2}
         THEN minigame_free.count+1 ELSE 0 END`;
       action=db.prepare(`
         INSERT INTO minigame_free (room,game,player,request,action,at,x,y,angle,power,points,count,arrows)
@@ -94,6 +140,12 @@ function freePlayStatements(db,context,game){
     WHERE changes()=1 AND room=? AND game=? AND player=? AND request=?
     ON CONFLICT(room,game,player,request) DO NOTHING
   `).bind(...request);
+  if(command.action==="cut")return [action,remember,db.prepare(`
+    INSERT INTO minigame_kite_cuts (room,player,request,at,x,y,angle,power,points)
+    SELECT room,player,request,at,x,y,angle,power,points FROM minigame_free
+    WHERE changes()=1 AND room=? AND game=? AND player=? AND request=? AND action='cut'
+    ON CONFLICT(room,player,request) DO NOTHING
+  `).bind(...request)];
   return [action,remember];
 }
 
@@ -190,6 +242,7 @@ export function cleanupMinigames(db,room,before){
     db.prepare(`DELETE FROM minigame_players WHERE room=? AND round_id IN (${expired})`).bind(room,room,before),
     db.prepare("DELETE FROM minigame_rounds WHERE room=? AND closes<?").bind(room,before),
     db.prepare("DELETE FROM minigame_free_requests WHERE room=? AND at<?").bind(room,before),
+    db.prepare("DELETE FROM minigame_kite_cuts WHERE room=? AND at<?").bind(room,before),
     db.prepare(`DELETE FROM minigame_free WHERE room=? AND at<? AND NOT EXISTS (
       SELECT 1 FROM walkers w WHERE w.room=minigame_free.room AND w.id=minigame_free.player AND w.updated>=?
     )`).bind(room,before,before)];
@@ -237,11 +290,15 @@ export function selectMinigames(db,{room,id,now,online,minigame}){
       SELECT f.* FROM minigame_free f JOIN walkers w ON w.room=f.room AND w.id=f.player
       WHERE f.room=? AND w.updated>=?
       ORDER BY (f.player<>?),f.at DESC LIMIT 64
-    )) AS free, (${command.sql}) AS recognized
-  `).bind(now-actionLifetime,online,id,room,now,room,online,id,...command.args);
+    )) AS free,
+    (SELECT json_group_array(json_object('player',player,'game','kite','id',request,'at',at,
+      'x',x,'y',y,'angle',angle,'power',power,'points',points,'count',0,'arrows',0,'action','cut')) FROM (
+      SELECT * FROM minigame_kite_cuts WHERE room=? AND at>? ORDER BY at DESC LIMIT 24
+    )) AS kiteCuts, (${command.sql}) AS recognized
+  `).bind(now-actionLifetime,online,id,room,now,room,online,id,room,now-kiteCutLifetime,...command.args);
 }
 
 export function minigamePayload(row,command){
-  return {minigames:JSON.parse(row.games),minigameFree:JSON.parse(row.free),
+  return {minigames:JSON.parse(row.games),minigameFree:JSON.parse(row.free),minigameKiteCuts:JSON.parse(row.kiteCuts),
     ...(command?{minigameResult:row.recognized?"accepted":"unavailable"}:{})};
 }
