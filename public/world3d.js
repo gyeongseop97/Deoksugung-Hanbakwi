@@ -5,7 +5,7 @@ import { solidAt, platformAt, waterDepth, loftHeight, bridge, gate, middle, hall
 import { addParkLife } from "./park-life.js";
 import { addPalaceBirds } from "./palace-birds.js";
 import { addPalaceSky } from "./palace-sky.js";
-import { addStands, makeItemProps } from "./street-stands.js";
+import { addStands, addRegionalStands, makeItemProps, regionalStations, registerRegionalStands } from "./street-stands.js";
 import { assembleMuseum, registerMuseumNavigation, isInsideMuseum, museumOutsideDoor, museumInsideDoor, museumInsideSpawn, stairHeight } from "./museum.js";
 import { PET_MS, FEED_MS, jumpLift } from "./activities.js";
 import { makeWalkerModels } from "./walker-model.js";
@@ -139,7 +139,8 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
   const buses=buildSejongBusModels(T,transportRoot,kit);
   registerPlazaNavigation(benches);
   const drawWater=addWater(T,deoksRoot,fountains,makeKit(deoksRoot));
-  const stations=addStands(T,transportRoot,makeKit(transportRoot));
+  registerRegionalStands();
+  const stations=[...addStands(T,transportRoot,makeKit(transportRoot)),...regionalStations];
   outdoors.add(deoksRoot,corridorRoot,transportRoot);
   const createItemProp=makeItemProps(T,kit);
   const walkerModels=makeWalkerModels(T,scene,kit,createItemProp);
@@ -283,14 +284,19 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
   const plazaRoot=new T.Group(),palaceRoot=new T.Group(),museumRoot=new T.Group();
   const deoks={root:deoksRoot,bounds:deoksBounds,chunks:deoksChunks};
   const corridor={root:corridorRoot,bounds:corridorBounds,chunks:corridorChunks};
-  let museumView,updatePlaza,northWildlife;
+  let museumView,updatePlaza,northWildlife,plazaWildlife;
   const plaza={root:plazaRoot,bounds:plazaBounds,*build(){
-    updatePlaza=yield* assembleGwanghwamunPlaza(T,plazaRoot,makeKit(plazaRoot));
+    const birdPerches=[];
+    updatePlaza=yield* assembleGwanghwamunPlaza(T,plazaRoot,makeKit(plazaRoot),{birdPerches});
+    addRegionalStands(T,plazaRoot,makeKit(plazaRoot),"gwanghwamun");
     addDocks(plazaRoot,dock=>dock.y<=-280&&dock.y>-790);
-    return yield* consolidate(plazaRoot,new Set());
+    const chunks=yield* consolidate(plazaRoot,new Set());
+    plazaWildlife=birds.loadPlaza(birdPerches);
+    return chunks;
   }};
   const palace={root:palaceRoot,bounds:gbBounds,*build(){
     const {groups}=yield* buildGyeongbokDistrict(palaceRoot);
+    addRegionalStands(T,palaceRoot,makeKit(palaceRoot),"gyeongbokgung");
     addDocks(palaceRoot,dock=>dock.y<=-790);
     const surveyed=gbSurveyModels.filter(id=>groups.has(id));
     const chunks=yield* consolidate(palaceRoot,new Set(surveyed.map(id=>groups.get(id))));
@@ -331,10 +337,12 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
         target.failed=true;target.steps=null;
         console.error("Could not assemble a walking district",error);
       }
-    }else if(northWildlife&&!indoors&&distanceToDistrict(anchor,gbBounds)<225){
-      do{
-        if(northWildlife.next().done){northWildlife=null;break;}
-      }while(performance.now()<deadline);
+    }else if(!indoors){
+      if(plazaWildlife&&distanceToDistrict(anchor,plazaBounds)<215){
+        do{if(plazaWildlife.next().done){plazaWildlife=null;break;}}while(performance.now()<deadline);
+      }else if(northWildlife&&distanceToDistrict(anchor,gbBounds)<225){
+        do{if(northWildlife.next().done){northWildlife=null;break;}}while(performance.now()<deadline);
+      }
     }
     const waiting=Boolean(needed&&!needed.chunks);
     if(loading){
