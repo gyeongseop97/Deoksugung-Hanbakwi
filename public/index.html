@@ -139,7 +139,7 @@
                 <button id="take-item" type="button" class="quiet activity-button" hidden>받기</button>
                 <button id="use-item" type="button" class="quiet activity-button" hidden>사용하기</button>
                 <button id="photo" type="button" class="quiet activity-button" hidden>사진 찍기</button>
-                <button id="subway" type="button" class="quiet activity-button" hidden>지하철 타기</button>
+                <button id="subway" type="button" class="quiet activity-button" aria-haspopup="dialog" aria-controls="transit-dialog" hidden>지하철 타기</button>
                 <button id="museum-door" type="button" class="quiet activity-button" hidden>입장하기</button>
                 <button id="museum-exhibit" type="button" class="quiet activity-button" aria-haspopup="dialog" hidden>작품 설명</button>
                 <button id="landmark-guide" type="button" class="quiet activity-button" aria-haspopup="dialog" aria-controls="landmark-guide-dialog" hidden>설명 읽기</button>
@@ -217,21 +217,29 @@
             <button type="button" data-key="ArrowRight" aria-label="오른쪽으로">→</button>
           </div>
         </div>
-        <div class="map-footer"><span><i class="dot mine"></i>나 <i class="dot theirs"></i>동행</span><div class="map-links"><button id="model-credits" class="quiet" type="button" aria-haspopup="dialog">자료 출처</button><button id="entrance-target" class="quiet" type="button" aria-label="매표소로 순간이동">매표소</button><button id="fountain-target" class="quiet" type="button" aria-label="정동 분수대로 순간이동">분수대</button><button id="palace-target" class="quiet" type="button" aria-label="중화전으로 순간이동">중화전</button><button id="stop-target" class="quiet" type="button" hidden>정류장</button></div></div>
+        <div class="map-footer"><span><i class="dot mine"></i>나 <i class="dot theirs"></i>동행</span><div class="map-links"><button id="model-credits" class="quiet" type="button" aria-haspopup="dialog">자료 출처</button><button id="entrance-target" class="quiet" type="button" aria-label="매표소로 순간이동">매표소</button><button id="fountain-target" class="quiet" type="button" aria-label="정동 분수대로 순간이동">분수대</button><button id="palace-target" class="quiet" type="button" aria-label="중화전으로 순간이동">중화전</button><button id="stop-target" class="quiet" type="button" hidden>정류장</button><button id="plaza-bus-target" class="quiet" type="button" hidden>정류장</button></div></div>
       </article>
     </section>
-    <footer><span>✦ &nbsp; 덕수궁 한바퀴</span><span>덕수궁 돌담길을 바탕으로 만든 3D 산책 공간</span></footer>
+    <footer><span>✦ &nbsp; 덕수궁 한바퀴</span><span>덕수궁 · 광화문광장 · 경복궁을 걷는 3D 산책 공간</span></footer>
   </main>
   </div>
   <div id="transit" class="transit" role="status" aria-live="polite" hidden>
     <div class="transit-card">
       <div id="transit-scene" class="transit-scene" aria-hidden="true"></div>
-      <strong id="transit-title">경복궁역</strong>
-      <span id="transit-line">시청역 → 경복궁역</span>
+      <strong id="transit-title"></strong>
+      <span id="transit-line"></span>
       <span class="transit-track" aria-hidden="true"><i></i></span>
     </div>
   </div>
   <div id="toast" role="status" hidden></div>
+  <dialog id="transit-dialog" aria-labelledby="transit-dialog-title" aria-describedby="transit-from">
+    <div class="dialog-top">
+      <h2 id="transit-dialog-title">어디로 갈까요?</h2>
+      <button class="quiet close" type="button" aria-label="닫기">×</button>
+    </div>
+    <p id="transit-from"></p>
+    <div id="transit-options" role="group" aria-label="게임 속 목적지"></div>
+  </dialog>
   <dialog id="landmark-guide-dialog" aria-labelledby="landmark-guide-title">
     <div class="dialog-top">
       <h2 id="landmark-guide-title"></h2>
@@ -301,6 +309,11 @@
       <li><a href="https://www.data.go.kr/data/15104838/fileData.do" target="_blank" rel="noopener">중화전 3D 자료</a></li>
       <li><a href="https://www.data.go.kr/data/15104840/fileData.do" target="_blank" rel="noopener">함녕전 3D 자료</a></li>
       <li><a href="https://www.data.go.kr/data/15104853/fileData.do" target="_blank" rel="noopener">석어당 3D 자료</a></li>
+    </ul>
+    <p>광화문광장의 시설 배치와 교통편은 서울시 안내를 참고해 재현했습니다.</p>
+    <ul class="credits">
+      <li><a href="https://gwanghwamun.seoul.go.kr/ghm/facility/list.do?codeId=CODE_08&amp;mid=1011&amp;siteGrpKey=ghm&amp;siteId=ghm" target="_blank" rel="noopener">서울시 광화문광장 시설 위치안내</a></li>
+      <li><a href="https://gwanghwamun.seoul.go.kr/ghm/contents/16.do?mid=1009" target="_blank" rel="noopener">서울시 광화문광장 오시는 길</a></li>
     </ul>
     <p>경내 배치와 외관은 <a href="https://royal.khs.go.kr/ROYAL/contents/R701000000.do?schGroupCode=dsg" target="_blank" rel="noopener">궁능유적본부 관람 지도</a>와 <a href="https://look360.kr/vr/deoksugung_go_kr/deoksugung_go_kr/4736" target="_blank" rel="noopener">덕수궁 360도 파노라마</a>, 첨부 지도와 네이버 지도 거리뷰를 참고해 재현했습니다.</p>
     <p>전시 이미지와 확대 재현한 유물의 출처입니다.</p>

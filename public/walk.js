@@ -12,7 +12,9 @@ import {nearbyPalaceGuide} from "./palace-guide.js";
 import {bindSceneTouch} from "./scene-touch.js";
 import {makeSound} from "./sound.js";
 import {ceremonyAt} from "./palace-people.js";
-import {subwayStops,gbSites,gbBounds,gbLake,gbPond,gbPaths,gbCourts,gbLawns,gbShortcuts,wishPond,gbPhotoZone,gbUijeongbu,gbCrossings,gbBusIsland,inGyeongbok,wallHalf,wallNorth,at as palaceAt} from "./gyeongbok-layout.js";
+import {cityHallStation,gbSites,gbBounds,gbLake,gbPond,gbPaths,gbCourts,gbLawns,gbShortcuts,wishPond,gbPhotoZone,gbUijeongbu,gbCrossings,gbBusIsland,inGyeongbok,wallHalf,wallNorth,at as palaceAt} from "./gyeongbok-layout.js";
+import {inGwanghwamunPlaza,plazaAt,plazaBounds,plazaSites,plazaOutline,plazaPaths,plazaShortcuts,plazaBeds,plazaRoadProfile,eastRoadWidth} from "./plaza-layout.js";
+import {transitRoutes,transitStops} from "./transit-routes.js";
 
 const $=id=>document.getElementById(id);
 const token=()=>Array.from(crypto.getRandomValues(new Uint8Array(16)),byte=>byte.toString(16).padStart(2,"0")).join("");
@@ -229,6 +231,9 @@ const rosterDialog=$("roster-dialog"),targetDialog=$("look-target-dialog");
 const trackPins=[$("track-pin"),$("mini-track-pin")];
 function setText(node,value){if(node.textContent!==value)node.textContent=value;}
 const sceneTitle=document.querySelector(".scene-title");
+function outdoorMap({x,y}){
+  return inGwanghwamunPlaza(x,y)?"광화문광장":inGyeongbok(x,y)?"경복궁":"덕수궁";
+}
 function shownPlace(point){
   const place=placeName(point);
   return isInsideMuseum(point.x,point.y)&&place!=="덕수궁 전시관"?"미술관 · "+place:place;
@@ -317,6 +322,9 @@ function readLookSignals(serverTime){
   }
 }
 function guideLocation(point,indoors){
+  if(!indoors&&!isInsideMuseum(point.x,point.y)&&outdoorMap(point)!==outdoorMap(me)){
+    return {point:null,prefix:outdoorMap(point)+" · 교통편으로 이동"};
+  }
   if(isInsideMuseum(point.x,point.y)===indoors)return {point,prefix:""};
   return indoors?{point:world?.museum.insideDoor,prefix:"전시관 출구까지"}:
     {point:world?.museum.outsideDoor,prefix:"전시관 입구까지"};
@@ -586,7 +594,7 @@ function returnToLobby(message=""){
   chatInput.value="";composingChat=false;lastChatAt=0;updateChatSend();
   $("invite").disabled=$("look").disabled=$("look-target").disabled=true;
   world?.clearChat();
-  $("transit").hidden=true;riding=false;
+  clearTransit();
   $("lobby-status").textContent=message;
   sessionStorage.removeItem("jeongdong-room-mode");
   sessionStorage.removeItem("jeongdong-room-code");
@@ -754,7 +762,7 @@ function setMap(open){
 $("map-toggle").addEventListener("click",()=>setMap($("map-toggle").getAttribute("aria-expanded")!=="true"));
 $("close-map").addEventListener("click",()=>setMap(false));
 function walkTo(target,seat=null){
-  if(!target||!session||amFollowingHands()||!world&&!worldFailed)return;
+  if(!target||!session||riding||amFollowingHands()||!world&&!worldFailed)return;
   stand();
   // Routes keep to dry ground unless the walker is already in a pond or taps one.
   const feet=feetHeight(gameTime()),wet=waterDepth(me.x,me.y)>0||waterDepth(target.x,target.y)>0;
@@ -765,14 +773,21 @@ function walkTo(target,seat=null){
   if(!steps.length){toast("걸을 수 있는 길을 터치해 주세요.");return;}
   course=steps;seatClaim=null;pendingSeat=seat;
 }
-const shortcutButtons=["entrance-target","fountain-target","palace-target","stop-target"];
+const shortcutButtons=["entrance-target","fountain-target","palace-target","stop-target","plaza-bus-target"];
 const mapDestinations=[
   {label:"매표소",aria:"매표소로 순간이동",...ticketApproach,x:ticketApproach.x+1,y:ticketApproach.y-2.4,heading:entranceHeading},
   {label:"분수대",aria:"정동 분수대로 순간이동",name:"정동 분수대",x:fountain.x+4.8,y:fountain.y+5.3,heading:318},
-  {label:"중화전",aria:"중화전으로 순간이동",...court,heading:normalize(Math.atan2(hall.x-court.x,court.y-hall.y)*180/Math.PI)}
+  {label:"중화전",aria:"중화전으로 순간이동",...court,heading:normalize(Math.atan2(hall.x-court.x,court.y-hall.y)*180/Math.PI)},
+  {label:"교통편",aria:"시청역 2번 출구로 순간이동",...cityHallStation.arrive,name:cityHallStation.name}
 ];
-// The three shortcut buttons follow the map the walker is on.
-const shortcutsHere=()=>inGyeongbok(me.x,me.y)?gbShortcuts:mapDestinations;
+const plazaDestinations=[
+  {label:"광화문역",aria:"광화문역으로 순간이동",...plazaShortcuts.station},
+  {label:"이순신",aria:"이순신장군 동상으로 순간이동",...plazaShortcuts.yi},
+  {label:"세종대왕",aria:"세종대왕 동상으로 순간이동",...plazaShortcuts.sejong},
+  {label:"광화문 앞",aria:"광화문 앞으로 순간이동",...plazaShortcuts.north},
+  {label:"정류장",aria:"세종문화회관 정류장으로 순간이동",...plazaShortcuts.bus}
+];
+const shortcutsHere=()=>inGwanghwamunPlaza(me.x,me.y)?plazaDestinations:inGyeongbok(me.x,me.y)?gbShortcuts:mapDestinations;
 let shownShortcuts=null;
 function refreshShortcuts(){
   const shortcuts=shortcutsHere();
@@ -789,7 +804,7 @@ function refreshShortcuts(){
 }
 shortcutButtons.forEach((id,index)=>$(id).addEventListener("click",()=>{
   const destination=shortcutsHere()[index];
-  if(!session||!destination||!walkable(destination.x,destination.y))return;
+  if(!session||riding||!destination||!walkable(destination.x,destination.y))return;
   const linkId=myLink()?.id??(queuedHand?.action==="offer"?queuedHand.id:null);
   if(linkId){queuedHand={action:"release",id:linkId};changeLinks(links);}
   movePlayerTo(destination,destination.name);
@@ -835,7 +850,7 @@ window.addEventListener("blur",clearManualInput);
 window.addEventListener("keydown",event=>{
   if(event.target.closest("dialog"))return;
   if(event.key==="Escape"){setMap(false);setEmotes(false);}
-  if(!session||event.target.closest("input"))return;
+  if(!session||riding||event.target.closest("input"))return;
   if(event.code==="Space"&&!event.target.closest("button,a")&&!event.ctrlKey&&!event.metaKey&&!event.altKey){
     event.preventDefault();if(!event.repeat)jump();return;
   }
@@ -995,15 +1010,16 @@ function portalNearby(){
   const door=inside?museum.insideDoor:museum.outsideDoor;
   return near(door,me.x,me.y)<2.25&&clearSegment(me,door)?{inside,museum}:null;
 }
-// Subway exits join the two maps: City Hall beside the Deoksugung ticket office and
-// Gyeongbokgung station inside the palace wall.
-let riding=false;
-function nearbySubway(){
+const transitDialog=$("transit-dialog"),transitOptions=$("transit-options");
+let riding=false,rideArrival,rideEnd;
+function nearbyTransit(){
   if(!world||!session||me.seat!=null)return null;
-  for(const stop of subwayStops){
-    if(near(stop.door,me.x,me.y)<2.9&&clearSegment(me,stop.door))return stop;
+  let closest=null,distance=4.5;
+  for(const stop of transitStops){
+    const gap=near(stop.door,me.x,me.y);
+    if(gap<distance&&clearSegment(me,stop.door)){closest=stop;distance=gap;}
   }
-  return null;
+  return closest;
 }
 // Ride animations: a train pulls in, opens its doors and leaves through the tunnel; a bus
 // drives past the city skyline toward the palace gate.
@@ -1029,24 +1045,43 @@ const transitScenes={
       <g class="ride-wheel" style="transform-origin:112px 94px"><circle cx="112" cy="94" r="11" fill="#16181a"/><path d="M112 85v18M103 94h18" stroke="#8d949a" stroke-width="2"/></g>
       <g class="ride-wheel" style="transform-origin:212px 94px"><circle cx="212" cy="94" r="11" fill="#16181a"/><path d="M212 85v18M203 94h18" stroke="#8d949a" stroke-width="2"/></g></g></svg>`
 };
-function rideSubway(){
-  const stop=nearbySubway();
-  if(!stop||riding||myLink()?.active||feedingLocked(gameTime()))return;
-  const target=subwayStops.find(other=>other.id===stop.to);
-  riding=true;resetInput();
-  $("transit-title").textContent=stop.destination;
-  $("transit-line").textContent=stop.line;
+function clearTransit(){
+  clearTimeout(rideArrival);clearTimeout(rideEnd);
+  $("transit").hidden=true;riding=false;$("transit-scene").replaceChildren();
+}
+function rideTransit(stop,{target,area,line}){
+  if(riding||myLink()?.active||feedingLocked(gameTime())||nearbyTransit()!==stop||!walkable(target.arrive.x,target.arrive.y))return;
+  const linkId=myLink()?.id??(queuedHand?.action==="offer"?queuedHand.id:null);
+  if(linkId){queuedHand={action:"release",id:linkId};changeLinks(links);}
+  transitDialog.close();setMap(false);riding=true;resetInput();
+  Object.assign(me,{vx:0,vy:0,blocked:false,running:false});dirty=true;wakeSync();
+  $("transit-title").textContent=area;
+  $("transit-line").textContent=line;
   $("transit").dataset.mode=stop.mode;sound.chime(stop.mode);
   $("transit-scene").innerHTML=transitScenes[stop.mode];
   $("transit").hidden=false;
   const visit=session;
-  setTimeout(()=>{if(session===visit)movePlayerTo(target.arrive,target.name);},2300);
-  setTimeout(()=>{
-    $("transit").hidden=true;riding=false;$("transit-scene").innerHTML="";
-    if(session===visit){toast(target.name+"에 도착했어요.");focusGame();}
+  rideArrival=setTimeout(()=>{if(session===visit)movePlayerTo(target.arrive,target.name);},2300);
+  rideEnd=setTimeout(()=>{
+    if(session!==visit)return;
+    clearTransit();toast(target.name+"에 도착했어요.");focusGame();
   },4600);
 }
-$("subway").addEventListener("click",rideSubway);
+$("subway").addEventListener("click",()=>{
+  const stop=nearbyTransit();
+  if(!stop||riding||myLink()?.active||feedingLocked(gameTime()))return;
+  resetInput();
+  $("transit-from").textContent=stop.name;
+  transitOptions.replaceChildren(...transitRoutes(stop).map(route=>{
+    const button=document.createElement("button"),area=document.createElement("strong"),place=document.createElement("span");
+    button.type="button";button.className="quiet";
+    area.textContent=route.area;place.textContent=route.target.name;
+    button.append(area,place);
+    button.addEventListener("click",()=>rideTransit(stop,route));
+    return button;
+  }));
+  transitDialog.showModal();
+});
 function nearbyExhibit(){
   const gallery=museumGalleryAt(me.x,me.y);
   if(!gallery||!world)return null;
@@ -1119,7 +1154,7 @@ $("use-item").addEventListener("click",()=>{
 function movePlayerTo(destination,place){
   resetInput();stand();
   Object.assign(me,{x:destination.x,y:destination.y,heading:destination.heading,vx:0,vy:0,blocked:false,running:false,jump:0,up:false});
-  ownView={...ownView,pan:destination.heading,tilt:0};
+  ownView={...ownView,pan:destination.heading,tilt:destination.tilt??0};
   $("location").textContent=place;dirty=true;wakeSync();
 }
 $("museum-door").addEventListener("click",()=>{
@@ -1181,8 +1216,8 @@ function updateActivities(time,guideNearby){
   }else{
     setActivity("use-item",spec?(me.item.kind==="sparkler"?spec.verb:spec.verb+" · "+me.item.remaining+"회"):null,!canUseItem(time));
   }
-  const subway=eligible&&nearbySubway();
-  setActivity("subway",subway?(subway.mode==="bus"?"버스 타기 · ":"지하철 타기 · ")+subway.destination:null,riding||feeding||Boolean(myLink()?.active));
+  const stop=eligible&&nearbyTransit();
+  setActivity("subway",stop?(stop.mode==="bus"?"버스 타기":"지하철 타기"):null,riding||feeding||Boolean(myLink()?.active));
   const portal=eligible&&portalNearby();
   setActivity("museum-door",portal?(portal.inside?"나가기":"입장하기"):null,feeding||Boolean(myLink()?.active));
   const exhibit=eligible&&nearbyExhibit();
@@ -1218,6 +1253,7 @@ function walkCourse(speed){
   }
 }
 function motion(now,elapsed){
+  if(riding)return false;
   const oldX=me.x,oldY=me.y,link=myLink(),follower=amFollowingHands();
   const wasMoving=moving(me)||me.blocked,wasBlocked=me.blocked,wasRunning=me.running;
   const leader=follower&&people.get(link.leader);
@@ -1294,10 +1330,10 @@ function frame(now){
     setActivity("sit",seatEnabled?seatLabel:null,me.seat==null&&!bench?.choice);
     attr($("sit"),"aria-pressed",me.seat!=null);
     setText($("game-place"),$("location").textContent);
-    const atPalace=inGyeongbok(me.x,me.y);
-    setText($("game-season"),atPalace?"경복궁의 가을":"정동의 가을");
-    setText(sceneTitle,atPalace?"경복궁":"덕수궁 돌담길");
-    setText(sceneTitle.previousElementSibling,atPalace?"SEOUL · JONGNO":"SEOUL · JEONGDONG");
+    const area=outdoorMap(me),jeongdong=area==="덕수궁";
+    setText($("game-season"),(jeongdong?"정동":area)+"의 가을");
+    setText(sceneTitle,jeongdong?"덕수궁 돌담길":area);
+    setText(sceneTitle.previousElementSibling,jeongdong?"SEOUL · JEONGDONG":"SEOUL · JONGNO");
     refreshShortcuts();
     updateHandControls();updateLocationGuides(time);updateMaps(self,others);
   }
@@ -1348,6 +1384,7 @@ function drawMap(base,mini=false){
       ...(mini?{}:{style:"font-size:9px;stroke-width:2.6px"})},point===palacePond?"연못":point.name);
   }
   drawGyeongbok(base,mini);
+  drawPlaza(base,mini);
   const {minX,maxX,minY,maxY}=museumBounds;
   const interior=svg(base,"g",{visibility:"hidden"});
   museumMaps.push(interior);
@@ -1421,14 +1458,46 @@ function drawGyeongbok(base,mini){
     svg(base,"text",{x:building.x,y:building.y+(mini?building.d/2+6:building.d/2+22),class:mini?"mini-landmark":"map-label gyeongbok-label",
       "text-anchor":"middle"},building.name);
   }
-  for(const stop of subwayStops){
+  for(const stop of transitStops){
+    if(inGwanghwamunPlaza(stop.x,stop.y))continue;
     const big=!mini&&inGyeongbok(stop.x,stop.y);
     svg(base,"circle",{cx:stop.x,cy:stop.y,r:mini?1.9:big?7:3,fill:"#f1d8a6",stroke:"#513e32","stroke-width":mini?.6:big?2:.9});
     svg(base,"text",{x:stop.x,y:stop.y-(mini?3.2:big?12:5),class:mini?"mini-landmark":big?"map-label gyeongbok-label":"map-label","text-anchor":"middle",
       ...(mini||big?{}:{style:"font-size:8.5px;stroke-width:2.2px"})},mini?(stop.mode==="bus"?"버스":"지하철"):stop.name);
   }
 }
+function drawPlaza(base,mini){
+  const {minX,maxX,minY,maxY}=plazaBounds;
+  svg(base,"rect",{x:minX,y:minY,width:maxX-minX,height:maxY-minY,fill:"#333b38"});
+  const road=plazaRoadProfile.map(([n,e])=>plazaAt(e+eastRoadWidth/2,n));
+  svg(base,"polyline",{points:outline(road),fill:"none",stroke:"#4e5351","stroke-width":eastRoadWidth});
+  svg(base,"polygon",{points:outline(plazaOutline),fill:"#6a6c56",stroke:"#9f977b","stroke-width":1.5});
+  for(const bed of plazaBeds)svg(base,"polygon",{points:outline(bed.outline),fill:bed.kind==="lawn"?"#849465":"#4d684f"});
+  for(const {points,width,surface} of plazaPaths){
+    svg(base,"polyline",{points:outline(points),fill:"none",stroke:surface==="stone"?"#b9ad90":"#9f9679",
+      "stroke-width":width,"stroke-linecap":"round","stroke-linejoin":"round"});
+  }
+  const labels=[["gate","광화문",1],["woldae","월대",-1],["lawn","육조마당",-1],["pine","소나무정원",-1],
+    ["time","시간의 정원",1],["gratitude","감사의 정원",-1],["sejong","세종대왕",1],
+    ["play","놀이마당",-1],["haechi","해치마당",1],["hangeul","한글분수",-1],
+    ["yi","이순신",1],["myeongnyang","명량분수",1]];
+  for(const [key,label,side] of labels){
+    const point=plazaSites[key];
+    svg(base,"circle",{cx:point.x,cy:point.y,r:mini?1.7:3.6,fill:"#e1c790"});
+    if(!mini)svg(base,"line",{x1:point.x+side*4,y1:point.y,x2:point.x+side*11,y2:point.y,stroke:"#c2b58c","stroke-width":1});
+    svg(base,"text",{x:point.x+(mini?0:side*14),y:point.y+(mini?-4:4),class:mini?"mini-landmark":"map-label plaza-map-label",
+      "text-anchor":mini?"middle":side===1?"start":"end"},label);
+  }
+  for(const stop of transitStops){
+    if(!inGwanghwamunPlaza(stop.x,stop.y))continue;
+    const bus=stop.mode==="bus";
+    svg(base,"circle",{cx:stop.x,cy:stop.y,r:mini?2:4.8,fill:bus?"#b7d5d9":"#f1d8a6",stroke:"#293c35","stroke-width":mini?.7:1.2});
+    svg(base,"text",{x:stop.x,y:stop.y+(mini?7:16),class:mini?"mini-landmark":"map-label plaza-map-label",
+      "text-anchor":"middle"},bus?"버스 정류장":"광화문역");
+  }
+}
 const gyeongbokViewBox=[gbBounds.minX+18,gbBounds.minY-24,564,1098].join(" ");
+const plazaViewBox=[plazaBounds.minX,plazaBounds.minY,plazaBounds.maxX-plazaBounds.minX,plazaBounds.maxY-plazaBounds.minY].join(" ");
 function attr(node,key,value){if(node.getAttribute(key)!==String(value))node.setAttribute(key,value);}
 function drawDestinations(world){
   const layer=$("map-landscape");
@@ -1439,8 +1508,9 @@ function drawDestinations(world){
   }
 }
 function updateMaps(self,others){
-  const indoors=isInsideMuseum(self.x,self.y),palace=inGyeongbok(self.x,self.y);
-  attr($("my-avatar"),"transform","translate("+self.x+" "+self.y+")"+(indoors?" scale(.18)":palace?" scale(2.2)":""));
+  const indoors=isInsideMuseum(self.x,self.y),palace=inGyeongbok(self.x,self.y),plaza=inGwanghwamunPlaza(self.x,self.y);
+  const area=outdoorMap(self);
+  attr($("my-avatar"),"transform","translate("+self.x+" "+self.y+")"+(indoors?" scale(.18)":palace?" scale(2.2)":plaza?" scale(1.55)":""));
   const coat=hexCoat(self.coat??0xe5b672);
   $("my-avatar").querySelector("circle").style.fill=coat;
   attr($("mini-my"),"fill",coat);
@@ -1448,7 +1518,7 @@ function updateMaps(self,others){
   for(const map of museumMaps)attr(map,"visibility",indoors?"visible":"hidden");
   $("world").classList.toggle("museum-map",indoors);
   $("mini-world").classList.toggle("museum-map",indoors);
-  attr($("world"),"viewBox",indoors?museumViewBox:palace?gyeongbokViewBox:"58 28 520 397");
+  attr($("world"),"viewBox",indoors?museumViewBox:palace?gyeongbokViewBox:plaza?plazaViewBox:"58 28 520 397");
   attr($("mini-world"),"viewBox",indoors?museumViewBox:(self.x-42).toFixed(1)+" "+(self.y-35).toFixed(1)+" 84 70");
   for(const actor of others.values()){
     let mark=markers.get(actor.id);
@@ -1460,9 +1530,9 @@ function updateMaps(self,others){
       mark={big,mini};markers.set(actor.id,mark);
     }
     for(const node of [mark.big,mark.mini]){attr(node,"cx",actor.x);attr(node,"cy",actor.y);}
-    attr(mark.big,"r",indoors?1.45:palace?17:8);
+    attr(mark.big,"r",indoors?1.45:palace?17:plaza?12:8);
     attr(mark.mini,"r",indoors?1.1:2.5);
-    const visible=isInsideMuseum(actor.x,actor.y)===indoors?"visible":"hidden";
+    const visible=isInsideMuseum(actor.x,actor.y)===indoors&&outdoorMap(actor)===area?"visible":"hidden";
     attr(mark.big,"visibility",visible);attr(mark.mini,"visibility",visible);
   }
   for(const [id,mark] of markers)if(!others.has(id)){mark.big.remove();mark.mini.remove();markers.delete(id);}
