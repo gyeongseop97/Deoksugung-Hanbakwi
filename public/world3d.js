@@ -6,15 +6,17 @@ import { addParkLife } from "./park-life.js";
 import { addPalaceBirds } from "./palace-birds.js";
 import { addPalaceSky } from "./palace-sky.js";
 import { addStands, makeItemProps } from "./street-stands.js";
-import { addMuseum, stairHeight } from "./museum.js";
+import { assembleMuseum, registerMuseumNavigation, isInsideMuseum, museumOutsideDoor, museumInsideDoor, museumInsideSpawn, stairHeight } from "./museum.js";
 import { PET_MS, FEED_MS, jumpLift } from "./activities.js";
 import { makeWalkerModels } from "./walker-model.js";
 import { gbSurveyModels, gbNightGlow } from "./gyeongbok.js";
-import { gbSite, gwanghwamun, inGyeongbok, gbLightSpots } from "./gyeongbok-layout.js";
-import { buildGwanghwamunPlaza } from "./gwanghwamun-plaza.js";
-import { haechiBasin, inGwanghwamunPlaza, plazaGroundHeight, plazaSites } from "./plaza-layout.js";
+import { gbSite, gwanghwamun, gbBounds, inGyeongbok, gbLightSpots } from "./gyeongbok-layout.js";
+import { assembleGwanghwamunPlaza, registerPlazaNavigation } from "./gwanghwamun-plaza.js";
+import { haechiBasin, inGwanghwamunPlaza, plazaBounds, plazaGroundHeight, plazaSites } from "./plaza-layout.js";
 import { buildSejongCorridor } from "./sejong-corridor.js";
-import { buildBikeDocks } from "./sejong-bike-model.js";
+import { corridorBounds } from "./sejong-corridor-layout.js";
+import { buildBikeDocks, makeRidingBike, registerBikeDocks } from "./sejong-bike-model.js";
+import { bikeDocks, isCycling } from "./sejong-bike.js";
 import { buildSejongBusModels } from "./sejong-bus-model.js";
 import { BUS_FLOOR, busAt, busSeatPose } from "./sejong-bus.js";
 import { addPalacePeople } from "./palace-people.js";
@@ -34,6 +36,7 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
   renderer.setPixelRatio(quality.pinned?quality.max:quality.ratio);
   renderer.shadowMap.enabled=true;
   renderer.shadowMap.type=T.PCFSoftShadowMap;
+  renderer.shadowMap.autoUpdate=!handheld||quality.pinned;
   const selfEmote=document.createElement("span");
   selfEmote.className="self-emote";selfEmote.hidden=true;selfEmote.setAttribute("aria-hidden","true");
   const selfChat=document.createElement("span");
@@ -71,8 +74,8 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     `
   }));
   // Keep the sky enclosing the camera along the entire north–south walk.
-  const heavens=new T.Group();
-  sky.renderOrder=-3;heavens.add(sky);scene.add(heavens);
+  const outdoors=new T.Group(),heavens=new T.Group();
+  sky.renderOrder=-3;heavens.add(sky);outdoors.add(heavens);scene.add(outdoors);
   scene.fog=new T.FogExp2(0xc6dbe3,.0039);
   const hemi=new T.HemisphereLight(0xe8f0ff,0x86765a,1.42);
   const sun=new T.DirectionalLight(0xffe7bd,3.05);
@@ -101,8 +104,8 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
   scene.add(hemi,sun,sun.target,moonLight);
   const drawPalaceSky=addPalaceSky(T,heavens,{sunDirection:sunDirection.clone().multiplyScalar(142)});
   const wx=x=>x-300,wz=y=>y-225;
-  let seed=220621;
-  function rand(){seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;}
+  const randomFrom=seed=>()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};
+  const rand=randomFrom(220621);
   const mat=new Map(),cylinders=new Map(),unit=new T.BoxGeometry(1,1,1);
   function matte(color){
     if(!mat.has(color))mat.set(color,new T.MeshStandardMaterial({color,roughness:.88}));
@@ -121,14 +124,23 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     const object=shape(cylinders.get(key),color,x,y,z,parent);object.scale.set(r,h,r);return object;
   }
 
-  const kit={wx,wz,rand,shape,box,cylinder,matte};
-  const {benches,trees,catWalls,fountains,lampMaterial,classical,middleModel,hallModel,drawPond,pavilionModels,subwayStations}=buildJeongdong(T,scene,kit);
-  buildSejongCorridor(T,scene,kit);
-  buildBikeDocks(T,scene,kit);
-  const buses=buildSejongBusModels(T,scene,kit);
-  const updatePlaza=buildGwanghwamunPlaza(T,scene,kit,{benches});
-  const drawWater=addWater(T,scene,fountains,kit);
-  const stations=addStands(T,scene,kit);
+  const makeKit=root=>({wx,wz,rand,matte,
+    shape:(geo,color,x,y,z,parent=root)=>shape(geo,color,x,y,z,parent),
+    box:(color,x,y,z,w,h,d,parent=root)=>box(color,x,y,z,w,h,d,parent),
+    cylinder:(color,x,y,z,r,h,sides,parent=root,top)=>cylinder(color,x,y,z,r,h,sides,parent,top)});
+  const kit=makeKit(outdoors),deoksRoot=new T.Group(),corridorRoot=new T.Group(),transportRoot=new T.Group();
+  const {benches,trees,catWalls,fountains,lampMaterial,classical,middleModel,hallModel,drawPond,pavilionModels,buildGyeongbokDistrict}=
+    buildJeongdong(T,deoksRoot,makeKit(deoksRoot),{deferGyeongbok:true});
+  buildSejongCorridor(T,corridorRoot,makeKit(corridorRoot));
+  registerBikeDocks();
+  const addDocks=(root,where)=>buildBikeDocks(T,root,makeKit(root),{docks:bikeDocks.filter(where),register:false});
+  addDocks(deoksRoot,dock=>dock.y>=28);
+  addDocks(corridorRoot,dock=>dock.y<28&&dock.y>-280);
+  const buses=buildSejongBusModels(T,transportRoot,kit);
+  registerPlazaNavigation(benches);
+  const drawWater=addWater(T,deoksRoot,fountains,makeKit(deoksRoot));
+  const stations=addStands(T,transportRoot,makeKit(transportRoot));
+  outdoors.add(deoksRoot,corridorRoot,transportRoot);
   const createItemProp=makeItemProps(T,kit);
   const walkerModels=makeWalkerModels(T,scene,kit,createItemProp);
   const spotLights=[gate,middle,stoneHall].map((point,i)=>{
@@ -172,7 +184,7 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     }
   }
   const palacePeople=addPalacePeople(T,scene,kit,walkerModels,{floorHeight:point=>floorHeight(point),labelSprite:(...args)=>labelSprite(...args),handheld});
-  const nightSky=addNightSky(T,heavens,rand);
+  const nightSky=addNightSky(T,heavens,randomFrom(173408));
   const dayHorizon=new T.Color(0xcce4f0),nightHorizon=new T.Color(0x23384f);
   const dayZenith=new T.Color(0x367ec5),nightZenith=new T.Color(0x080e21);
   const dayFog=new T.Color(0xc6dbe3),nightFog=new T.Color(0x1b2b40);
@@ -187,33 +199,24 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     lanterns.delete(id);
   }
 
-  scene.updateMatrixWorld(true);
   const surveyedPavilions=[["jeonggwanheon","정관헌"],["hamnyeongjeon","함녕전"],["seogeodang","석어당"]].map(([model,label])=>{
     const {spec,groups}=pavilionModels.get(label);
     return {model,point:spec,groups,angle:spec.angle};
   });
-  // Gyeongbokgung halls stay separate too, so a survey model can take a hall's place later.
-  const gyeongbokGroups=subwayStations.groups;
-  const fallbackGroups=new Set([classical,middleModel,hallModel,...surveyedPavilions.flatMap(pavilion=>pavilion.groups),
-    ...gbSurveyModels.map(id=>gyeongbokGroups.get(id)).filter(Boolean)]);
-  const chunks=consolidate(scene,fallbackGroups);
-
-  const outdoors=new T.Group();
-  for(const object of [...scene.children]){
-    if(object!==hemi&&object!==sun&&object!==sun.target&&object!==moonLight)outdoors.add(object);
-  }
-  scene.add(outdoors);
+  const deoksChunks=finishBuild(consolidate(deoksRoot,new Set([classical,middleModel,hallModel,
+    ...surveyedPavilions.flatMap(pavilion=>pavilion.groups)])));
+  const corridorChunks=finishBuild(consolidate(corridorRoot,new Set()));
+  const transportChunks=finishBuild(consolidate(transportRoot,new Set()));
   const guideMarker=makeGuideMarker();
   guideMarker.position.set(wx(ticketGuide.x),2.42,wz(ticketGuide.y));
   outdoors.add(guideMarker);
-  const museum=addMuseum(T,scene,kit);
-  const birds=addPalaceBirds(T,outdoors,{...kit,floorHeight},{trees,walls:catWalls,seed:catSeed});
-  const parkLife=addParkLife(T,outdoors,{...kit,trees,floorHeight,catWalls,benches,onCatFlee,catSeed,birds});
-
-  const landmarkLoaders=Promise.all([
-    import("https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/loaders/GLTFLoader.js"),
-    import("https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/libs/meshopt_decoder.module.js")
-  ]);
+  registerMuseumNavigation();
+  const museum={outsideDoor:museumOutsideDoor,insideDoor:museumInsideDoor,insideSpawn:museumInsideSpawn,
+    isInside:isInsideMuseum,floorAt:stairHeight,exhibits:[]};
+  const birds=addPalaceBirds(T,outdoors,{...kit,floorHeight},{trees,walls:catWalls,seed:catSeed,deferNorth:true});
+  const parkLife=addParkLife(T,outdoors,{...kit,trees,floorHeight,catWalls,benches,onCatFlee,catSeed,birds,deferNorth:true});
+  let landmarkLoaders,surveyLoading=false;
+  const surveyQueue=[];
   // Doorways cut through the surveyed shells so the furnished rooms inside can be entered.
   // Each is a box in the building's own coordinates: across, toward the front, and up.
   const surveyDoors={
@@ -232,8 +235,12 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
       new T.Plane(up.clone(),-(floor+height)),new T.Plane(up.clone().negate(),floor)
     ];
   }
-  async function loadLandmark(name,point,groups,angle=0){
+  async function loadLandmark({name,point,groups,angle,root,onLoaded}){
     try{
+      landmarkLoaders??=Promise.all([
+        import("https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/loaders/GLTFLoader.js"),
+        import("https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/libs/meshopt_decoder.module.js")
+      ]);
       const [{GLTFLoader},{MeshoptDecoder}]=await landmarkLoaders;
       const asset=await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync("/"+name+".glb");
       asset.scene.position.set(wx(point.x),0,wz(point.y));
@@ -256,22 +263,89 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
         material.needsUpdate=true;
         mesh.castShadow=mesh.receiveShadow=true;
       });
-      outdoors.add(asset.scene);
+      root.add(asset.scene);
       for(const group of groups)group.visible=false;
       container.dataset[name]="survey";
+      onLoaded?.();
       return true;
     }catch{
       container.dataset[name]="modeled";
       return false;
     }
   }
-  loadLandmark("seokjojeon",stoneHall,[classical]);
-  loadLandmark("junghwamun",middle,[middleModel],courtAngle).then(loaded=>{scannedMiddle=loaded;});
-  loadLandmark("junghwajeon",hall,[hallModel],courtAngle);
-  for(const {model,point,groups,angle} of surveyedPavilions)loadLandmark(model,point,groups,angle);
-  for(const id of gbSurveyModels)if(gyeongbokGroups.has(id))loadLandmark(id,gbSite[id],[gyeongbokGroups.get(id)],gbSite[id].angle);
+  function addSurvey(root,name,point,groups,angle=0,onLoaded){surveyQueue.push({root,name,point,groups,angle,onLoaded});}
+  addSurvey(deoksRoot,"seokjojeon",stoneHall,[classical]);
+  addSurvey(deoksRoot,"junghwamun",middle,[middleModel],courtAngle,()=>{scannedMiddle=true;});
+  addSurvey(deoksRoot,"junghwajeon",hall,[hallModel],courtAngle);
+  for(const {model,point,groups,angle} of surveyedPavilions)addSurvey(deoksRoot,model,point,groups,angle);
 
-  const models=new Map(),emojiMaps=new Map();
+  const deoksBounds={minX:45,maxX:560,minY:30,maxY:420};
+  const plazaRoot=new T.Group(),palaceRoot=new T.Group(),museumRoot=new T.Group();
+  const deoks={root:deoksRoot,bounds:deoksBounds,chunks:deoksChunks};
+  const corridor={root:corridorRoot,bounds:corridorBounds,chunks:corridorChunks};
+  let museumView,updatePlaza,northWildlife;
+  const plaza={root:plazaRoot,bounds:plazaBounds,*build(){
+    updatePlaza=yield* assembleGwanghwamunPlaza(T,plazaRoot,makeKit(plazaRoot));
+    addDocks(plazaRoot,dock=>dock.y<=-280&&dock.y>-790);
+    return yield* consolidate(plazaRoot,new Set());
+  }};
+  const palace={root:palaceRoot,bounds:gbBounds,*build(){
+    const {groups}=yield* buildGyeongbokDistrict(palaceRoot);
+    addDocks(palaceRoot,dock=>dock.y<=-790);
+    const surveyed=gbSurveyModels.filter(id=>groups.has(id));
+    const chunks=yield* consolidate(palaceRoot,new Set(surveyed.map(id=>groups.get(id))));
+    for(const id of surveyed)addSurvey(palaceRoot,id,gbSite[id],[groups.get(id)],gbSite[id].angle);
+    northWildlife=(function*(){yield* birds.loadNorth();yield* parkLife.loadNorth();})();
+    return chunks;
+  }};
+  const gallery={*build(){
+    museumView=yield* assembleMuseum(T,museumRoot,kit);
+    museum.exhibits=museumView.exhibits;
+    scene.add(museumRoot);
+    return [];
+  }};
+  const districts=[deoks,corridor,plaza,palace],loading=container.querySelector("#loading-game");
+  function distanceToDistrict({x,y},{minX,maxX,minY,maxY}){
+    return Math.hypot(Math.max(minX-x,0,x-maxX),Math.max(minY-y,0,y-maxY));
+  }
+  function advanceWorld(anchor,indoors){
+    const needed=indoors?gallery:inGyeongbok(anchor.x,anchor.y)?palace:inGwanghwamunPlaza(anchor.x,anchor.y)?plaza:null;
+    const pending=needed&&!needed.chunks&&!needed.failed?needed:null;
+    let nearby=null,gap=430;
+    if(!indoors&&!pending)for(const district of [plaza,palace]){
+      if(district.chunks||district.failed)continue;
+      const distance=distanceToDistrict(anchor,district.bounds);
+      if(distance<gap){nearby=district;gap=distance;}
+    }
+    const approachMuseum=!gallery.chunks&&!gallery.failed&&Math.hypot(anchor.x-museumOutsideDoor.x,anchor.y-museumOutsideDoor.y)<24;
+    const target=pending??(!indoors&&(approachMuseum?gallery:nearby));
+    const deadline=performance.now()+5;
+    if(target){
+      target.steps??=target.build();
+      try{
+        do{
+          const step=target.steps.next();
+          if(step.done){target.chunks=step.value;target.steps=null;cullAt=0;break;}
+        }while(performance.now()<deadline);
+      }catch(error){
+        target.failed=true;target.steps=null;
+        console.error("Could not assemble a walking district",error);
+      }
+    }else if(northWildlife&&!indoors&&distanceToDistrict(anchor,gbBounds)<225){
+      do{
+        if(northWildlife.next().done){northWildlife=null;break;}
+      }while(performance.now()<deadline);
+    }
+    const waiting=Boolean(needed&&!needed.chunks);
+    if(loading){
+      loading.hidden=!waiting;
+      const message=needed?.failed?"산책길을 불러오지 못했어요.":"산책길을 열고 있어요.";
+      if(loading.textContent!==message)loading.textContent=message;
+    }
+    return waiting;
+  }
+
+  const models=new Map(),parkedModels=new Map(),emojiMaps=new Map();
   function labelSprite(nickname,coat){
     const canvas=document.createElement("canvas"),ctx=canvas.getContext("2d");
     const font='650 36px "Segoe UI","Malgun Gothic",sans-serif';
@@ -446,7 +520,7 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     }
     if(element.hidden===show)element.hidden=!show;
   }
-  let cameraAnchor=null,cameraDistance=0,prevTime=0,governedAt=0,cullAt=0;
+  let cameraAnchor=null,cameraDistance=0,prevTime=0,governedAt=0,cullAt=0,shadowAt=0;
   // Last resort on a slow device: draw fewer birds and only the cats close by.
   function thinWildlife(sparse){
     quality.sparse=sparse;birds.setSparse(sparse);parkLife.setSparse(sparse);
@@ -480,29 +554,54 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
   }
   function render(state,now){
     if(container.hidden)return;
-    const {me,peers,view,firstPerson,clock=Date.now()}=state,delta=Math.min(.064,(now-(prevTime||now))/1000);
+    const {me,peers,view,firstPerson,parkedBikes=[],clock=Date.now()}=state,delta=Math.min(.064,(now-(prevTime||now))/1000);
     prevTime=now;
+    const anchor=me,angle=view.pan*Math.PI/180,indoors=museum.isInside(anchor.x,anchor.y),
+      atPlaza=inGwanghwamunPlaza(anchor.x,anchor.y);
+    if(advanceWorld(anchor,indoors))return;
     night+=(Number(Boolean(view.night))-night)*Math.min(1,delta*4.2);
     skyUniforms.horizon.value.copy(dayHorizon).lerp(nightHorizon,night);
     skyUniforms.zenith.value.copy(dayZenith).lerp(nightZenith,night);
     scene.fog.color.copy(dayFog).lerp(nightFog,night);
     hemi.color.copy(ambientDay).lerp(ambientNight,night);
-    const anchor=me,angle=view.pan*Math.PI/180,indoors=museum.isInside(anchor.x,anchor.y),
-      atPlaza=inGwanghwamunPlaza(anchor.x,anchor.y);
     // Gradually follow the northward route without shifting the skyline at district boundaries.
     const horizonFollow=T.MathUtils.smoothstep(180-anchor.y,0,220);
     heavens.position.set((wx(anchor.x)-21)*horizonFollow,0,(wz(anchor.y)+14)*horizonFollow);
     if(!indoors&&now>=cullAt){
       // Fog hides everything past half a kilometre, so those map cells are not drawn at all.
       cullAt=now+260;
-      const cx=wx(anchor.x),cz=wz(anchor.y),reach=quality.sparse?300:540;
+      const cx=wx(anchor.x),cz=wz(anchor.y),reach=quality.sparse?300:handheld&&!quality.pinned?445:540;
       placeLights(anchor);
-      for(const chunk of chunks){
-        const visible=Math.hypot(chunk.x-cx,chunk.z-cz)-chunk.radius<reach;
-        if(chunk.object.visible!==visible)chunk.object.visible=visible;
+      function cull(chunks){
+        for(const {x,z,radius,object} of chunks){
+          const visible=(x-cx)**2+(z-cz)**2<(reach+radius)**2;
+          if(object.visible!==visible)object.visible=visible;
+        }
+      }
+      cull(transportChunks);
+      for(const district of districts){
+        if(!district.chunks)continue;
+        const attached=district.root.parent===outdoors;
+        const visible=distanceToDistrict(anchor,district.bounds)<reach+(attached?90:65);
+        if(visible){
+          if(!attached)outdoors.add(district.root);
+          cull(district.chunks);
+        }else if(attached)district.root.removeFromParent();
+      }
+      if(!surveyLoading){
+        let next=null,distance=handheld?135:210;
+        for(const item of surveyQueue){
+          if(item.started||item.root.parent!==outdoors)continue;
+          const gap=Math.hypot(item.point.x-anchor.x,item.point.y-anchor.y);
+          if(gap<distance){next=item;distance=gap;}
+        }
+        if(next){
+          surveyLoading=next.started=true;
+          loadLandmark(next).finally(()=>{surveyLoading=false;});
+        }
       }
     }
-    outdoors.visible=!indoors;museum.setVisible(indoors);
+    outdoors.visible=!indoors;museumView?.setVisible(indoors);
     guideMarker.visible=!indoors&&Math.hypot(anchor.x-ticketGuide.x,anchor.y-ticketGuide.y)<22;
     if(guideMarker.visible){
       const pulse=state.guideNearby?Math.sin(now*.004)*.045:0;
@@ -513,15 +612,30 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     sun.intensity=indoors?0:3.05*(1-night);moonLight.intensity=indoors?0:night*.95;
     const shadowed=quality.shadows&&!indoors&&night<.97;
     if(sun.castShadow!==shadowed)sun.castShadow=shadowed;
-    if(shadowed)aimShadow(wx(anchor.x),0,wz(anchor.y));
+    if(shadowed&&(renderer.shadowMap.autoUpdate||now>=shadowAt)){
+      aimShadow(wx(anchor.x),0,wz(anchor.y));renderer.shadowMap.needsUpdate=true;shadowAt=now+45;
+    }
     govern(now);
     lampMaterial.emissiveIntensity=.03+night*2.15;
     spotLights.forEach((light,i)=>{light.intensity=lightDay[i]*(1-night)+night*lightPower[i];});
     buses.update(clock,indoors?null:anchor);
-    for(const {material,rest,strength} of gbNightGlow)material.emissiveIntensity=rest+night*strength;
-    updatePlaza(now,night,atPlaza?anchor:null);
+    if(palaceRoot.parent===outdoors)for(const {material,rest,strength} of gbNightGlow)material.emissiveIntensity=rest+night*strength;
+    if(plazaRoot.parent===outdoors)updatePlaza(now,night,atPlaza?anchor:null);
     const roster=[me,...peers],present=new Set(roster.map(player=>player.id));
-    if(!indoors){drawWater(now*.001,night);drawPond(now*.001,night);nightSky(night);drawPalaceSky(now,night);birds.update(clock,delta,roster);}
+    if(!indoors){
+      if(deoksRoot.parent===outdoors&&distanceToDistrict(anchor,deoksBounds)<120){drawWater(now*.001,night);drawPond(now*.001,night);}
+      nightSky(night);drawPalaceSky(now,night);birds.update(clock,delta,roster);
+    }
+    const parkedNearby=new Set();
+    for(const bike of parkedBikes){
+      if(indoors||isInsideMuseum(bike.x,bike.y)||(bike.x-anchor.x)**2+(bike.y-anchor.y)**2>140**2)continue;
+      parkedNearby.add(bike.id);
+      let model=parkedModels.get(bike.id);
+      if(!model){model=makeRidingBike(T).group;parkedModels.set(bike.id,model);outdoors.add(model);}
+      model.position.set(wx(bike.x),footing(bike),wz(bike.y));
+      model.rotation.y=(180-bike.heading)*Math.PI/180;
+    }
+    for(const [id,model] of parkedModels)if(!parkedNearby.has(id)){model.removeFromParent();parkedModels.delete(id);}
     for(const {id,feed} of roster)if(feed&&feed.at<=clock&&feed.at+FEED_MS>clock)parkLife.feed(feed.id,feed.at,id);
     for(const {pet} of roster)if(pet&&pet.at<=clock&&pet.at+PET_MS>clock)parkLife.pet(pet.id,pet.at);
     parkLife.update(clock,indoors?null:anchor,roster);
@@ -545,7 +659,7 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     const seat=seatAt(anchor,clock),bus=anchor.bus&&busAt(anchor.bus.index,clock);
     const outsideBus=bus&&!firstPerson;
     const eyeHeight=outsideBus?2.1:seat?(firstPerson?1.30:1.22)+(seat.base??0):
-      (firstPerson?1.28:1.20)+footing(anchor)+jumpLift(anchor,clock)+(anchor.bike?.dock?.length? .12:0);
+      (firstPerson?1.28:1.20)+footing(anchor)+jumpLift(anchor,clock)+(isCycling(anchor)?.12:0);
     const cameraPoint=outsideBus?bus:seat??anchor;
     anchorPoint.set(wx(cameraPoint.x),eyeHeight,wz(cameraPoint.y));
     const anchorKey=bus?`${anchor.id}-${bus.index}-${firstPerson}`:anchor.id;
@@ -558,9 +672,10 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
       camera.fov+=(zoomFov-camera.fov)*(1-Math.exp(-delta*12));
       camera.updateProjectionMatrix();
     }
-    const pitch=firstPerson?Math.max(-72,Math.min(65,view.tilt)):
-      Math.max(outsideBus?4:-10,Math.min(62,(outsideBus?23:14)+view.tilt));
-    const elevation=pitch*Math.PI/180;
+    const pitch=firstPerson?Math.max(-87,Math.min(65,view.tilt)):
+      Math.max(-83,Math.min(62,(outsideBus?23:14)+(view.tilt<0?view.tilt*1.22:view.tilt)));
+    const orbitPitch=firstPerson?pitch:Math.max(outsideBus?4:-10,pitch);
+    const elevation=orbitPitch*Math.PI/180;
     const horizontal=Math.cos(elevation);
     arm.set(-Math.sin(angle)*horizontal,Math.sin(elevation),Math.cos(angle)*horizontal);
     if(firstPerson){
@@ -580,7 +695,12 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
       if(changed||!cameraDistance||available<cameraDistance)cameraDistance=available;
       else cameraDistance+=(available-cameraDistance)*(1-Math.exp(-delta*8));
       camera.position.copy(pivot).addScaledVector(arm,cameraDistance);
-      camera.lookAt(pivot);
+      if(pitch===orbitPitch)camera.lookAt(pivot);
+      else{
+        const direction=pitch*Math.PI/180;
+        gaze.set(Math.sin(angle)*Math.cos(direction),-Math.sin(direction),-Math.cos(angle)*Math.cos(direction));
+        camera.lookAt(gaze.add(camera.position));
+      }
     }
     cameraUp.set(0,1,0).applyQuaternion(camera.quaternion);
     for(const model of models.values())if(model.group.visible&&model.chatSprite)walkerModels.placeChat(model,cameraUp);
@@ -678,7 +798,8 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     guideMarker.visible=marker;camera.fov=previous;camera.updateProjectionMatrix();
     return picture;
   }
-  const renderStats=()=>({...renderer.info.render,geometries:renderer.info.memory.geometries,textures:renderer.info.memory.textures});
+  const renderStats=()=>({...renderer.info.render,geometries:renderer.info.memory.geometries,textures:renderer.info.memory.textures,
+    areas:{plaza:Boolean(plaza.chunks),palace:Boolean(palace.chunks),museum:Boolean(gallery.chunks)}});
   return {render,pick,previewWalker,clearChat,floorHeight,groundHeight,renderStats,snapshot,benches,stations,parkLife,birds,palacePeople,museum};
 }
 
@@ -686,7 +807,13 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
 // one separately costs far more than its triangles, so static pieces are combined per map
 // cell: repeated shapes become instanced batches and everything else is merged into one
 // vertex-coloured mesh. Cells outside the view are culled as a whole.
-function consolidate(scene,fallbackGroups,cell=48){
+function finishBuild(build){
+  let step=build.next();
+  while(!step.done)step=build.next();
+  return step.value;
+}
+
+function* consolidate(scene,fallbackGroups,cell=48){
   scene.updateMatrixWorld(true);
   const plainMaterials=new Map(),instanceGroups=new Map(),mergeGroups=new Map(),made=[];
   const local=new T.Matrix4(),inverse=new T.Matrix4(),normalMatrix=new T.Matrix3(),centre=new T.Vector3(),vertex=new T.Vector3();
@@ -708,7 +835,8 @@ function consolidate(scene,fallbackGroups,cell=48){
     if(!mesh.geometry.attributes.position||!mesh.geometry.attributes.normal)return;
     candidates.push(mesh);
   });
-  for(const mesh of candidates){
+  for(const [index,mesh] of candidates.entries()){
+    if(index&&index%512===0)yield;
     const material=mesh.material,geometry=mesh.geometry;
     let owner=scene;
     for(let parent=mesh.parent;parent;parent=parent.parent)if(fallbackGroups.has(parent)){owner=parent;break;}
@@ -741,6 +869,7 @@ function consolidate(scene,fallbackGroups,cell=48){
       batch.castShadow=batch.receiveShadow=true;
       batch.computeBoundingSphere();owner.add(batch);
       made.push([batch,batch.boundingSphere]);
+      yield;
       continue;
     }
     const mergeKey=key.slice(0,key.lastIndexOf("|"));
@@ -748,6 +877,7 @@ function consolidate(scene,fallbackGroups,cell=48){
     mergeGroups.get(mergeKey).push(...entries);
   }
   for(const entries of mergeGroups.values()){
+    yield;
     const {mesh:first,owner,plain,look}=entries[0];
     const withUv=!plain&&entries.every(({mesh})=>mesh.geometry.attributes.uv);
     const withColor=plain||first.material.vertexColors;
@@ -799,6 +929,7 @@ function consolidate(scene,fallbackGroups,cell=48){
     owner.add(merged);
     made.push([merged,geometry.boundingSphere]);
   }
+  for(const [object] of made){object.updateMatrix();object.matrixAutoUpdate=false;}
   scene.updateMatrixWorld(true);
   // World-space bounds of every combined piece, used to skip far-away map cells.
   return made.map(([object,sphere])=>{
