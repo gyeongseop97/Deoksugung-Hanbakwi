@@ -21,15 +21,22 @@ const flocks=[
   [palacePond,[[14,6],[-16,-2,"magpie"],[-10,17],[13,-17,"magpie"]]],
   [jeonggwanheon,[[-14,5,"magpie"],[11,9]]]
 ];
+const deoksugungBounds={minX:45,maxX:560,minY:30,maxY:420};
+const deoksugungSpots=flocks.reduce((sum,[,members])=>sum+members.length,0);
 // Gyeongbokgung gets a flock at each gathering place, with the group size varying by spot.
 const flockShape=[[4,-2],[5,1],[1,4,"magpie"],[8,-6],[9,4],[5,8],[2,-8,"magpie"]];
 gbBirdGrounds.forEach((anchor,index)=>flocks.push([anchor,flockShape.slice(0,3+index%5)]));
-const outOfBounds=(x,y)=>inGyeongbok(x,y)?x<gbBounds.minX+8||x>gbBounds.maxX-8||y<gbBounds.minY+8||y>gbBounds.maxY-8:
-  x<45||x>560||y<30||y>420;
+function outOfBounds(x,y){
+  const palace=inGyeongbok(x,y),margin=palace?8:0;
+  const {minX,maxX,minY,maxY}=palace?gbBounds:deoksugungBounds;
+  return x<minX+margin||x>maxX-margin||y<minY+margin||y>maxY-margin;
+}
 const spots=flocks.flatMap(([anchor,members])=>members.map(([dx,dy,kind="pigeon"],index)=>({
   anchor,dx,dy,kind,cruises:index===0&&members.length>=4||index===4&&members.length>=7
 })));
-const drawRangeSquared=130**2;
+const drawRange=130,drawRangeSquared=drawRange**2;
+const nearFlocks=(viewer,{minX,maxX,minY,maxY})=>!viewer||
+  viewer.x>=minX-drawRange&&viewer.x<=maxX+drawRange&&viewer.y>=minY-drawRange&&viewer.y<=maxY+drawRange;
 const ordinaryArches=[2.5,3.8,5.2,6.6],escapeArches=[5.4,7.6,10.2,12.8];
 // Journeys between feeding grounds rise over the trees and palace roofs.
 const journeyArches=[7,10,13.5,17,21,26];
@@ -274,7 +281,7 @@ export function addPalaceBirds(T,parent,kit,{trees=[],walls=[],seed}={}){
         const x=anchor.x+dx+Math.cos(angle)*radius,y=anchor.y+dy+Math.sin(angle)*radius;
         if(!ground(x,y)||birds.some(bird=>distance(bird.home,{x,y})<.9))continue;
         const home={x,y,height:floor({x,y})},patrol=makePatrol(home,random,perches,used,kind,floor,cruises,grounds);
-        const bird={id:`bird-${index}`,kind,home,patrol,offset:random()*patrol.time,
+        const bird={id:`bird-${index}`,kind,home,patrol,palace:index>=deoksugungSpots,offset:random()*patrol.time,
           size:species[kind].size*(.89+random()*.18),angle:null};
         birds.push(bird);birdsById.set(bird.id,bird);
         break;
@@ -408,11 +415,11 @@ export function addPalaceBirds(T,parent,kit,{trees=[],walls=[],seed}={}){
         .map(player=>({x:player.x,y:player.y,height:floor(player),running:player.running}));
     }
     for(const mesh of batches)mesh.count=0;
-    // Birds never leave their own palace, so the flock on the other map is skipped outright.
-    const palaceSide=viewer?viewer.x>=1000:null;
+    // Keep the nearby palace active from the path approaching it as well as inside its walls.
+    const deoksugungNearby=nearFlocks(viewer,deoksugungBounds),gyeongbokgungNearby=nearFlocks(viewer,gbBounds);
     for(const [index,bird] of birds.entries()){
       bird.onGround=null;
-      if(palaceSide!==null&&(bird.home.x>=1000)!==palaceSide||sparse&&index%2)continue;
+      if(!(bird.palace?gyeongbokgungNearby:deoksugungNearby)||sparse&&index%2)continue;
       let pose=bird.escape?escapePose(bird,clock):null;
       if(!pose){
         const phase=modulo(clock+bird.offset,bird.patrol.time);
@@ -430,7 +437,7 @@ export function addPalaceBirds(T,parent,kit,{trees=[],walls=[],seed}={}){
     }
     for(const mesh of batches){mesh.instanceMatrix.needsUpdate=true;if(mesh.instanceColor)mesh.instanceColor.needsUpdate=true;}
   }
-  const census=()=>({deoksugung:birds.filter(bird=>bird.home.x<1000).length,gyeongbokgung:birds.filter(bird=>bird.home.x>=1000).length,
+  const census=()=>({deoksugung:birds.filter(bird=>!bird.palace).length,gyeongbokgung:birds.filter(bird=>bird.palace).length,
     touring:birds.filter(bird=>bird.patrol.legs.some(leg=>leg.mode==="flight"&&distance(leg.from,leg.to)>20)).length});
   const setSparse=value=>{sparse=Boolean(value);};
   return {update,setSeed,groundTargets,scare,census,setSparse};

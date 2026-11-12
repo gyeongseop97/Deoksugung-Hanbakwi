@@ -1,17 +1,19 @@
 import {addLandmarks,addZone,addLoft,spawn} from "./layout.js";
+import {plazaSites,plazaAt,sajikRoad} from "./plaza-layout.js";
 
-// Gyeongbokgung is a second map reached by subway. It lives in the same coordinate
-// space as Deoksugung, 1.2 km to the east, so position sync, the minimap and
-// collision all keep working without a separate mode.
-//
 // Positions are metres east of the palace's central axis and north of Gwanghwamun,
-// taken from the published site plan and map coordinates of each building. The
-// palace measures roughly 500 m east-west and 880 m north-south. Building sizes are
-// rounded from survey figures and photographs; heights are approximate.
-export const gwanghwamun={x:1700,y:930};
+// which shares the same geographic projection as the square and Deoksugung.
+export const gwanghwamun=plazaSites.gate;
 export const at=(east,north,name="")=>({name,x:gwanghwamun.x+east,y:gwanghwamun.y-north});
-export const gbBounds={minX:1400,maxX:2000,minY:30,maxY:1100};
-export const inGyeongbok=(x,y)=>x>=gbBounds.minX;
+export const gbBounds={minX:gwanghwamun.x-300,maxX:gwanghwamun.x+300,minY:gwanghwamun.y-900,maxY:gwanghwamun.y+170};
+const inGbBounds=(x,y)=>x>=gbBounds.minX&&x<=gbBounds.maxX&&y>=gbBounds.minY&&y<=gbBounds.maxY;
+const palaceFrontY=plazaAt(0,sajikRoad.north).y;
+export function inGyeongbok(x,y){
+  if(!inGbBounds(x,y))return false;
+  const east=x-gwanghwamun.x,north=gwanghwamun.y-y;
+  if(y<=palaceFrontY)return Math.abs(east)<(north>=0?wallHalf+18:92);
+  return inFrontAnnex(east,north);
+}
 
 export const wallHalf=250,wallNorth=875;
 
@@ -85,7 +87,10 @@ export const cityHallBusStop={
 export const gbUijeongbu={west:36,east:156,south:-165,north:-93};
 export const gbBusIsland={west:163,east:187,south:-106,north:-78};
 // Each crossing overlaps the pavements it joins by a step, so routes can be planned across.
-export const gbCrossings=[{west:43,east:53,south:-94.5,north:-54.5},{west:154.5,east:164.5,south:-103,north:-95}];
+export const gbCrossings=[{west:43,east:53,south:-94.5,north:-51.5},{west:154.5,east:164.5,south:-103,north:-95}];
+const inArea=(east,north,{west,east:right,south,north:top})=>east>west&&east<right&&north>south&&north<top;
+const inFrontAnnex=(east,north)=>inArea(east,north,gbUijeongbu)||inArea(east,north,gbBusIsland)||
+  gbCrossings.some(area=>inArea(east,north,area));
 export const gbBusStop={
   name:"경복궁 정류장",...at(175,-80.6,"경복궁 정류장"),angle:Math.PI,
   door:at(175,-82.5),arrive:{...at(172.5,-86),heading:250}
@@ -198,9 +203,8 @@ export function gyeongbokWalkable(x,y){
   const east=x-gwanghwamun.x,north=gwanghwamun.y-y;
   // The square in front of Gwanghwamun, then everything inside the palace wall.
   if(north<1.2){
-    if(north>-56&&Math.abs(east)<92)return true;
-    const inside=area=>east>area.west&&east<area.east&&north>area.south&&north<area.north;
-    return inside(gbUijeongbu)||inside(gbBusIsland)||gbCrossings.some(inside);
+    if(north>=-52&&Math.abs(east)<92)return true;
+    return inFrontAnnex(east,north);
   }
   if(north>wallNorth-1.6||Math.abs(east)>wallHalf-1.6)return false;
   return !inLake(east,north)&&!inPond(east,north);
@@ -240,8 +244,7 @@ export function gyeongbokWater(x,y){
   return inLake(east,north)||inPond(east,north)?gbWaterDepth:0;
 }
 addZone({
-  name:"경복궁",contains:inGyeongbok,walkable:gyeongbokWalkable,water:gyeongbokWater,
-  grid:{ox:gbBounds.minX,oy:gbBounds.minY,cols:301,rows:536}
+  name:"경복궁",contains:inGbBounds,walkable:gyeongbokWalkable,water:gyeongbokWater
 });
 addLandmarks([
   ...gbSites,gbStation,cityHallStation,cityHallExit3,cityHallBusStop,gbBusStop,

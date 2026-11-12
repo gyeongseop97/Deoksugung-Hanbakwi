@@ -21,6 +21,12 @@
 
 경복궁의 전각 위치와 크기는 공개 지도 좌표와 궁능유적본부 관람 안내도를 참고해 실제 축척으로 배치했습니다. 건물은 이 게임을 위해 직접 모델링했으며 높이와 세부는 추정치입니다. 실측 3D 자료는 포함하지 않았습니다.
 
+## 세종대로 연결 구간
+
+대한문부터 광화문광장까지 보도, 횡단보도, 차로 경계와 건물 위치는 [서울시 세종대로 사람숲길](https://mediahub.seoul.go.kr/archives/2001581), [네이버 거리뷰 코리아나호텔 앞](https://map.naver.com/p?c=15.00,0,0,0,adh&p=_knneAIDkym9Hvd_AsATzw,-61.59,3.52,80,Float)과 [OpenStreetMap 지도](https://www.openstreetmap.org/#map=18/37.56831/126.97707)를 대조했습니다. 시설물의 세부 치수와 외관은 지도와 사진을 바탕으로 추정했습니다. [© OpenStreetMap 기여자](https://www.openstreetmap.org/copyright)
+
+따릉이와 거치대는 [서울시 따릉이 소개 사진](https://love.seoul.go.kr/articles/7373)을 참고해 직접 모델링했습니다. 대여소 위치와 순환버스 노선·시간표는 게임에 맞춰 배치했습니다.
+
 ## 광화문광장 맵
 
 시설 배치, 수경 시설, 도로와 보행로의 경계는 [서울시 광화문광장 시설 위치안내](https://gwanghwamun.seoul.go.kr/ghm/facility/list.do?codeId=CODE_08&mid=1011&siteGrpKey=ghm&siteId=ghm), [광장 공간 안내](https://gwanghwamun.seoul.go.kr/ghm/cardNews/ghm/space.do?mid=1039), [네이버 지도 거리뷰](https://map.naver.com/p?searchType=place&c=15.63,0,0,0,adh&isMini=true&p=Svj9PJ8SN08g-rqlkhonjw,-110,10,80,Float), [카카오맵 스카이뷰](https://map.kakao.com/?q=%EA%B4%91%ED%99%94%EB%AC%B8%EA%B4%91%EC%9E%A5), [구글어스](https://earth.google.com/web/search/%EA%B4%91%ED%99%94%EB%AC%B8%EA%B4%91%EC%9E%A5)를 참고해 재현했습니다.

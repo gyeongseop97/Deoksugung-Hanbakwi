@@ -1,6 +1,7 @@
 // People may wade through the palace ponds, so their movement checks allow shallow water.
 import {wadeSegment as clearSegment,distance,platformAt,loftStair} from "./layout.js";
 import {JUMP_MS,JUMP_HEIGHT} from "./activities.js";
+import {busAt,busSeatPose} from "./sejong-bus.js";
 
 export const normalize = angle => ((angle % 360) + 360) % 360;
 export const angleDelta = (from,to) => normalize(to-from+180)-180;
@@ -22,7 +23,8 @@ export function receivePeople(people,rows,self,serverTime){
     }
     const previous=person.sample;
     if(at<previous.at)continue;
-    if(at>previous.at){
+    const rideChanged=avatar.bus?.index!==previous.avatar.bus?.index||avatar.bus?.seat!==previous.avatar.bus?.seat;
+    if(at>previous.at||rideChanged){
       const interval=at-previous.at;
       // Track how often this walker's position really arrives. The render loop predicts
       // that far ahead, so a slow connection shows steady walking instead of stop-and-go.
@@ -32,12 +34,17 @@ export function receivePeople(people,rows,self,serverTime){
       person.sample={at,avatar};
       person.fresh=true;
     }
+    if(rideChanged){
+      Object.assign(person.position,{x:avatar.x,y:avatar.y,heading:avatar.heading??person.position.heading});
+      person.error.x=person.error.y=person.velocity.x=person.velocity.y=0;
+      person.fresh=false;
+    }
     person.avatar=avatar;
     person.targetView=row.view;
     person.nickname=row.nickname;
     person.coat=row.coat;
     person.signal=row.signal;
-    person.available=row.handholdAvailable;
+    person.available=row.handholdAvailable&&!avatar.bus&&!avatar.bike;
   }
   for(const id of people.keys())if(!present.has(id))people.delete(id);
 }
@@ -53,6 +60,17 @@ export function smoothPeople(people,seconds,serverTime,roundTrip=65){
   const uplink=Math.min(.12,Math.max(0,roundTrip)*.0005);
   for(const person of people.values()){
     const {avatar,position,view,targetView,sample,error,velocity}=person;
+    view.pan=normalize(view.pan+angleDelta(view.pan,targetView.pan)*lookEase);
+    view.tilt+=(targetView.tilt-view.tilt)*lookEase;
+    view.zoom+=(targetView.zoom-view.zoom)*lookEase;
+    view.night=targetView.night;
+    const ride=avatar.bus&&busSeatPose(busAt(avatar.bus.index,serverTime),avatar.bus.seat);
+    if(ride){
+      Object.assign(position,ride);
+      error.x=error.y=velocity.x=velocity.y=0;
+      person.fresh=person.stepping=person.running=false;
+      continue;
+    }
     const a=sample.avatar,seated=avatar.seat!=null;
     const age=Math.max(0,(serverTime-sample.at)/1000);
     const travelling=!seated&&!a.blocked&&moving(a);
@@ -91,10 +109,6 @@ export function smoothPeople(people,seconds,serverTime,roundTrip=65){
     const facing=(seated?avatar.heading:a.heading)??targetView.pan;
     const turn=angleDelta(position.heading,facing);
     position.heading=Math.abs(turn)<.04?facing:normalize(position.heading+turn*turnEase);
-    view.pan=normalize(view.pan+angleDelta(view.pan,targetView.pan)*lookEase);
-    view.tilt+=(targetView.tilt-view.tilt)*lookEase;
-    view.zoom+=(targetView.zoom-view.zoom)*lookEase;
-    view.night=targetView.night;
     const speed=seconds>0?moved/seconds:0;
     person.stepping=Boolean(!seated&&(predicting||a.blocked&&age<1.2||speed>.45));
     person.running=Boolean(person.stepping&&a.running);
@@ -107,7 +121,7 @@ export function handPosition(leader,side){
 }
 
 export function handSide(leader,follower){
-  if(leader.seat!=null||follower.seat!=null||distance(leader,follower.x,follower.y)>2.4||
+  if(leader.seat!=null||follower.seat!=null||leader.bus||follower.bus||leader.bike||follower.bike||distance(leader,follower.x,follower.y)>2.4||
      !clearSegment(leader,follower))return 0;
   const options=[-1,1].map(side=>({side,point:handPosition(leader,side)}))
     .filter(({point})=>clearSegment(leader,point)&&clearSegment(follower,point))

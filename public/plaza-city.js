@@ -228,8 +228,6 @@ export function addPlazaCity(T,group,{wx,wz}){
     [161,38,66,58,95,0x82969e],[167,120,59,61,66,0x91a0a2],
     [188,188,66,49,103,0x81959c],[164,258,53,59,71,0x8a9ca0],
     [168,343,60,56,57,0x90a1a1],[171,419,48,57,52,0x96a49e],
-    [-124,-47,63,57,72,0x8f9b9b],[83,-45,53,52,48,0x8d9a98],
-    [132,-58,51,50,83,0x8a9b9f],[201,-37,51,58,57,0x8f9c9b],
   ]){
     slab(color,east,north,width,length,0,height,distant);
     slab(0x8b9795,east,north,width*.68,length*.67,height,3.6,distant);

@@ -1,7 +1,7 @@
 import {isInsideMuseum} from "./visit-layout.js";
 
 const origin = {lat:37.56780,lng:126.97150};
-const eastMetres=88263, northMetres=111000;
+export const eastMetres=88263, northMetres=111000;
 export const project = (name,lat,lng) => ({
   name,lat,lng,x:(lng-origin.lng)*eastMetres,y:(origin.lat-lat)*northMetres
 });
@@ -231,8 +231,7 @@ export const city = [
 ];
 export const landmarks=[spawn,ticket,gate,bridge,middle,court,hall,stoneHall,stoneFountain,palacePond,...palace,...route,...pavilions];
 export function addLandmarks(points){landmarks.push(...points);}
-// Other maps (reached by subway) register here. A zone owns a region of map coordinates,
-// decides what is walkable inside it and supplies its own path-finding grid.
+// Neighbouring zones share the same coordinate system and may overlap at their edges.
 const zones=[];
 export function addZone(zone){zones.push(zone);}
 export function zoneAt(x,y){
@@ -371,7 +370,14 @@ export function loftStep(from,x,y){
 }
 // Shallow water (a palace pond) can be waded by people. Animals and planned routes keep to
 // dry ground, so the plain checks below never count water as walkable.
-export const waterDepth=(x,y)=>(zones.length?zoneAt(x,y)?.water?.(x,y):0)||0;
+export function waterDepth(x,y){
+  for(const zone of zones){
+    if(!zone.water||!zone.contains(x,y))continue;
+    const depth=zone.water(x,y);
+    if(depth)return depth;
+  }
+  return 0;
+}
 export function wadeable(x,y,feet=0){
   return walkable(x,y,feet)||waterDepth(x,y)>0&&!solidAt(x,y,feetLevel(feet));
 }
@@ -384,9 +390,16 @@ export function wadeSegment(from,to,step=.36,feet=0){
   return !count||!crossesObstacle(from,to,feetLevel(feet));
 }
 export function walkable(x,y,feet=0){
-  const zone=zones.length?zoneAt(x,y):null;
-  if(zone)return !solidAt(x,y,feetLevel(feet))&&zone.walkable(x,y);
-  if(x<45||x>560||y<30||y>420||solidAt(x,y,feetLevel(feet))||inPolygon(x,y,palacePond.outline))return false;
+  const inDeoksugung=x>=45&&x<=560&&y>=30&&y<=420;
+  if(solidAt(x,y,feetLevel(feet))||(inDeoksugung&&inPolygon(x,y,palacePond.outline)))return false;
+  let open=false;
+  for(const zone of zones){
+    if(!zone.contains(x,y))continue;
+    if(zone.water?.(x,y))return false;
+    if(!open)open=zone.walkable(x,y);
+  }
+  if(open)return true;
+  if(!inDeoksugung)return false;
   return isInsideMuseum(x,y) || inPolygon(x,y,estateOutline) || distance(spawn,x,y)<23 || distance(fountain,x,y)<15 ||
     inPolygon(x,y,stonewallVerge) || distance(garden,x,y)<9 || nearPath(entranceWalk,x,y,7.4) || nearPath(stationWalk,x,y,3.6) || nearPath(route,x,y,5.4) ||
     nearPath(palace,x,y,4.1);
@@ -400,9 +413,22 @@ export function clearSegment(from,to,step=.36,feet=0){
   return !count||!crossesObstacle(from,to,feetLevel(feet));
 }
 const spacing=2;
-const baseField={ox:0,oy:0,cols:300,rows:225};
 const around=[[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,1],[1,-1],[-1,-1]];
 const gridPoint=(i,{ox,oy,cols})=>({x:ox+i%cols*spacing,y:oy+Math.floor(i/cols)*spacing});
+const walkingBounds={minX:0,maxX:810,minY:-1820,maxY:450};
+function walkingField(from,target){
+  const padding=Math.round(Math.min(168,68+distance(from,target.x,target.y)*.24)/spacing)*spacing;
+  const {minX,maxX,minY,maxY}=walkingBounds;
+  const ox=Math.max(minX,Math.floor(Math.min(from.x,target.x)/spacing)*spacing-padding);
+  const oy=Math.max(minY,Math.floor(Math.min(from.y,target.y)/spacing)*spacing-padding);
+  const right=Math.min(maxX,Math.ceil(Math.max(from.x,target.x)/spacing)*spacing+padding);
+  const bottom=Math.min(maxY,Math.ceil(Math.max(from.y,target.y)/spacing)*spacing+padding);
+  return {ox,oy,cols:(right-ox)/spacing+1,rows:(bottom-oy)/spacing+1};
+}
+function inWalkingBounds(point){
+  const {minX,maxX,minY,maxY}=walkingBounds;
+  return point.x>=minX&&point.x<=maxX&&point.y>=minY&&point.y<=maxY;
+}
 function snap(point,radius,direct,feet,field,open=walkable,clear=clearSegment){
   let best=-1,gap=Infinity;
   const {ox,oy,cols,rows}=field;
@@ -429,39 +455,76 @@ function strideSegment(from,to,wade,feet){
   }
   return true;
 }
+const comesBefore=(a,b)=>a.score<b.score||(a.score===b.score&&a.remaining<b.remaining);
+function pushCandidate(heap,entry){
+  let index=heap.length;
+  while(index>0){
+    const parent=(index-1)>>1;
+    if(!comesBefore(entry,heap[parent]))break;
+    heap[index]=heap[parent];index=parent;
+  }
+  heap[index]=entry;
+}
+function takeCandidate(heap){
+  const first=heap[0],last=heap.pop();
+  if(!heap.length)return first;
+  let index=0;
+  while(index*2+1<heap.length){
+    let child=index*2+1;
+    if(child+1<heap.length&&comesBefore(heap[child+1],heap[child]))child++;
+    if(!comesBefore(heap[child],last))break;
+    heap[index]=heap[child];index=child;
+  }
+  heap[index]=last;
+  return first;
+}
 // wade plans a route that may cross shallow water.
 export function planWalk(from,target,feet=0,wade=false){
+  if(!inWalkingBounds(from)||!inWalkingBounds(target))return [];
   const ground=wade?wadeable:walkable;
   const open=(x,y)=>ground(x,y,platformAt(x,y)+.19),clear=(a,b,step,level)=>strideSegment(a,b,wade,level);
   const exact=open(target.x,target.y);
   if(exact&&clear(from,target,.36,feet))return [target];
-  const field=zoneAt(from.x,from.y)?.grid??baseField,{ox,oy,cols,rows}=field;
-  if(zoneAt(target.x,target.y)!==zoneAt(from.x,from.y))return [];
+  const field=walkingField(from,target),{ox,oy,cols,rows}=field;
   const start=snap(from,3,true,feet,field,open,clear);
   let goal=snap(target,7,exact,0,field,open,clear);
   if(start<0||goal<0)return [];
-  const previous=new Int32Array(cols*rows).fill(-1),queue=[start];
-  previous[start]=start;
-  for(let cursor=0;cursor<queue.length&&previous[goal]<0;cursor++){
-    const current=queue[cursor],point=gridPoint(current,field),col=current%cols,row=Math.floor(current/cols);
+  const previous=new Int32Array(cols*rows).fill(-1),cost=new Int32Array(cols*rows).fill(0x7fffffff),queue=[];
+  const goalCol=goal%cols,goalRow=Math.floor(goal/cols);
+  const estimate=(col,row)=>{
+    const x=Math.abs(col-goalCol),y=Math.abs(row-goalRow);
+    return 10*Math.max(x,y)+4*Math.min(x,y);
+  };
+  const firstEstimate=estimate(start%cols,Math.floor(start/cols));
+  previous[start]=start;cost[start]=0;
+  pushCandidate(queue,{index:start,cost:0,score:firstEstimate,remaining:firstEstimate});
+  let best=-1,bestGap=16;
+  while(queue.length){
+    const item=takeCandidate(queue),current=item.index;
+    if(item.cost!==cost[current])continue;
+    const point=gridPoint(current,field),col=current%cols,row=Math.floor(current/cols);
+    const gap=distance(target,point.x,point.y);
+    if(gap<bestGap){bestGap=gap;best=current;}
+    if(current===goal){best=goal;break;}
     for(const [dx,dy] of around){
       const x=col+dx,y=row+dy,next=y*cols+x;
-      if(x<0||x>=cols||y<0||y>=rows||previous[next]>=0||
+      const nextCost=item.cost+(dx&&dy?14:10);
+      if(x<0||x>=cols||y<0||y>=rows||cost[next]<=nextCost||
         !clear(point,{x:ox+x*spacing,y:oy+y*spacing}))continue;
-      previous[next]=current;queue.push(next);
+      const remaining=estimate(x,y);
+      previous[next]=current;cost[next]=nextCost;
+      pushCandidate(queue,{index:next,cost:nextCost,score:nextCost+remaining,remaining});
     }
   }
-  if(previous[goal]<0){
-    let nearestGap=16;
-    goal=-1;
-    for(const index of queue){
-      const point=gridPoint(index,field),gap=distance(target,point.x,point.y);
-      if(gap<nearestGap){nearestGap=gap;goal=index;}
-    }
-    if(goal<0)return [];
-  }
+  if(best<0)return [];
+  goal=best;
+  // Keep grid turns before smoothing to avoid rechecking a long straight walk cell by cell.
   const points=[];
-  for(let i=goal;i!==start;i=previous[i])points.push(gridPoint(i,field));
+  let heading=null;
+  for(let i=goal;i!==start;i=previous[i]){
+    const direction=i-previous[i];
+    if(heading!==direction){points.push(gridPoint(i,field));heading=direction;}
+  }
   points.push(gridPoint(start,field));points.reverse();
   if(exact&&clear(points.at(-1),target))points.push(target);
   const simplified=[];

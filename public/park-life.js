@@ -1,7 +1,7 @@
 import {clearSegment,planWalk,solidAt,spawn,walkable} from "./layout.js";
 import {FEED_MS,PET_MS} from "./activities.js";
 import {makeCatRoaming} from "./cat-roaming.js";
-import {gbCatTrails,gbPlazaCatTrails,gbStation} from "./gyeongbok-layout.js";
+import {gbBounds,gbCatTrails,gbPlazaCatTrails,gbStation} from "./gyeongbok-layout.js";
 import {createCatSocial} from "./cat-social.js";
 import {createCatHunts} from "./cat-hunt.js";
 
@@ -623,7 +623,7 @@ export function addParkLife(T,scene,kit){
         size:coat.size*(.88+rng()*.11)};
       const path=makeRoute(ground,rng,kit,used,index);
       const model=catModel(T,scene,spec,coat,meshes);
-      live.push({...spec,...path,...model,x:home.x,y:home.y,
+      live.push({...spec,...path,...model,x:home.x,y:home.y,palace:index>=count,
         routeAt:null,updatedAt:null,petFrom:0,petUntil:0,petPose:null,canPet:false,escape:null,checkAt:0,
         lure:null,lureCheckAt:0,feeding:null,pose:null,social:null,hunt:null,rejoin:null,frame:{}});
     }
@@ -636,11 +636,15 @@ export function addParkLife(T,scene,kit){
       (actor.blocked||Math.hypot(actor.vx,actor.vy)>2.65));
     const holders=walkers.filter(actor=>!actor.running&&actor.seat==null&&
       actor.item?.kind==="churu"&&actor.item.remaining>0);
-    // Only the cats on the walker's own map are simulated; the others pick their shared
-    // routes up again from the clock when someone arrives.
-    const viewer=anchor??walkers[0],palaceSide=viewer?viewer.x>=1000:null;
-    const active=palaceSide===null?live:live.filter(cat=>(cat.x>=1000)===palaceSide);
-    if(active.length!==live.length)for(const cat of live)if((cat.x>=1000)!==palaceSide&&cat.group.visible)cat.group.visible=false;
+    // Faraway groups pick their shared routes up from the clock when a walker approaches.
+    const viewer=anchor??walkers[0];
+    const deoksugungNearby=!viewer||viewer.y>=30-sight&&viewer.y<=420+sight;
+    const gyeongbokgungNearby=!viewer||viewer.y>=gbBounds.minY-sight&&viewer.y<=gbBounds.maxY+sight;
+    const active=live.filter(cat=>{
+      if(cat.palace?gyeongbokgungNearby:deoksugungNearby)return true;
+      cat.group.visible=cat.canPet=cat.feedable=false;
+      return false;
+    });
     for(const cat of active){
       const previousTime=cat.updatedAt??now,time=Math.max(now,previousTime);
       const feeding=cat.feeding&&time>=cat.feeding.at&&time<cat.feeding.until?cat.feeding:null;
@@ -857,6 +861,6 @@ export function addParkLife(T,scene,kit){
     }
   }
   // How many cats live on each map (used when checking a build).
-  const census=()=>({deoksugung:live.filter(cat=>cat.x<1000).length,gyeongbokgung:live.filter(cat=>cat.x>=1000).length});
+  const census=()=>({deoksugung:live.filter(cat=>!cat.palace).length,gyeongbokgung:live.filter(cat=>cat.palace).length});
   return {update,nearestCat,nearestFeedCat,pet,feed,resetInteractions,setSeed,census,setSparse};
 }

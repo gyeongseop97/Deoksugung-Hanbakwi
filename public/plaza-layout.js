@@ -1,13 +1,13 @@
-import {addLandmarks,addZone} from "./layout.js";
+import {addLandmarks,addZone,eastMetres,northMetres,project} from "./layout.js";
 
 // Metres east and north of 37.57050 N, 126.97697 E, at the south end of the square.
-// The game offset keeps this map separate until the connecting streets are built.
-export const plazaOrigin={lat:37.57050,lng:126.97697,x:1000,y:675};
+export const plazaOrigin=project("광화문광장",37.57050,126.97697);
 export const plazaAt=(east,north,name="")=>({name,east,north,x:plazaOrigin.x+east,y:plazaOrigin.y-north,
-  lat:plazaOrigin.lat+north/111000,lng:plazaOrigin.lng+east/88263});
-export const plazaBounds={minX:875,maxX:1120,minY:44,maxY:694};
+  lat:plazaOrigin.lat+north/northMetres,lng:plazaOrigin.lng+east/eastMetres});
+export const plazaBounds={minX:plazaOrigin.x-125,maxX:plazaOrigin.x+120,minY:plazaOrigin.y-631,maxY:plazaOrigin.y+19};
+const inPlazaBounds=(x,y)=>x>=plazaBounds.minX&&x<=plazaBounds.maxX&&y>=plazaBounds.minY&&y<=plazaBounds.maxY;
 export function inGwanghwamunPlaza(x,y){
-  return x>=plazaBounds.minX&&x<=plazaBounds.maxX&&y>=plazaBounds.minY&&y<=plazaBounds.maxY;
+  return inPlazaBounds(x,y)&&y<=plazaOrigin.y&&y>plazaOrigin.y-sajikRoad.north;
 }
 const polygon=points=>points.map(([east,north])=>plazaAt(east,north));
 export const plazaOutline=polygon([
@@ -23,8 +23,7 @@ export const plazaSites={
   gratitude:plazaAt(-40,316,"감사의 정원"),ruins:plazaAt(-37,362,"사헌부 문터"),
   time:plazaAt(-38,387,"시간의 정원"),cascade:plazaAt(-34,403,"시간의 벽천"),
   pine:plazaAt(-43,426,"소나무정원"),lawn:plazaAt(-21,473,"육조마당"),
-  uijeongbu:plazaAt(58,523,"의정부지 역사유적광장"),woldae:plazaAt(-13,576,"광화문 월대"),
-  gate:plazaAt(-13.2,602.7,"광화문")
+  woldae:plazaAt(-13,576,"광화문 월대"),gate:plazaAt(-13.2,602.7,"광화문")
 };
 
 export const plazaTransitStops=[
@@ -77,7 +76,7 @@ export const plazaBeds=[
   bed("pine-grove","pine",[[-46,408],[-30,407],[-27,418],[-32,434],[-47,445],[-55,438],[-53,422]]),
   bed("north-west-grove","pine",[[-57,467],[-46,476],[-40,489],[-41,507],[-47,518],[-58,510],[-63,499],[-61,482]]),
   bed("yukjo-lawn","lawn",[[-33,449],[-12,449],[-9,454],[-9,493],[-13,499],[-32,499],[-36,495],[-36,454]]),
-  bed("north-lawn-edge","mixed",[[-9,513],[-2,515],[-4,524],[-9,528],[-20,526],[-22,520]]),
+  bed("north-lawn-edge","mixed",[[-5.7,514],[.7,513],[2.8,516],[4.4,522],[3.3,526],[-1.6,528],[-6.4,525]]),
   bed("woldae-west","lawn",[[-54,565],[-37,562],[-31,570],[-31,595],[-59,596],[-60,578]]),
   bed("woldae-east","lawn",[[5,567],[22,563],[30,572],[31,594],[6,596]])
 ];
@@ -98,7 +97,7 @@ export function plazaGroundHeight(position){
   return -depth*Math.min(1,(top-north)/(top-rampEnd));
 }
 
-function isPlazaWalkable(x,y){
+export function isPlazaWalkable(x,y){
   const east=x-plazaOrigin.x,north=plazaOrigin.y-y;
   const curb=eastCurb(north),sidewalk=curb+eastRoadWidth;
   if(north>=0&&north<=528){
@@ -108,11 +107,10 @@ function isPlazaWalkable(x,y){
   }
   const sajik=sajikRoad;
   if(north>=522&&north<=sajik.north+1&&Math.abs(east-sajik.crossX)<sajik.crossWidth/2)return true;
-  if(north>=sajik.north&&north<=596.5&&east>=-60&&east<=31)return true;
   if(north>494&&north<529&&east>=41&&east<=66)return true;
   if(!insidePlazaPolygon(x,y,plazaOutline))return false;
   return !plazaBeds.some(bed=>bed.kind!=="lawn"&&insidePlazaPolygon(x,y,bed.outline));
 }
 
-addZone({contains:inGwanghwamunPlaza,walkable:isPlazaWalkable,grid:{ox:plazaBounds.minX,oy:plazaBounds.minY,cols:124,rows:327}});
+addZone({name:"광화문광장",contains:inPlazaBounds,walkable:isPlazaWalkable});
 addLandmarks(plazaLandmarks);

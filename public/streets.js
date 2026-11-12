@@ -172,7 +172,8 @@ export function buildJeongdong(T,scene,kit) {
   ribbon(route,2.78,2.95,curb,.060);
   ribbon(route,-2.65,-2.57,gold,.020);
   ribbon(route,2.57,2.65,gold,.020);
-  ribbon(entranceWalk,-7.2,7.2,pavingMaterial,.039);
+  // Keep the entrance paving above the adjoining avenue pavement where their footprints meet.
+  ribbon(entranceWalk,-7.2,7.2,pavingMaterial,.054);
   plot(estateOutline,earthMaterial,.008);
   plot(stonewallVerge,gardenMaterials.lawn,.010);
   for(const {outline,kind} of palaceGardens)plot(outline,gardenMaterials[kind],.017);
@@ -188,13 +189,6 @@ export function buildJeongdong(T,scene,kit) {
   }
   const s=placed(spawn);
   paved(s.x-1,s.z+4,39,39,.025);
-  paved(wx(473.75),wz(232),7.5,114,.03);
-  box(0xa9a698,wx(477.6),.07,wz(232),.22,.14,114);
-  const avenue=[{x:gate.x+23,y:40},{x:gate.x+25,y:433}];
-  ribbon(avenue,-5.7,-3.7,pavingMaterial,.040);
-  ribbon(avenue,-3.7,18.0,roadMaterial,.013);
-  ribbon(avenue,9.8,9.91,matte(0xe1c66d),.024);
-  for(let i=0;i<17;i++)box(0xf1e4c6,s.x+6+i*.93,.029,s.z+23,.54,.014,3.6);
   const plaza=placed(city[0]);
   paved(plaza.x,plaza.z,city[0].w,city[0].d,.032);
 
@@ -560,12 +554,6 @@ export function buildJeongdong(T,scene,kit) {
     }
   }
   for(const spec of city.slice(1))facade(spec);
-  for(let i=0;i<8;i++){
-    const x=s.x+61+rand()*100,z=s.z-150+i*43;
-    const w=17+rand()*19,h=22+rand()*36,d=16+rand()*22;
-    box(i%2===0?0xa6b4bb:0x91a3ad,x,h/2,z,w,h,d);
-    for(let row=0;row<Math.floor(h/3.8);row++)box(0x8198a4,x-w/2-.04,2.4+row*3.8,z,.085,1.5,d*.83);
-  }
 
   function roof(group,w,d,y,rise,hip=true){
     const geometry=new T.BufferGeometry(),data=[];
@@ -757,7 +745,7 @@ export function buildJeongdong(T,scene,kit) {
   const kiosk=new T.Group();kiosk.name=ticket.name;kiosk.position.set(tp.x,0,tp.z);kiosk.rotation.y=ticket.angle;scene.add(kiosk);
   const front=ticket.d/2;
   const threshold=placed(fromBuilding(ticket,0,2.56));
-  paved(threshold.x,threshold.z,9.4,5.1,.046,ticket.angle);
+  paved(threshold.x,threshold.z,9.4,5.1,.068,ticket.angle);
   const booth=new T.Mesh(new T.BoxGeometry(ticket.w,3.03,ticket.d),stoneMaterial);
   booth.position.y=1.54;kiosk.add(uvScale(booth,1.75,1.2));
   box(0x8b8c7e,0,.15,0,ticket.w+.11,.28,ticket.d+.12,kiosk);

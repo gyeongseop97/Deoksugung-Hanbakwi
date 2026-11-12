@@ -9,10 +9,14 @@ import { addStands, makeItemProps } from "./street-stands.js";
 import { addMuseum, stairHeight } from "./museum.js";
 import { PET_MS, FEED_MS, jumpLift } from "./activities.js";
 import { makeWalkerModels } from "./walker-model.js";
-import { gbSurveyModels, gbNightGlow, gbShuttles } from "./gyeongbok.js";
+import { gbSurveyModels, gbNightGlow } from "./gyeongbok.js";
 import { gbSite, gwanghwamun, inGyeongbok, gbLightSpots } from "./gyeongbok-layout.js";
 import { buildGwanghwamunPlaza } from "./gwanghwamun-plaza.js";
 import { haechiBasin, inGwanghwamunPlaza, plazaGroundHeight, plazaSites } from "./plaza-layout.js";
+import { buildSejongCorridor } from "./sejong-corridor.js";
+import { buildBikeDocks } from "./sejong-bike-model.js";
+import { buildSejongBusModels } from "./sejong-bus-model.js";
+import { BUS_FLOOR, busAt, busSeatPose } from "./sejong-bus.js";
 import { addPalacePeople } from "./palace-people.js";
 import { decodeWishFace, WISH_WIDTH, WISH_HEIGHT, WISH_COLORS, WISH_FLIGHT_MS } from "./wish-art.js";
 
@@ -66,7 +70,7 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
       }
     `
   }));
-  // Sky, clouds, hills and stars ride on one rig that moves with the walker to the other map.
+  // Keep the sky enclosing the camera along the entire north–south walk.
   const heavens=new T.Group();
   sky.renderOrder=-3;heavens.add(sky);scene.add(heavens);
   scene.fog=new T.FogExp2(0xc6dbe3,.0039);
@@ -119,8 +123,10 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
 
   const kit={wx,wz,rand,shape,box,cylinder,matte};
   const {benches,trees,catWalls,fountains,lampMaterial,classical,middleModel,hallModel,drawPond,pavilionModels,subwayStations}=buildJeongdong(T,scene,kit);
-  const updatePlaza=buildGwanghwamunPlaza(T,scene,kit,{gatehouse:subwayStations.groups.get("gwanghwamun"),
-    haetae:scene.getObjectsByProperty("name","광화문 해태상"),benches});
+  buildSejongCorridor(T,scene,kit);
+  buildBikeDocks(T,scene,kit);
+  const buses=buildSejongBusModels(T,scene,kit);
+  const updatePlaza=buildGwanghwamunPlaza(T,scene,kit,{benches});
   const drawWater=addWater(T,scene,fountains,kit);
   const stations=addStands(T,scene,kit);
   const createItemProp=makeItemProps(T,kit);
@@ -146,7 +152,7 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
   }
   function placeLights(anchor){
     lightDay=lightHomes.map(()=>0);
-    const mapped=inGwanghwamunPlaza(anchor.x,anchor.y)?plazaLights:inGyeongbok(anchor.x,anchor.y)?gbLightSpots:null;
+    const mapped=inGyeongbok(anchor.x,anchor.y)?gbLightSpots:inGwanghwamunPlaza(anchor.x,anchor.y)?plazaLights:null;
     if(!mapped){
       spotLights.forEach((light,i)=>{light.position.copy(lightHomes[i].position);light.distance=lightHomes[i].range;});
       lightPower=lightHomes.map(home=>home.power);
@@ -368,7 +374,10 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     }
     context.putImageData(preview.image,0,0);
   }
-  function seatAt(position){return benches[position.seat]?.slots[position.seatSide??0];}
+  function seatAt(position,clock){
+    const pose=position.bus&&busSeatPose(busAt(position.bus.index,clock),position.bus.seat);
+    return pose?{...pose,base:BUS_FLOOR}:benches[position.seat]?.slots[position.seatSide??0];
+  }
   // Low kerbs, benches and ledges can be stood on after a jump, so they raise the floor too.
   function floorHeight(position){
     return plazaGroundHeight(position)??Math.max(groundHeight(position),platformAt(position.x,position.y,true),loftHeight(position));
@@ -480,10 +489,9 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     hemi.color.copy(ambientDay).lerp(ambientNight,night);
     const anchor=me,angle=view.pan*Math.PI/180,indoors=museum.isInside(anchor.x,anchor.y),
       atPlaza=inGwanghwamunPlaza(anchor.x,anchor.y);
-    // Around Deoksugung the skyline is fixed; at Gyeongbokgung it travels with the walker
-    // like a backdrop so the distant city and hills never drift into the palace.
-    if(atPlaza||inGyeongbok(anchor.x,anchor.y))heavens.position.set(wx(anchor.x)-21,0,wz(anchor.y)+14);
-    else heavens.position.set(0,0,0);
+    // Gradually follow the northward route without shifting the skyline at district boundaries.
+    const horizonFollow=T.MathUtils.smoothstep(180-anchor.y,0,220);
+    heavens.position.set((wx(anchor.x)-21)*horizonFollow,0,(wz(anchor.y)+14)*horizonFollow);
     if(!indoors&&now>=cullAt){
       // Fog hides everything past half a kilometre, so those map cells are not drawn at all.
       cullAt=now+260;
@@ -509,15 +517,7 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     govern(now);
     lampMaterial.emissiveIntensity=.03+night*2.15;
     spotLights.forEach((light,i)=>{light.intensity=lightDay[i]*(1-night)+night*lightPower[i];});
-    // Buses pull in, wait at the stop and drive on, the two stops half a cycle apart.
-    gbShuttles.forEach((shuttle,i)=>{
-      const near=Math.hypot(shuttle.x-anchor.x,shuttle.y-anchor.y)<260;
-      const t=((clock/1000+i*23)%46+46)%46;
-      shuttle.bus.visible=near&&t<34;
-      if(!shuttle.bus.visible)return;
-      const arriving=Math.min(1,t/7),leaving=Math.max(0,(t-27)/7);
-      shuttle.bus.position.x=shuttle.stopAt-70*(1-arriving)**2+80*leaving*leaving;
-    });
+    buses.update(clock,indoors?null:anchor);
     for(const {material,rest,strength} of gbNightGlow)material.emissiveIntensity=rest+night*strength;
     updatePlaza(now,night,atPlaza?anchor:null);
     const roster=[me,...peers],present=new Set(roster.map(player=>player.id));
@@ -539,22 +539,27 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
       if(!visible){if(model){model.group.visible=false;walkerModels.clearChat(model);}drawRipples(player.id,player,now,false);return;}
       if(!model){model=walkerModels.create(player.coat??0xab5947,player.nickname,labelSprite);models.set(player.id,model);}
       drawRipples(player.id,player,now,waterDepth(player.x,player.y)>0&&jumpLift(player,clock)<.3);
-      walkerModels.update(model,player,{now,clock,delta,seat:seatAt(player),floor:footing(player),jump:jumpLift(player,clock),emojiTexture,chatTexture,
+      walkerModels.update(model,player,{now,clock,delta,seat:seatAt(player,clock),floor:footing(player),jump:jumpLift(player,clock),emojiTexture,chatTexture,
         turnEase:player===me?1-Math.exp(-delta*22):1});
     });
-    const seat=seatAt(anchor);
-    const eyeHeight=seat?(firstPerson?1.30:1.22):(firstPerson?1.28:1.20)+footing(anchor)+jumpLift(anchor,clock);
-    anchorPoint.set(wx(seat?.x??anchor.x),eyeHeight,wz(seat?.y??anchor.y));
-    const changed=cameraAnchor!==anchor.id||pivot.distanceToSquared(anchorPoint)>144;
-    if(changed)pivot.copy(anchorPoint);
+    const seat=seatAt(anchor,clock),bus=anchor.bus&&busAt(anchor.bus.index,clock);
+    const outsideBus=bus&&!firstPerson;
+    const eyeHeight=outsideBus?2.1:seat?(firstPerson?1.30:1.22)+(seat.base??0):
+      (firstPerson?1.28:1.20)+footing(anchor)+jumpLift(anchor,clock)+(anchor.bike?.dock?.length? .12:0);
+    const cameraPoint=outsideBus?bus:seat??anchor;
+    anchorPoint.set(wx(cameraPoint.x),eyeHeight,wz(cameraPoint.y));
+    const anchorKey=bus?`${anchor.id}-${bus.index}-${firstPerson}`:anchor.id;
+    const changed=cameraAnchor!==anchorKey||pivot.distanceToSquared(anchorPoint)>144;
+    if(changed||bus&&firstPerson)pivot.copy(anchorPoint);
     else pivot.lerp(anchorPoint,1-Math.exp(-delta*20));
-    cameraAnchor=anchor.id;
+    cameraAnchor=anchorKey;
     const zoomFov=baseFov-view.zoom*(firstPerson?6:1.7);
     if(Math.abs(zoomFov-camera.fov)>.01){
       camera.fov+=(zoomFov-camera.fov)*(1-Math.exp(-delta*12));
       camera.updateProjectionMatrix();
     }
-    const pitch=firstPerson?Math.max(-72,Math.min(65,view.tilt)):Math.max(-10,Math.min(62,14+view.tilt));
+    const pitch=firstPerson?Math.max(-72,Math.min(65,view.tilt)):
+      Math.max(outsideBus?4:-10,Math.min(62,(outsideBus?23:14)+view.tilt));
     const elevation=pitch*Math.PI/180;
     const horizontal=Math.cos(elevation);
     arm.set(-Math.sin(angle)*horizontal,Math.sin(elevation),Math.cos(angle)*horizontal);
@@ -563,7 +568,7 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
       camera.lookAt(gaze.copy(pivot).sub(arm));
       cameraDistance=0;
     }else{
-      const distance=Math.min(4.55-view.zoom*.42,indoors&&arm.y>0?(4.97-pivot.y)/arm.y:Infinity);
+      const distance=Math.min(outsideBus?11.8-view.zoom*1.15:4.55-view.zoom*.42,indoors&&arm.y>0?(4.97-pivot.y)/arm.y:Infinity);
       let available=distance;
       // Shorten the orbit arm at walls and let it ease back out as space opens.
       for(let sample=1,count=Math.ceil(distance/.20);sample<=count;sample++){
