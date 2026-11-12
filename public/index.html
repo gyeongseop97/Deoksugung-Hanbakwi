@@ -104,7 +104,7 @@
           <div id="game" tabindex="0" role="group" aria-label="3D 산책. 조이스틱이나 방향키로 이동, 드래그로 시야 회전, 두 손가락으로 확대 및 축소">
             <p id="loading-game">산책길을 열고 있어요.</p>
             <div class="game-info">
-              <div class="game-place"><span id="game-season">정동의 가을</span><strong id="game-place">매표소 앞</strong><small class="desktop-controls-hint">화면 기준으로 이동 · 드래그로 시야 돌리기</small><small class="touch-controls-hint">드래그로 시야 회전 · 두 손가락으로 줌</small></div>
+              <div class="game-place"><span id="game-season">정동의 가을</span><strong id="game-place">매표소 앞</strong><small class="desktop-controls-hint">화면 기준으로 이동 · 드래그로 시야 돌리기</small><small class="touch-controls-hint">드래그로 시야 회전 · 두 손가락으로 줌</small><small id="travel-status" hidden></small></div>
               <div class="look-actions">
                 <span id="look-hint" hidden>내 위치를 지도에 5초 동안 표시해요.</span>
                 <button id="look" class="primary" type="button" aria-describedby="look-hint" disabled><span aria-hidden="true">✦</span> 여기 봐</button>
@@ -140,6 +140,8 @@
                 <button id="use-item" type="button" class="quiet activity-button" hidden>사용하기</button>
                 <button id="photo" type="button" class="quiet activity-button" hidden>사진 찍기</button>
                 <button id="subway" type="button" class="quiet activity-button" aria-haspopup="dialog" aria-controls="transit-dialog" hidden>지하철 타기</button>
+                <button id="bus-action" type="button" class="quiet activity-button" hidden>버스 타기</button>
+                <button id="bike-action" type="button" class="quiet activity-button" hidden>따릉이 빌리기</button>
                 <button id="museum-door" type="button" class="quiet activity-button" hidden>입장하기</button>
                 <button id="museum-exhibit" type="button" class="quiet activity-button" aria-haspopup="dialog" hidden>작품 설명</button>
                 <button id="landmark-guide" type="button" class="quiet activity-button" aria-haspopup="dialog" aria-controls="landmark-guide-dialog" hidden>설명 읽기</button>
@@ -217,7 +219,7 @@
             <button type="button" data-key="ArrowRight" aria-label="오른쪽으로">→</button>
           </div>
         </div>
-        <div class="map-footer"><span><i class="dot mine"></i>나 <i class="dot theirs"></i>동행</span><div class="map-links"><button id="model-credits" class="quiet" type="button" aria-haspopup="dialog">자료 출처</button><button id="entrance-target" class="quiet" type="button" aria-label="매표소로 순간이동">매표소</button><button id="fountain-target" class="quiet" type="button" aria-label="정동 분수대로 순간이동">분수대</button><button id="palace-target" class="quiet" type="button" aria-label="중화전으로 순간이동">중화전</button><button id="stop-target" class="quiet" type="button" hidden>정류장</button><button id="plaza-bus-target" class="quiet" type="button" hidden>정류장</button></div></div>
+        <div class="map-footer"><span class="map-key"><span><i class="dot mine"></i>나</span><span><i class="dot theirs"></i>동행</span><span><i class="dot bus-dot"></i>버스</span><span><i class="dot bike-dot"></i>따릉이</span></span><div class="map-links"><button id="model-credits" class="quiet" type="button" aria-haspopup="dialog">자료 출처</button><button id="entrance-target" class="quiet" type="button" aria-label="매표소로 순간이동">매표소</button><button id="fountain-target" class="quiet" type="button" aria-label="정동 분수대로 순간이동">분수대</button><button id="palace-target" class="quiet" type="button" aria-label="중화전으로 순간이동">중화전</button><button id="stop-target" class="quiet" type="button" hidden>정류장</button><button id="plaza-bus-target" class="quiet" type="button" hidden>정류장</button></div></div>
       </article>
     </section>
     <footer><span>✦ &nbsp; 덕수궁 한바퀴</span><span>덕수궁 · 광화문광장 · 경복궁을 걷는 3D 산책 공간</span></footer>
@@ -232,6 +234,18 @@
     </div>
   </div>
   <div id="toast" role="status" hidden></div>
+  <dialog id="bus-seat-dialog" aria-labelledby="bus-seat-title" aria-describedby="bus-seat-time">
+    <div class="dialog-top">
+      <h2 id="bus-seat-title">버스 좌석 고르기</h2>
+      <button class="quiet close" type="button" aria-label="닫기">×</button>
+    </div>
+    <p id="bus-seat-time"></p>
+    <div class="bus-seating" role="group" aria-label="버스 앞에서 뒤로 번호가 매겨진 8개 좌석">
+      <small>버스 앞</small>
+      <div id="bus-seats"></div>
+      <small>버스 뒤</small>
+    </div>
+  </dialog>
   <dialog id="transit-dialog" aria-labelledby="transit-dialog-title" aria-describedby="transit-from">
     <div class="dialog-top">
       <h2 id="transit-dialog-title">어디로 갈까요?</h2>
