@@ -138,6 +138,18 @@ for(const {id:gallery} of museumGalleries){
 }
 
 export function addMuseum(T,scene,{wx,wz}){
+  registerMuseumNavigation();
+  const build=assembleMuseum(T,scene,{wx,wz});
+  let step=build.next();
+  while(!step.done)step=build.next();
+  return step.value;
+}
+
+export function registerMuseumNavigation(){
+  for(const [, ,x,z] of casedExhibits)addObstacle(x,z,2.48,2.28,0,2.60);
+}
+
+export function* assembleMuseum(T,scene,{wx,wz}){
   const room=new T.Group();room.name="덕수궁 미술관";room.visible=false;scene.add(room);
   const boxGeometry=new T.BoxGeometry(1,1,1),colors=new Map(),exhibits=[],artworkMeshes=[];
   const {minX,maxX,minY,maxY}=museumBounds;
@@ -233,7 +245,8 @@ export function addMuseum(T,scene,{wx,wz}){
   keyLight.position.set(8,16,10);room.add(keyLight);
   const fillLight=new T.DirectionalLight(0xdce8f5,.74);
   fillLight.position.set(-10,8,-5);room.add(fillLight);
-  for(const [id,gallery,x,z,w,h,rotation] of framedExhibits){
+  for(const [index,[id,gallery,x,z,w,h,rotation]] of framedExhibits.entries()){
+    if(index%8===0)yield;
     const exhibit=museumExhibits[id],{file,title,credit}=exhibit;
     const y=h>3.5?2.85:2.64,s=Math.sin(rotation),c=Math.cos(rotation);
     block(0x78654e,x,y,z,w+.34,h+.34,.11,rotation);
@@ -250,7 +263,8 @@ export function addMuseum(T,scene,{wx,wz}){
   const edges=new T.EdgesGeometry(glassGeometry);
   const glassMaterial=new T.MeshBasicMaterial({color:0xc9e3e0,transparent:true,opacity:.09,depthWrite:false});
   const edgeMaterial=new T.LineBasicMaterial({color:0xa6bbb1,transparent:true,opacity:.53});
-  for(const [id,gallery,x,z] of casedExhibits){
+  for(const [index,[id,gallery,x,z]] of casedExhibits.entries()){
+    if(index%6===0)yield;
     const exhibit=museumExhibits[id],theme=galleryColors[gallery];
     block(0x3b3d37,x,.12,z,2.48,.24,2.28);
     block(theme.rug,x,.47,z,2.32,.70,2.10);
@@ -262,7 +276,6 @@ export function addMuseum(T,scene,{wx,wz}){
     const outline=new T.LineSegments(edges,edgeMaterial);
     outline.position.copy(glass.position);room.add(outline);
     artworkLabel([exhibit.title,"확대 재현 · "+exhibit.credit],theme.sign,"#fff1d1",x,.59,z+1.073,2.20,.43).rotation.x=-.10;
-    addObstacle(x,z,2.48,2.28,0,2.60);
     exhibits.push({...exhibit,id,gallery,x,y:z,radius:3.15});
   }
   let loaded=false;
