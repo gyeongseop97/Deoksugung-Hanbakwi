@@ -21,6 +21,12 @@
 
 경복궁의 전각 위치와 크기는 공개 지도 좌표와 궁능유적본부 관람 안내도를 참고해 실제 축척으로 배치했습니다. 건물은 이 게임을 위해 직접 모델링했으며 높이와 세부는 추정치입니다. 실측 3D 자료는 포함하지 않았습니다.
 
+## 광화문광장 맵
+
+시설 배치, 수경 시설, 도로와 보행로의 경계는 [서울시 광화문광장 시설 위치안내](https://gwanghwamun.seoul.go.kr/ghm/facility/list.do?codeId=CODE_08&mid=1011&siteGrpKey=ghm&siteId=ghm), [광장 공간 안내](https://gwanghwamun.seoul.go.kr/ghm/cardNews/ghm/space.do?mid=1039), [네이버 지도 거리뷰](https://map.naver.com/p?searchType=place&c=15.63,0,0,0,adh&isMini=true&p=Svj9PJ8SN08g-rqlkhonjw,-110,10,80,Float), [카카오맵 스카이뷰](https://map.kakao.com/?q=%EA%B4%91%ED%99%94%EB%AC%B8%EA%B4%91%EC%9E%A5), [구글어스](https://earth.google.com/web/search/%EA%B4%91%ED%99%94%EB%AC%B8%EA%B4%91%EC%9E%A5)를 참고해 재현했습니다.
+
+동상 치수와 세부 형태는 서울미래유산의 [세종대왕 동상](https://futureheritage.seoul.go.kr/futureHeritageMeet/futureHeritage/view.do?htNo=393)과 [이순신장군 동상](https://futureheritage.seoul.go.kr/futureHeritageMeet/futureHeritage/view.do?htNo=391)을 참고했습니다. 감사의 정원은 [서울시 개장 안내](https://news.seoul.go.kr/culture/archives/532816), 역과 정류장은 [광화문광장 오시는 길](https://gwanghwamun.seoul.go.kr/ghm/contents/16.do?mid=1009)을 참고했습니다. 3D 구조물과 표면은 게임용으로 제작했으며, 지도에서 판독하기 어려운 치수와 건물 외관 세부는 추정했습니다.
+
 ## 전시품과 렌더링
 
 `public/art/`의 이미지와 확대 재현한 유물의 원본 URL 및 이용 조건은 [기본 전시 목록](public/museum-catalog.js), [삼국·고려 추가 목록](public/museum-more-early.js), [조선·근대 추가 목록](public/museum-more-late.js)에 있습니다. 이미지들은 게임에서 빠르게 열리도록 크기를 줄여 WebP로 변환했습니다.
