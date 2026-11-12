@@ -1,6 +1,6 @@
 import {
   route,palacePaths,palaceCourts,palaceGardens,palacePond,palaceWalls,fountain,ticket,ticketApproach,ticketGuide,gate,bridge,court,spawn,
-  middle,hall,stoneHall,stoneFountain,city,pavilions,estateOutline,nearest,distance as near,walkable,clearSegment,wadeSegment,waterDepth,loftStep,loftHeight,loftStair,planWalk,platformAt
+  middle,hall,stoneHall,stoneFountain,city,pavilions,estateOutline,nearest,distance as near,walkable,solidAt,clearSegment,wadeSegment,waterDepth,loftStep,loftHeight,loftStair,planWalk,platformAt
 } from "./layout.js";
 import {normalize,angleDelta,hexCoat,moving,receivePeople,smoothPeople,handPosition,handSide,pairFits} from "./people.js";
 import {ITEMS,PET_MS,FEED_MS,JUMP_MS,jumpLift} from "./activities.js";
@@ -15,24 +15,40 @@ import {bindMapGestures} from "./map-gestures.js";
 import {makeSound} from "./sound.js";
 import {ceremonyAt} from "./palace-people.js";
 import {cityHallStation,gbSites,gbBounds,gbLake,gbPond,gbPaths,gbCourts,gbLawns,gbShortcuts,wishPond,gbPhotoZone,gbUijeongbu,gbCrossings,gbBusIsland,inGyeongbok,wallHalf,wallNorth,at as palaceAt} from "./gyeongbok-layout.js";
-import {inGwanghwamunPlaza,plazaAt,plazaBounds,plazaSites,plazaOutline,plazaPaths,plazaShortcuts,plazaBeds,plazaRoadProfile,eastRoadWidth,sajikRoad} from "./plaza-layout.js";
-import {corridorBounds,corridorLandmarks,corridorSidewalks,corridorCrossings,corridorWalkSpine,corridorMainRoad,inSejongCorridor} from "./sejong-corridor-layout.js";
+import {inGwanghwamunPlaza,plazaAt,plazaBounds,plazaSites,plazaOutline,plazaPaths,plazaShortcuts,plazaBeds,plazaRoadProfile,plazaEastWalkSpine,eastRoadWidth,sajikRoad} from "./plaza-layout.js";
+import {corridorBounds,corridorLandmarks,corridorSidewalks,corridorCrossings,corridorWalkSpine,corridorEastWalkSpine,corridorMainRoad,inSejongCorridor,seoulPlazaApproach} from "./sejong-corridor-layout.js";
 import {transitRoutes,transitStops} from "./transit-routes.js";
 import {BUS_COUNT,BUS_SEATS,busAt,busSeatPose,busStopById,busStops,busStopTimes,nearBus} from "./sejong-bus.js";
 import {bikeDocks,bikeMountReach,bikeParkDuration,isCycling,nearBikeDock} from "./sejong-bike.js";
 import {plazaShowSpot,PLAZA_SHOW_REACH,PLAZA_SHOW_HEARING_METRES} from "./plaza-show.js";
 import {canClink,CLINK_REACH} from "./social-events.js";
 import {gameApiUrl,isGitHubPages} from "./hosting.js";
+import {resolveSeoulEnvironment} from "./seoul-environment.js";
+import {HEADWEAR,KEEPSAKES} from "./wearable-options.js";
+import {hanbokRental,passportStamps} from "./passport-data.js";
+import {bindPassport} from "./passport.js";
+import {makeMinigames} from "./minigames-client.js";
+import {traditionalGames} from "./traditional-games.js";
+import {buskingSpot,buskingBeat,BUSKING_HEARING_METRES} from "./street-people.js";
+import {bindPhotoMode,PHOTO_REACH} from "./photo-mode.js";
+import {bindPhotoAlbum,downloadPhoto,importPhotos,listPhotos,makePhotoCard} from "./photo-album.js";
+import {bindTutorial} from "./tutorial.js";
 
 const $=id=>document.getElementById(id);
 const token=()=>Array.from(crypto.getRandomValues(new Uint8Array(16)),byte=>byte.toString(16).padStart(2,"0")).join("");
 const entranceHeading=285;
-const initialView=()=>({pan:entranceHeading,tilt:0,zoom:0,night:localStorage.getItem("jeongdong-night")==="true"});
-const lookChoices={hair:["short","bob","long","bun"],eyes:["round","soft","bright"],outfit:["coat","puffer","tee","hanbok"]};
+const initialView=()=>({pan:entranceHeading,tilt:0,zoom:0,night:false});
+const lookChoices={hair:["short","bob","long","bun"],eyes:["round","soft","bright"],outfit:["coat","puffer","tee","hanbok"],
+  headwear:HEADWEAR,keepsake:KEEPSAKES};
+const timeChoices=["auto","day","sunset","night"],storedTime=localStorage.getItem("jeongdong-time");
+const environment={time:timeChoices.includes(storedTime)?storedTime:"auto",weather:"live",season:"live",liveWeather:null};
+const seasonNames={spring:"봄",summer:"여름",autumn:"가을",winter:"겨울"};
+const weatherNames={clear:"맑음",cloudy:"흐림",rain:"비",snow:"눈",fog:"안개"};
+let currentEnvironment=resolveSeoulEnvironment(environment),umbrellaFolded=false;
 const defaultHair=character=>character==="woman"?"long":"short";
 function initialAvatar(){
   const character=localStorage.getItem("jeongdong-character")==="woman"?"woman":"man";
-  const look={hair:defaultHair(character),eyes:"round",outfit:"coat"};
+  const look={hair:defaultHair(character),eyes:"round",outfit:"coat",headwear:"none",keepsake:"none"};
   try{
     const saved=JSON.parse(localStorage.getItem("jeongdong-look"));
     if(saved?.outfit==="hoodie")saved.outfit="puffer";
@@ -41,7 +57,7 @@ function initialAvatar(){
     }
   }catch{}
   return {x:ticketApproach.x+1,y:ticketApproach.y-2.4,heading:entranceHeading,vx:0,vy:0,wish:0,wishOrigin:null,wishHeading:0,wishArt:null,wave:0,jump:0,emote:null,chat:null,
-    seat:null,seatSide:null,bus:null,bike:null,item:null,blushUntil:0,blushLevel:0,pet:null,feed:null,running:false,blocked:false,character,look};
+    seat:null,seatSide:null,bus:null,bike:null,item:null,umbrella:false,blushUntil:0,blushLevel:0,pet:null,feed:null,running:false,blocked:false,character,look};
 }
 const me=initialAvatar(),people=new Map(),markers=new Map(),seenSignals=new Map(),lookPings=new Map(),formations=new Map();
 let ownView=initialView(),trackedPersonId=null,world,worldLoading,worldFailed=false;
@@ -51,6 +67,7 @@ let syncTimer,syncDue=Infinity,syncInFlight=null,syncStarted=-Infinity,syncFailu
 let links=[],queuedSignal=null,queuedHand=null,queuedFeed=null,queuedChat=null,toastTimer;
 let queuedBus=null,queuedBike=null,lastBusHeading=null;
 let fountainShow=null,clinks=[],queuedShow=null,queuedClink=null;
+let queuedMinigame=null,queuedPhoto=null,roomPhoto=null;
 const heardClinks=new Set();
 let parkedBikes=[];
 let lastChatAt=0;
@@ -71,6 +88,40 @@ const serverButtons=["open-server","create-room","join-room","server-back","invi
 nickname.value=localStorage.getItem("jeongdong-nickname")||"";
 joinCode.value=suppliedCode;
 profileChoices.find(option=>option.value===me.character).checked=true;
+const photoAlbum=bindPhotoAlbum($("photo-album")),tutorial=bindTutorial($("tutorial-card"));
+const passport=bindPassport({
+  getLook:()=>me.look,applyLook:applyLookPatch,focusGame,onNotice:toast,
+  getProfile:()=>({nickname:nickname.value.trim(),character:me.character,look:{...me.look}}),applyProfile,
+  listPhotos,importPhotos
+});
+const minigames=makeMinigames({
+  send:command=>{queuedMinigame=command;wakeSync();},now:()=>gameTime(),self:()=>session?.id,focusGame
+});
+const photoMode=bindPhotoMode($("photo-controls"),{
+  getAvatar:()=>me,getView:()=>ownView,getClock:gameTime,getRoster:nearbyPhotoPeople,canMove:canMovePhoto,
+  onOpen(){
+    resetInput();nearbyControls.close();setEmotes(false);setMap(false);mobileSettings.open=false;
+    sceneWrap.classList.add("photo-active");focusGame();
+  },
+  onClose(){sceneWrap.classList.remove("photo-active");if(session){resetInput();focusGame();}},
+  onCapture:takePhoto,onShare(camera){queuedPhoto={id:token(),camera};wakeSync();},notice:toast
+});
+$("passport-open").addEventListener("click",()=>{resetInput();passport.open();});
+$("profile-transfer-open").addEventListener("click",()=>passport.openTransfer());
+$("hanbok-rental").addEventListener("click",()=>{
+  if(!passport.nearRental(me))return;
+  resetInput();passport.openRental();
+});
+$("minigame").addEventListener("click",()=>{resetInput();minigames.open(me);});
+$("passport-mount").addEventListener("click",event=>{
+  if(event.target.closest("[data-open-photo-album],#passport-album"))photoAlbum.open();
+});
+$("photo-album-open").addEventListener("click",()=>{clearManualInput();photoAlbum.open();});
+$("photo-mode-open").addEventListener("click",()=>{if(world&&session&&!riding)photoMode.open();});
+$("photo-join").addEventListener("click",()=>{if(joinablePhoto(gameTime()))photoMode.join(roomPhoto);});
+$("tutorial-replay").addEventListener("click",()=>{
+  $("visitor-guide-dialog").close();tutorial.start(true);focusGame();
+});
 
 let catTipTimer;
 let catTipDismissed=localStorage.getItem("jeongdong-cat-run-tip-hidden")==="true";
@@ -93,11 +144,11 @@ const mobileHeader=matchMedia("(max-width:810px), (orientation:landscape) and (m
 function placeViewControls(){
   if(mobileHeader.matches){
     $("mobile-view-controls").append($("perspective"));
-    $("mobile-settings-actions").append($("sound"),$("night"),$("character"));
+    $("mobile-settings-actions").append($("sound"),$("night"),$("character"),$("photo-mode-open"),$("passport-open"));
   }else{
     mobileSettings.open=false;
-    $("view-controls").append($("perspective"),$("sound"),$("night"));
-    $("game-room-controls").prepend($("character"));
+    $("view-controls").append($("perspective"),$("sound"),$("night"),$("photo-mode-open"));
+    $("game-room-controls").prepend($("passport-open"),$("character"));
   }
   labelInvite();
 }
@@ -156,10 +207,21 @@ function setPresence(text,count=0){
   $("game-presence").classList.toggle("live",count>1);
   for(const id of ["presence","game-presence"])attr($(id),"aria-label",text+" · 접속자 목록 열기");
 }
-function applyNight(view){
-  $("night").setAttribute("aria-pressed",String(Boolean(view.night)));
-  $("night").textContent=view.night?"☀ 낮":"☾ 밤";
+const seoulTime=new Intl.DateTimeFormat("ko-KR",{timeZone:"Asia/Seoul",hour:"2-digit",minute:"2-digit",hourCycle:"h23"});
+function updateEnvironment(time){
+  currentEnvironment=resolveSeoulEnvironment(environment,time);
+  ownView.night=currentEnvironment.night>.55;
+  if($("environment-dialog").open){
+    const source=currentEnvironment.source==="live"?"서울 날씨":"임시 날씨";
+    setText($("environment-status"),`서울 ${seoulTime.format(time)} · ${weatherNames[currentEnvironment.weather]} · ${source}`);
+  }
+  const wet=["rain","snow"].includes(currentEnvironment.weather)&&!isInsideMuseum(me.x,me.y);
+  if(!wet)umbrellaFolded=false;
+  const umbrella=wet&&!umbrellaFolded&&!me.bus&&!riding&&!isCycling(me);
+  if(me.umbrella!==umbrella){me.umbrella=umbrella;dirty=true;wakeSync();}
+  setActivity("umbrella",wet&&!me.bus&&!riding&&!isCycling(me)?umbrella?"우산 접기":"우산 쓰기":null);
 }
+$("umbrella").addEventListener("click",()=>{umbrellaFolded=me.umbrella;updateEnvironment(gameTime());focusGame();});
 function myLink(){return session&&links.find(link=>link.leader===session.id||link.follower===session.id);}
 function amFollowingHands(){const link=myLink();return Boolean(link?.active&&link.follower===session.id);}
 function labelPerspective(){
@@ -172,6 +234,7 @@ labelPerspective();
 const sound=makeSound();
 let strideLeft=1.2,nextStep=0,nextBird=0,nextCat=0,nextCricket=0,nextBusSound=0,nextDrum=0,ceremonyAnnounced=-1;
 let nextShowAudio=0;
+let lastBuskingBeat=-1;
 $("sound").setAttribute("aria-pressed",String(sound.enabled));
 $("sound").addEventListener("click",()=>{
   $("sound").setAttribute("aria-pressed",String(sound.toggle()));
@@ -196,6 +259,12 @@ function updateBusSound(time,indoors){
 function soundscape(time,travelled,wading,running=false){
   if(!session||!world||riding)return;
   const indoors=isInsideMuseum(me.x,me.y);
+  if(!indoors&&!document.hidden){
+    const distance=near(buskingSpot,me.x,me.y),cue=buskingBeat(time);
+    if(distance<BUSKING_HEARING_METRES&&cue.beat!==lastBuskingBeat){
+      lastBuskingBeat=cue.beat;sound.busking(cue.note,1-distance/BUSKING_HEARING_METRES);
+    }
+  }
   if(time>=nextShowAudio){
     nextShowAudio=time+100;
     const distance=near(plazaShowSpot,me.x,me.y);
@@ -244,22 +313,24 @@ $("perspective").addEventListener("click",()=>{
   focusGame();
 });
 $("night").addEventListener("click",()=>{
-  ownView={...ownView,night:!ownView.night};
-  localStorage.setItem("jeongdong-night",String(ownView.night));dirty=true;applyNight(ownView);
+  resetInput();$("environment-dialog").showModal();updateEnvironment(gameTime());
 });
-const zoomLimit=3,zoomStep=.75;
-function updateZoomButtons(){
-  $("zoom-out").disabled=ownView.zoom<=-zoomLimit;
-  $("zoom-in").disabled=ownView.zoom>=zoomLimit;
+for(const button of document.querySelectorAll("[data-time]")){
+  button.setAttribute("aria-pressed",String(button.dataset.time===environment.time));
+  button.addEventListener("click",()=>{
+    environment.time=button.dataset.time;localStorage.setItem("jeongdong-time",environment.time);
+    for(const choice of document.querySelectorAll("[data-time]"))attr(choice,"aria-pressed",choice===button);
+    updateEnvironment(gameTime());dirty=true;
+  });
 }
+const zoomLimit=3,zoomStep=.75;
 function adjustZoom(change){
   if(!session)return;
+  if(photoMode.camera){photoMode.zoom(change);return;}
   const zoom=Math.max(-zoomLimit,Math.min(zoomLimit,ownView.zoom+change));
   if(zoom===ownView.zoom)return;
-  ownView={...ownView,zoom};dirty=true;updateZoomButtons();
+  ownView={...ownView,zoom};dirty=true;
 }
-$("zoom-in").addEventListener("click",()=>{adjustZoom(zoomStep);focusGame();});
-$("zoom-out").addEventListener("click",()=>{adjustZoom(-zoomStep);focusGame();});
 $("game").addEventListener("wheel",event=>{
   if(!session||!event.deltaY||event.target.closest("button"))return;
   event.preventDefault();adjustZoom(-Math.sign(event.deltaY)*zoomStep);
@@ -278,6 +349,20 @@ function saveAppearance(){
   localStorage.setItem("jeongdong-character",me.character);
   localStorage.setItem("jeongdong-look",JSON.stringify(me.look));
   dirty=true;refreshCharacterPreview();
+}
+function applyLookPatch(patch){
+  const next={...me.look};
+  for(const [feature,choices] of Object.entries(lookChoices)){
+    if(choices.includes(patch?.[feature]))next[feature]=patch[feature];
+  }
+  me.look=next;saveAppearance();wakeSync();
+}
+function applyProfile(profile){
+  nickname.value=profile.nickname;
+  localStorage.setItem("jeongdong-nickname",profile.nickname);
+  chooseCharacter(profile.character);applyLookPatch(profile.look);
+  profileChoices.find(option=>option.value===me.character).checked=true;
+  if(session)toast("옷차림을 적용했어요. 이어서 입장하면 저장한 닉네임이 표시돼요.");
 }
 $("character").addEventListener("click",()=>{
   resetInput();
@@ -420,7 +505,7 @@ function positionGuidePins(pins,point,indoors){
   for(const [index,pin] of pins.entries()){
     attr(pin,"visibility",point?"visible":"hidden");
     if(!point)continue;
-    const radius=indoors?(index?2.25:2.6):(index?4.8:11);
+    const radius=indoors?(index?2.25:2.6):(index?7.2:11);
     attr(pin,"transform",`translate(${point.x} ${point.y})`);
     attr(pin.firstElementChild,"r",radius);attr(pin.lastElementChild,"r",radius*.32);
   }
@@ -585,7 +670,7 @@ function wakeSync(){
 }
 function syncCadence(){
   const fast=dirty||myLink()||queuedHand||queuedSignal||queuedFeed||queuedChat||queuedBus||queuedBike||seatClaim||moving(me)||me.blocked||
-    queuedShow||queuedClink||
+    queuedShow||queuedClink||queuedPhoto||queuedMinigame||
     [...people.values()].some(person=>moving(person.avatar)||person.avatar.blocked);
   if(fast)return movingCadence();
   return session.mode==="open"?(people.size?195+Math.min(55,Math.max(0,people.size-5)*5):330):
@@ -597,15 +682,15 @@ async function sync(){
   syncInFlight=visit;
   const sent=performance.now(),signal=queuedSignal,hand=queuedHand,claim=seatClaim,feed=queuedFeed,chat=queuedChat;
   const bus=queuedBus,bike=queuedBike;
-  const show=queuedShow,clink=queuedClink;
+  const show=queuedShow,clink=queuedClink,photo=queuedPhoto,minigame=queuedMinigame;
   syncStarted=sent;
-  const post=dirty||signal||hand||claim||feed||chat||bus||bike||show||clink||Date.now()-lastPost>=3800;
+  const post=dirty||signal||hand||claim||feed||chat||bus||bike||show||clink||photo||minigame||Date.now()-lastPost>=3800;
   const base={room:visit.room,id:visit.id,key:visit.key,lookPings:true};
   const avatar=post?{...me}:null;
   if(avatar&&claim)Object.assign(avatar,{seat:claim.bench,seatSide:claim.side});
   if(avatar){if(chat)avatar.chat=chat;else delete avatar.chat;}
   if(avatar&&(avatar.wish===lastWishSynced||gameTime(sent)-avatar.wish>=WISH_FLIGHT_MS))delete avatar.wishArt;
-  const body=post?{...base,avatar,view:{...ownView},signal,hand,feed,bus,bike,show,clink}:base;
+  const body=post?{...base,avatar,view:{...ownView},signal,hand,feed,bus,bike,show,clink,photo,minigame}:base;
   if(post)dirty=false;
   try{
     const response=await request("/api/room",body),data=await response.json();
@@ -614,6 +699,7 @@ async function sync(){
     if(!response.ok)throw Error(data.error);
     const received=performance.now();
     updateClock(data.serverTime,sent,received);
+    if(data.weather)environment.liveWeather=data.weather;
     syncFailures=0;
     if(post){lastPost=Date.now();lastWishSynced=avatar.wish;}
     if(queuedSignal===signal)queuedSignal=null;
@@ -633,11 +719,15 @@ async function sync(){
     if(feed&&queuedFeed===feed){
       queuedFeed=null;
       if(confirmed?.feed?.claim!==feed.claim)toast("고양이에게 가까이 다가가 다시 간식을 주세요.");
+      else passport.feedCat(confirmed.feed.id,feed.name,confirmed.feed.claim);
     }
     receivePeople(people,data.walkers,visit.id,data.serverTime);
     if(claim)confirmSeat(claim,confirmed);
     changeLinks(data.handholds||[]);
     confirmSocial(data,show,clink);
+    confirmRoomPhoto(data.photoSession,photo);
+    if(queuedMinigame===minigame)queuedMinigame=null;
+    minigames.receive(data.minigames??[],minigame,data.minigameResult);
     const link=myLink();
     if(hand?.action==="offer"&&!link)toast("가까이 있는 친구에게 다시 손을 내밀어 주세요.");
     if(hand?.action==="accept"&&!link?.active)toast("손잡기 요청이 끝났어요. 가까이에서 다시 요청해 주세요.");
@@ -692,6 +782,8 @@ function returnToLobby(message=""){
   queuedSignal=queuedHand=queuedFeed=queuedChat=null;people.clear();changeLinks([]);resetLocationGuides();
   queuedBus=queuedBike=lastBusHeading=selectedBus=null;
   fountainShow=queuedShow=queuedClink=null;clinks=[];heardClinks.clear();nextShowAudio=0;
+  queuedPhoto=roomPhoto=queuedMinigame=null;minigames.reset();photoMode.close();tutorial.close();
+  lastBuskingBeat=-1;umbrellaFolded=false;environment.liveWeather=null;
   parkedBikes=[];
   sound.bus(null);sound.plazaShow(null);
   busStatus.hidden=true;
@@ -728,8 +820,9 @@ async function enterRoom(action,code){
     clockOffset=null;roundTrip=65;
     updateClock(data.serverTime,sent,performance.now());
     session={room:data.room,code:data.code,mode:data.mode??"private",id,key,...data.profile};
+    environment.liveWeather=data.weather??null;passport.setRoom(session.room);
     Object.assign(me,avatar,{nickname:session.nickname,coat:session.coat});
-    ownView=view;applyNight(view);updateZoomButtons();dirty=true;lastWishSynced=0;lastPost=Date.now();
+    ownView=view;dirty=true;lastWishSynced=0;lastPost=Date.now();
     updateChatSend();
     syncStarted=-Infinity;syncFailures=0;
     people.clear();links=[];formations.clear();resetLocationGuides();resetInput();
@@ -969,6 +1062,7 @@ window.addEventListener("blur",clearManualInput);
 window.addEventListener("keydown",event=>{
   if(event.target.closest("dialog"))return;
   if(event.key==="Escape"){
+    if(photoMode.camera){photoMode.close();return;}
     if(mobileSettings.open){
       mobileSettings.open=false;mobileSettings.querySelector("summary").focus();return;
     }
@@ -976,13 +1070,13 @@ window.addEventListener("keydown",event=>{
     setMap(false);setEmotes(false);
   }
   if(!session||riding||nearbyControls.ownsFocus()||event.target.closest("input,#mobile-settings"))return;
-  if(event.code==="Space"&&!event.target.closest("button,a")&&!event.ctrlKey&&!event.metaKey&&!event.altKey){
+  if(event.code==="Space"&&!photoMode.camera&&!event.target.closest("button,a")&&!event.ctrlKey&&!event.metaKey&&!event.altKey){
     event.preventDefault();if(!event.repeat)jump();return;
   }
   const key=event.key.length===1?event.key.toLowerCase():event.key;
   if(event.key==="Shift")shiftHeld=true;
-  if(key==="f"&&!event.repeat&&!$("sit").hidden){interactBench();return;}
-  if(key==="e"&&!event.repeat&&!$("wish").disabled){openWish();return;}
+  if(!photoMode.camera&&key==="f"&&!event.repeat&&!$("sit").hidden){interactBench();return;}
+  if(!photoMode.camera&&key==="e"&&!event.repeat&&!$("wish").disabled){openWish();return;}
   if(!vectors[key]||event.ctrlKey||event.metaKey||event.altKey)return;
   event.preventDefault();
   if(amFollowingHands())return;
@@ -1017,7 +1111,7 @@ function walkFromMap(event,source=event.target){
 }
 $("world").addEventListener("click",walkFromMap);
 const clearSceneTouch=bindSceneTouch($("game"),gameShell,{
-  canTap:started=>Boolean(session&&thumbId===undefined&&!keys.size&&started>manualInputAt),
+  canTap:started=>Boolean(session&&!photoMode.camera&&thumbId===undefined&&!keys.size&&started>manualInputAt),
   onBegin:()=>{setEmotes(false);focusGame();},
   onTap:(x,y)=>{
     const target=world?.pick(x,y);
@@ -1025,6 +1119,7 @@ const clearSceneTouch=bindSceneTouch($("game"),gameShell,{
     else walkTo(target);
   },
   onDrag:(dx,dy)=>{
+    if(photoMode.camera){photoMode.drag(dx,dy);return;}
     ownView={...ownView,pan:normalize(ownView.pan+dx*.34),
       tilt:Math.max(-87,Math.min(firstPerson?65:48,ownView.tilt+dy*.26))};
     dirty=true;
@@ -1078,27 +1173,49 @@ let photoBusy=false,lastScene=null;
 function nearPhotoZone(){
   return Boolean(world&&session&&me.seat==null&&near(gbPhotoZone,me.x,me.y)<gbPhotoZone.reach);
 }
-function savePhoto(picture){
-  const image=new Image();
-  image.onload=()=>{
-    const canvas=document.createElement("canvas"),bar=Math.round(image.height*.11),day=new Date();
-    canvas.width=image.width;canvas.height=image.height+bar;
-    const ctx=canvas.getContext("2d");
-    ctx.fillStyle="#f4efe2";ctx.fillRect(0,0,canvas.width,canvas.height);
-    ctx.drawImage(image,0,0);
-    ctx.fillStyle="#26322b";ctx.textBaseline="middle";
-    ctx.font=`bold ${Math.round(bar*.42)}px "Malgun Gothic", sans-serif`;
-    ctx.fillText("경복궁 근정전",bar*.4,image.height+bar*.52);
-    ctx.textAlign="right";ctx.font=`${Math.round(bar*.3)}px "Malgun Gothic", sans-serif`;
-    ctx.fillText(`${session?.nickname??""} · ${day.getFullYear()}.${day.getMonth()+1}.${day.getDate()} · 덕수궁 한바퀴`,
-      canvas.width-bar*.4,image.height+bar*.52);
-    const link=document.createElement("a"),two=value=>String(value).padStart(2,"0");
-    link.download=`gyeongbokgung-${day.getFullYear()}${two(day.getMonth()+1)}${two(day.getDate())}.jpg`;
-    link.href=canvas.toDataURL("image/jpeg",.92);
-    link.click();
-    toast("기념사진을 저장했어요.");
-  };
-  image.src=picture;
+function canMovePhoto(point){
+  const inside=isInsideMuseum(me.x,me.y);
+  return isInsideMuseum(point.x,point.y)===inside&&(!inside||point.height<=4.4)&&
+    near(me,point.x,point.y)<=PHOTO_REACH&&
+    !solidAt(point.x,point.y,(world?.floorHeight(point)??0)+point.height);
+}
+function nearbyPhotoPeople(){
+  const indoors=isInsideMuseum(me.x,me.y);
+  return [...people.values()].map(person=>person.position)
+    .filter(point=>near(me,point.x,point.y)<=PHOTO_REACH&&isInsideMuseum(point.x,point.y)===indoors);
+}
+function joinablePhoto(time){
+  if(!session||!roomPhoto||roomPhoto.host===session.id||roomPhoto.shootAt<=time||photoMode.camera)return false;
+  const host=people.get(roomPhoto.host)?.position;
+  return Boolean(host&&near(me,host.x,host.y)<=PHOTO_REACH&&
+    isInsideMuseum(me.x,me.y)===isInsideMuseum(host.x,host.y));
+}
+function confirmRoomPhoto(event,sent){
+  roomPhoto=event??null;
+  if(!sent||queuedPhoto!==sent)return;
+  queuedPhoto=null;
+  if(!photoMode.camera)return;
+  if(event?.id!==sent.id||!photoMode.join(event))photoMode.shareFailed();
+}
+async function savePhoto(picture,{date=gameTime(),place=shownPlace(me),mode="solo",download=false}={}){
+  let record;
+  try{
+    record=await makePhotoCard(picture,{date,place,mode,nickname:session?.nickname??nickname.value});
+    await importPhotos([record]);
+    if(download)downloadPhoto(record);
+    toast("산책 사진 앨범에 저장했어요.");
+    if(photoMode.camera)photoMode.status("앨범에 저장했어요.");
+  }catch(error){
+    if(record)downloadPhoto(record);
+    const message=record?"앨범에 저장할 수 없어 사진 파일로 저장했어요.":error.message||"사진을 찍지 못했어요.";
+    toast(message);
+    if(photoMode.camera)photoMode.status(message);
+  }
+}
+function takePhoto(shot){
+  if(!world||!session||!lastScene||!photoMode.camera)return;
+  const picture=world.capturePhoto({...lastScene,clock:shot.shootAt,photoCamera:photoMode.camera});
+  void savePhoto(picture,{date:shot.shootAt,place:shownPlace(shot.camera??me),mode:shot.mode});
 }
 $("photo").addEventListener("click",()=>{
   if(photoBusy||!nearPhotoZone()||!lastScene)return;
@@ -1107,7 +1224,7 @@ $("photo").addEventListener("click",()=>{
   dirty=true;toast("하나, 둘, 셋!");
   setTimeout(()=>{
     photoBusy=false;
-    if(world&&lastScene&&nearPhotoZone())savePhoto(world.snapshot(lastScene,gbPhotoZone.shot));
+    if(world&&lastScene&&nearPhotoZone())void savePhoto(world.snapshot(lastScene,gbPhotoZone.shot),{place:"경복궁 근정전",download:true});
   },1100);
 });
 function openWish(){
@@ -1384,7 +1501,8 @@ $("pet-cat").addEventListener("click",()=>{
   if(!cat||time-(me.pet?.at??0)<PET_MS||feedingLocked(time))return;
   resetInput();
   me.heading=normalize(Math.atan2(cat.x-me.x,me.y-cat.y)*180/Math.PI);
-  me.pet={id:cat.id,at:time};dirty=true;nextCat=time+9000;sound.meow();focusGame();
+  me.pet={id:cat.id,at:time};passport.petCat(cat.id,cat.name,time);
+  dirty=true;nextCat=time+9000;sound.meow();focusGame();
 });
 $("take-item").addEventListener("click",()=>{
   if(!session||me.seat!=null)return;
@@ -1404,7 +1522,7 @@ $("use-item").addEventListener("click",()=>{
     if(!cat||queuedFeed||feedingLocked(time)||time-(me.pet?.at??0)<PET_MS)return;
     resetInput();
     me.heading=normalize(Math.atan2(cat.x-me.x,me.y-cat.y)*180/Math.PI);
-    queuedFeed={id:cat.id,claim:token(),at:time};
+    queuedFeed={id:cat.id,name:cat.name,claim:token(),at:time};
     Object.assign(me,{vx:0,vy:0,running:false,blocked:false});dirty=true;wakeSync();focusGame();
     return;
   }
@@ -1546,6 +1664,11 @@ function updateActivities(time,guideNearby){
   }
   const eligible=world&&session&&!me.bus&&!isCycling(me)&&!queuedBus&&!queuedBike;
   updateSocial(time,eligible);
+  const available=eligible&&!riding&&me.seat==null&&!myLink()?.active;
+  const venue=available&&minigames.nearby(me);
+  setActivity("minigame",venue?venue.name:null);
+  setActivity("hanbok-rental",available&&passport.nearRental(me)?"한복 대여소":null);
+  setActivity("photo-join",world&&joinablePhoto(time)?"단체 사진 함께 찍기 · "+Math.ceil((roomPhoto.shootAt-time)/1000)+"초":null);
   const feeding=feedingLocked(time);
   setActivity("visitor-guide",guideNearby?"관람 안내 읽기":null);
   const landmark=eligible&&nearbyPalaceGuide(me);
@@ -1616,6 +1739,10 @@ function motion(now,elapsed){
     if(lastBusHeading!=null)ownView.pan=normalize(ownView.pan+angleDelta(lastBusHeading,bus.heading));
     lastBusHeading=bus.heading;
     setText($("location"),busStopById(bus.stopId)?.name??"세종대로 순환버스");
+    soundscape(gameTime(now),0,false);return false;
+  }
+  if(photoMode.camera){
+    if(moving(me)||me.blocked){Object.assign(me,{vx:0,vy:0,running:false,blocked:false});dirty=true;wakeSync();}
     soundscape(gameTime(now),0,false);return false;
   }
   const oldX=me.x,oldY=me.y,link=myLink(),follower=amFollowingHands();
@@ -1689,6 +1816,7 @@ function preferredNearbyAction(time){
   if(isCycling(me)||queuedBike)return $("bike-action").hidden?"bike-park":"bike-action";
   if(me.seat!=null)return "sit";
   if(myLink()?.active)return "hand";
+  if(joinablePhoto(time))return "photo-join";
   if(fountainShow?.endsAt>time&&atShowControls())return "fountain-show";
 }
 function frame(now){
@@ -1698,14 +1826,23 @@ function frame(now){
   const time=gameTime(now);
   smoothPeople(people,elapsed,time,roundTrip);
   const stepping=motion(now,elapsed);
+  if(photoMode.camera&&(keys.size||thumbId!==undefined)){
+    const [dx,dy]=Array.from(keys,key=>vectors[key]).reduce(([x,y],[vx,vy])=>[x+vx,y+vy],thumb);
+    photoMode.move(dx,dy,elapsed);
+  }
   const {self,others}=actors(now,stepping);
   // Buttons, the map and guides do not need every frame; updating them about ten times a
   // second leaves the rest of each frame for drawing.
   if(now>=interfaceAt){
     interfaceAt=now+95;
     guideNearby=!me.bus&&!isCycling(me)&&nearVisitorGuide();
+    updateEnvironment(time);
     updateActivities(time,guideNearby);
     updateTransport(time);
+    if(world)passport.visit(me);
+    const tutorialPaused=Boolean(photoMode.camera||riding||document.hidden||document.querySelector("dialog[open]"));
+    if(tutorial.needsStart&&world&&!tutorialPaused)tutorial.start();
+    tutorial.update(now,tutorialPaused);
     const seatEnabled=world&&session&&!me.bus&&!isCycling(me)&&!queuedBus&&!queuedBike&&!myLink()?.active&&!feedingLocked(time);
     const bench=seatEnabled&&me.seat==null&&!pendingSeat&&!seatClaim?benchNearby():null;
     const seatLabel=me.seat!=null?"일어나기":seatClaim?"자리 확인 중":pendingSeat?"벤치로 이동 중":
@@ -1714,14 +1851,16 @@ function frame(now){
     attr($("sit"),"aria-pressed",me.seat!=null);
     setText($("game-place"),$("location").textContent);
     const area=outdoorMap(me),jeongdong=area==="덕수궁";
-    setText($("game-season"),(jeongdong?"정동":area)+"의 가을");
+    setText($("game-season"),(jeongdong?"정동":area)+"의 "+seasonNames[currentEnvironment.season]);
     setText(sceneTitle,jeongdong?"덕수궁 돌담길":area);
     refreshShortcuts();
     updateHandControls();nearbyControls.refresh(preferredNearbyAction(time));
     updateLocationGuides(time);updateMaps(self,others);
   }
-  lastScene={me:self,peers:[...others.values()],parkedBikes,view:ownView,firstPerson,guideNearby,destination:course.at(-1),clock:time,fountainShow};
+  lastScene={me:self,peers:[...others.values()],parkedBikes,view:ownView,firstPerson:firstPerson&&!photoMode.camera,
+    photoCamera:photoMode.camera,environment,guideNearby,destination:course.at(-1),clock:time,fountainShow};
   world?.render(lastScene,now);
+  photoMode.update(time);
 }
 
 const svgNS="http://www.w3.org/2000/svg";
@@ -1732,6 +1871,7 @@ function svg(parent,type,attributes,text){
   parent.append(element);return element;
 }
 const outline=points=>points.map(p=>p.x.toFixed(1)+","+p.y.toFixed(1)).join(" ");
+const eastWalkRoute=outline([...corridorEastWalkSpine,...plazaEastWalkSpine.slice(1)]);
 const museumMaps=[];
 let overviewOpen=false,overviewLayer;
 let mapViewport=null;
@@ -1771,14 +1911,16 @@ function drawMap(base,mini=false){
       ...style,
       transform:"rotate("+(-(building.angle||0)*180/Math.PI)+" "+building.x+" "+building.y+")",rx:2});
   }
-  const palaceLabels=new Set(["돈덕전","정관헌","광명문","함녕전","석어당","덕홍전"]);
-  for(const point of [...pavilions.filter(building=>palaceLabels.has(building.name)),palacePond]){
+  const palaceLabels=mini?["돈덕전","정관헌","함녕전"]:["돈덕전","정관헌","광명문","함녕전","석어당","덕홍전"];
+  for(const point of [...pavilions.filter(building=>palaceLabels.includes(building.name)),palacePond]){
     svg(base,"text",{x:point.x,y:point.y+2.6,class:mini?"mini-landmark":"map-label","text-anchor":"middle",
       ...(mini?{}:{style:"font-size:9px;stroke-width:2.6px"})},point===palacePond?"연못":point.name);
   }
   drawCorridor(base,mini);
   drawGyeongbok(base,mini);
   drawPlaza(base,mini);
+  svg(base,"polyline",{points:eastWalkRoute,fill:"none",stroke:"#ded2a9","stroke-width":mini?1.45:2.6,
+    "stroke-linejoin":"round","stroke-dasharray":"3 3","pointer-events":"none"});
   drawTransport(base,mini);
   const {minX,maxX,minY,maxY}=museumBounds;
   const interior=svg(base,"g",{visibility:"hidden"});
@@ -1794,18 +1936,31 @@ function drawMap(base,mini=false){
   }
   svg(interior,"line",{x1:78.4,x2:81.6,y1:maxY,y2:maxY,stroke:"#d4b985","stroke-width":1.6});
   if(mini){
-    for(const [point,label,dy] of [[ticket,"매표소",-4],[gate,"대한문",9],[bridge,"금천교",-4],
-      [middle,"중화문",8],[hall,"중화전",-5],[stoneHall,"석조전",-5],[fountain,"정동 분수",8]]){
-      svg(base,"circle",{cx:point.x,cy:point.y,r:1.7,fill:"#d9c28e"});
+    for(const [point,label,dy] of [[ticket,"매표소",-6],[hall,"중화전",-6],
+      [stoneHall,"석조전",-6],[fountain,"정동 분수",10],[seoulPlazaApproach,"서울광장",-6]]){
+      svg(base,"circle",{cx:point.x,cy:point.y,r:2.55,fill:"#d9c28e"});
       svg(base,"text",{x:point.x,y:point.y+dy,class:"mini-landmark","text-anchor":"middle"},label);
     }
     return;
   }
   for(const [point,label,dx,dy] of [[ticket,"매표소",22,-10],[gate,"대한문",19,19],[bridge,"금천교",-12,-9],
     [middle,"중화문",0,18],[hall,"중화전",0,-17],[stoneHall,"석조전",0,-23],[stoneFountain,"분수 정원",3,-9],
-    [fountain,"정동 분수",-11,16],[city[3],"정동제일교회",-14,-13],[route[4],"덕수궁 돌담길",15,24],[city[0],"서울광장",-15,-12]]){
+    [fountain,"정동 분수",-11,16],[city[3],"정동제일교회",-14,-13],[route[4],"덕수궁 돌담길",15,24]]){
     svg(base,"circle",{cx:point.x,cy:point.y,r:3.6,fill:"#e1c790"});
     svg(base,"text",{x:point.x+dx,y:point.y+dy,class:"map-label","text-anchor":"middle"},label);
+  }
+  const seoul=svg(base,"g",{"data-walk-x":seoulPlazaApproach.x,"data-walk-y":seoulPlazaApproach.y});
+  svg(seoul,"circle",{cx:seoulPlazaApproach.x,cy:seoulPlazaApproach.y,r:3.6,fill:"#e1c790"});
+  svg(seoul,"text",{x:seoulPlazaApproach.x-11,y:seoulPlazaApproach.y-9,class:"map-label","text-anchor":"middle"},"서울광장");
+  const activities=[
+    {...buskingSpot,y:buskingSpot.y+2.5},{...hanbokRental,name:"한복 대여소"},
+    ...traditionalGames.map(game=>({...game.point,name:game.name}))
+  ];
+  for(const point of activities){
+    const mark=svg(base,"g",{"data-walk-x":point.x,"data-walk-y":point.y});
+    svg(mark,"circle",{cx:point.x,cy:point.y,r:3.6,fill:"#d6ae83",stroke:"#513e32","stroke-width":1});
+    svg(mark,"text",{x:point.x,y:point.y-9,class:"map-label","text-anchor":"middle",
+      style:"font-size:11px;stroke-width:2.5px"},point.name);
   }
   svg(base,"text",{x:548,y:94,class:"map-faint","text-anchor":"middle"},"↑ N");
 }
@@ -1814,7 +1969,7 @@ function drawTransport(base,mini){
     [busStops.map(stop=>({...stop.board,name:`${stop.name} · ${stop.direction}`})),"#91c9f2"]]){
     for(const point of points){
       const mark=svg(base,"g",mini?{}:{"data-walk-x":point.x,"data-walk-y":point.y});
-      svg(mark,"circle",{cx:point.x,cy:point.y,r:mini?2.8:5.8,fill:color,stroke:"#18291f","stroke-width":mini?.65:1.5});
+      svg(mark,"circle",{cx:point.x,cy:point.y,r:mini?4.2:5.8,fill:color,stroke:"#18291f","stroke-width":mini?1:1.5});
       if(!mini)svg(mark,"title",{},point.name);
     }
   }
@@ -1837,6 +1992,8 @@ function drawOverview(base){
   const path=[spawn,...corridorWalkSpine,...plazaPaths[0].points,palaceAt(0,-37),palaceAt(0,260)];
   svg(layer,"polyline",{points:outline(path),fill:"none",stroke:"#f1d18b","stroke-width":9,"stroke-linejoin":"round",
     "stroke-linecap":"round","stroke-dasharray":"14 9",opacity:.9});
+  svg(layer,"polyline",{points:eastWalkRoute,fill:"none",stroke:"#ded2a9","stroke-width":7,"stroke-linejoin":"round",
+    "stroke-linecap":"round","stroke-dasharray":"14 9",opacity:.9,"pointer-events":"none"});
   for(const [point,name,side] of [[spawn,"덕수궁",-1],[plazaAt(-12,240),"광화문광장",1],[palaceAt(0,245),"경복궁",1]]){
     const destination=svg(layer,"g",{"data-walk-x":point.x,"data-walk-y":point.y});
     svg(destination,"circle",{cx:point.x,cy:point.y,r:16,fill:"#f2d59b",stroke:"#40392c","stroke-width":5});
@@ -1881,13 +2038,12 @@ function drawGyeongbok(base,mini){
       fill:building.kind==="museum"?"#6f7468":"#827659",stroke:"#aa9774","stroke-width":1,rx:2,
       transform:"rotate("+(-(building.angle||0)*180/Math.PI)+" "+building.x+" "+building.y+")"});
   }
-  const labels=mini?["광화문","흥례문","근정전","사정전","강녕전","교태전","경회루","수정전","자경전","향원정","건청궁","집옥재","국립고궁박물관",
-    "계조당","소주방","흥복전","함화당","태원전","장고"]:
+  const labels=mini?["광화문","흥례문","근정전","교태전","경회루","자경전","향원정","건청궁","국립고궁박물관"]:
     ["광화문","흥례문","근정전","강녕전","교태전","경회루","자경전","향원정","건청궁","집옥재","국립고궁박물관","국립민속박물관",
       "계조당","소주방","흥복전","함화당","태원전","장고"];
   for(const building of gbSites.filter(spec=>labels.includes(spec.name))){
     svg(base,"text",{x:building.x,y:building.y+(mini?building.d/2+6:building.d/2+22),class:mini?"mini-landmark":"map-label gyeongbok-label",
-      "text-anchor":"middle"},building.name);
+      "text-anchor":"middle"},mini&&building.name==="국립고궁박물관"?"고궁박물관":building.name);
   }
   for(const stop of transitStops){
     if(stop.mode!=="subway"||inGwanghwamunPlaza(stop.x,stop.y))continue;
@@ -1903,6 +2059,8 @@ function drawPlaza(base,mini){
   svg(base,"rect",{x:crosswalk.x,y:crosswalk.y,width:sajikRoad.crossWidth,height:sajikRoad.north-sajikRoad.south,fill:"#c7c0aa"});
   const road=plazaRoadProfile.map(([n,e])=>plazaAt(e+eastRoadWidth/2,n));
   svg(base,"polyline",{points:outline(road),fill:"none",stroke:"#4e5351","stroke-width":eastRoadWidth});
+  const eastSidewalk=plazaRoadProfile.filter(([north])=>north<=528).map(([north,east])=>plazaAt(east+eastRoadWidth,north));
+  svg(base,"polygon",{points:outline([...eastSidewalk,plazaAt(48,528),plazaAt(48,0)]),fill:"#847c62"});
   svg(base,"polygon",{points:outline(plazaOutline),fill:"#6a6c56",stroke:"#9f977b","stroke-width":1.5});
   for(const bed of plazaBeds)svg(base,"polygon",{points:outline(bed.outline),fill:bed.kind==="lawn"?"#849465":"#4d684f"});
   for(const {points,width,surface} of plazaPaths){
@@ -1913,11 +2071,12 @@ function drawPlaza(base,mini){
     ["time","시간의 정원",1],["gratitude","감사의 정원",-1],["sejong","세종대왕",1],
     ["play","놀이마당",-1],["haechi","해치마당",1],["hangeul","한글분수",-1],
     ["yi","이순신",1],["myeongnyang","명량분수",1]];
+  const miniLabels=new Set(["lawn","time","sejong","haechi","hangeul","yi","myeongnyang"]);
   for(const [key,label,side] of labels){
     const point=plazaSites[key];
     svg(base,"circle",{cx:point.x,cy:point.y,r:mini?1.7:3.6,fill:"#e1c790"});
     if(!mini)svg(base,"line",{x1:point.x+side*4,y1:point.y,x2:point.x+side*11,y2:point.y,stroke:"#c2b58c","stroke-width":1});
-    svg(base,"text",{x:point.x+(mini?0:side*14),y:point.y+(mini?-4:4),class:mini?"mini-landmark":"map-label plaza-map-label",
+    if(!mini||miniLabels.has(key))svg(base,"text",{x:point.x+(mini?0:side*14),y:point.y+(mini?-5:4),class:mini?"mini-landmark":"map-label plaza-map-label",
       "text-anchor":mini?"middle":side===1?"start":"end"},label);
   }
   for(const stop of transitStops){
@@ -1933,6 +2092,7 @@ const southViewBox="58 28 520 397",southApproachBox="58 -60 520 485";
 const plazaApproachBox=[plazaBounds.minX-18,plazaBounds.minY+210,Math.max(plazaBounds.maxX,corridorBounds.maxX)-plazaBounds.minX+36,
   -58-(plazaBounds.minY+210)].join(" ");
 const fieldViewBox=[38,gbBounds.minY-28,Math.max(gbBounds.maxX,corridorBounds.maxX)-10,450-gbBounds.minY].join(" ");
+const miniMapWidth=126,miniMapHeight=105;
 function attr(node,key,value){if(node.getAttribute(key)!==String(value))node.setAttribute(key,value);}
 function setMapView(view){
   const {base}=mapViewport;
@@ -1981,25 +2141,31 @@ function updateMaps(self,others){
   }
   $("my-avatar").querySelector("circle").style.fill=coat;
   attr($("mini-my"),"fill",coat);
-  attr($("mini-my"),"transform","translate("+self.x+" "+self.y+") rotate("+self.heading+")"+(indoors?" scale(.47)":""));
+  attr($("mini-my"),"transform","translate("+self.x+" "+self.y+") rotate("+self.heading+") scale("+(indoors?.47:1.5)+")");
   for(const map of museumMaps)attr(map,"visibility",indoors?"visible":"hidden");
   $("world").classList.toggle("museum-map",indoors);
   $("mini-world").classList.toggle("museum-map",indoors);
   showMapRegion(indoors?museumViewBox:overview?fieldViewBox:palace?gyeongbokViewBox:plaza?plazaViewBox:
     corridor&&self.y<28?self.y<-58?plazaApproachBox:southApproachBox:southViewBox);
-  attr($("mini-world"),"viewBox",indoors?museumViewBox:(self.x-42).toFixed(1)+" "+(self.y-35).toFixed(1)+" 84 70");
+  attr($("mini-world"),"viewBox",indoors?museumViewBox:[
+    (self.x-miniMapWidth/2).toFixed(1),(self.y-miniMapHeight/2).toFixed(1),miniMapWidth,miniMapHeight
+  ].join(" "));
+  for(const [id,pin] of stampPins){
+    attr(pin,"visibility",!indoors&&passport.visited(id)?"visible":"hidden");
+    attr(pin,"r",overview?14:palace?8:plaza?6:4.8);
+  }
   for(const actor of others.values()){
     let mark=markers.get(actor.id);
     if(!mark){
       const fill=hexCoat(actor.coat);
       const big=svg($("map-people"),"circle",{r:8,fill,class:"room-dot"});
-      const mini=svg($("mini-people"),"circle",{r:2.5,fill,class:"room-dot-mini"});
+      const mini=svg($("mini-people"),"circle",{fill,class:"room-dot-mini"});
       svg(big,"title",{},actor.nickname);
       mark={big,mini};markers.set(actor.id,mark);
     }
     for(const node of [mark.big,mark.mini]){attr(node,"cx",actor.x);attr(node,"cy",actor.y);}
     attr(mark.big,"r",indoors?1.45:overview?20:palace?17:plaza||corridor?12:8);
-    attr(mark.mini,"r",indoors?1.1:2.5);
+    attr(mark.mini,"r",indoors?1.1:3.75);
     const visible=isInsideMuseum(actor.x,actor.y)===indoors?"visible":"hidden";
     attr(mark.big,"visibility",visible);attr(mark.mini,"visibility",visible);
   }
@@ -2015,7 +2181,12 @@ for(const exhibit of Object.values(museumExhibits)){
   item.append(link);$("exhibit-credits").append(item);
 }
 drawMap($("map-landscape"));overviewLayer=drawOverview($("map-landscape"));
-drawMap($("mini-landscape"),true);applyNight(ownView);
+drawMap($("mini-landscape"),true);
+const stampPins=new Map(passportStamps.map(stamp=>{
+  const pin=svg($("stamp-pins"),"circle",{cx:stamp.x,cy:stamp.y,visibility:"hidden"});
+  svg(pin,"title",{},stamp.name+" 도장 완료");
+  return [stamp.id,pin];
+}));
 const savedCode=sessionStorage.getItem("jeongdong-room-code");
 const savedOpen=sessionStorage.getItem("jeongdong-room-mode")==="open";
 if(nickname.value&&(savedCode&&(!suppliedCode||suppliedCode===savedCode)||savedOpen&&!suppliedCode)){

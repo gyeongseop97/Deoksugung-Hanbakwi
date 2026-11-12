@@ -1,7 +1,7 @@
 import {addObstacle} from "./layout.js";
 import {makeTreeBuilder} from "./lowpoly-trees.js";
 import {plazaAt,eastCurb,eastRoadWidth} from "./plaza-layout.js";
-import {corridorProfile,corridorProfileAt,corridorSidewalks,corridorMainRoad,corridorBranches,corridorCrossings,
+import {corridorProfile,corridorProfileAt,corridorSidewalks,corridorEastLanding,corridorEastLandingKerb,seoulPlazaCrossingLanding,corridorMainRoad,corridorBranches,corridorCrossings,
   insideCorridorPolygon} from "./sejong-corridor-layout.js";
 
 export function buildSejongCorridor(T,scene,kit){
@@ -50,7 +50,10 @@ export function buildSejongCorridor(T,scene,kit){
   const stone=0xb7b7ad,curb=0xb1b0a6,white=0xe4e1d7;
 
   surface(rectangle(507,6,326,610),matte(0x71766b),-.071);
-  for(const walk of corridorSidewalks)surface(walk,paved,.039);
+  for(const walk of corridorSidewalks){
+    const landing=walk===corridorEastLanding||walk===seoulPlazaCrossingLanding;
+    surface(walk,paved,landing?.033:.039);
+  }
   surface(corridorMainRoad,asphalt,.021);
   const [,southWest,southEast]=corridorProfileAt(-292),northWest=eastCurb(0);
   surface([{x:southWest,y:-291.8},{x:southEast,y:-291.8},plazaAt(northWest+eastRoadWidth,.3),plazaAt(northWest,.3)],asphalt,.009);
@@ -61,9 +64,17 @@ export function buildSejongCorridor(T,scene,kit){
 
   const crossingAt=(x,y)=>corridorCrossings.some(({outline})=>insideCorridorPolygon(x,y,outline));
   const branchAt=(x,y)=>corridorBranches.some(({outline})=>insideCorridorPolygon(x,y,outline));
+  // The east sidewalk follows the moved lane line north of the intersection.
+  // Leave the north end of the zebra level and taper the new kerb into the plaza.
+  for(let i=2;i<corridorEastLandingKerb.length-1;i++){
+    const a=corridorEastLandingKerb[i],b=corridorEastLandingKerb[i+1];
+    strip(curb,a,b,.17,.075,.021);
+    strip(0xc6a44c,{x:a.x+1.44,y:a.y},{x:b.x+1.44,y:b.y},.23,.009,.038);
+  }
   for(let y=-289;y<311;y+=2.6){
     const [,west,east]=corridorProfileAt(y),[,nextWest,nextEast]=corridorProfileAt(y+2.59);
     for(const [x,next] of [[west,nextWest],[east,nextEast]]){
+      if(x===east&&insideCorridorPolygon(x,y+1.3,seoulPlazaCrossingLanding))continue;
       if(!crossingAt(x,y)&&!branchAt(x,y)&&!branchAt(x,y+2.59))strip(curb,{x,y},{x:next,y:y+2.59},.18,.082,.024);
     }
   }
@@ -149,7 +160,7 @@ export function buildSejongCorridor(T,scene,kit){
     obstacle(x,y,.20,.20);
   }
   for(const [x,y,angle] of [[472.5,-254,Math.PI],[481,-285,0],[515.2,-247,Math.PI],[522,-289,0],
-    [481,108,Math.PI/2],[521,96,-Math.PI/2],[481.6,292,Math.PI/2],[522.4,283,-Math.PI/2]])signal(x,y,angle);
+    [481,108,Math.PI/2],[523.4,94.6,-Math.PI/2],[481.6,292,Math.PI/2],[524.2,282.9,-Math.PI/2]])signal(x,y,angle);
 
   const trees=makeTreeBuilder(T,group,{rand:random,clearance:{meshFits:()=>true,trim:()=>true}});
   function plantBed(x,y,w,d,shade){
@@ -172,6 +183,7 @@ export function buildSejongCorridor(T,scene,kit){
   for(const [i,y] of plantingRows.entries()){
     const [westFront,westKerb,eastKerb,eastFront]=corridorProfileAt(y);
     for(const [side,x] of [[1,westKerb-3.55],[-1,eastKerb+4.8]]){
+      if(side===-1&&y>137&&y<170)continue;
       if(x<westFront+2||x>eastFront-2||crossingAt(x,y)||branchAt(x,y))continue;
       const w=side===1?2.34:2.72,d=i%3===0?6.3:4.72;
       plantBed(x,y,w,d,[0xdb9b67,0xdbbb60,0xb97e75][i%3]);
@@ -315,6 +327,15 @@ function buildCorridorFacades({T,group,wx,wz,box,matte,block,obstacle,label,surf
   for(let y=15;y<=75;y+=5.26)block(0xc0c0b4,543.2,y,.28,.21,72.2,5.3);
   block(0x969f98,press.x,press.y,33.9,63.6,1.55,78.5);
   label("한국프레스센터",543.1,43.2,5.85,17.2,-Math.PI/2,"#4b5a5c");
+
+  // The library's west wing sits behind the curb. Its frontage follows the mapped
+  // setback instead of extending the wider southern wing through the footway.
+  mass(0xb9b4a4,530.55,151.75,16.0,27.3,17.25);
+  block(0xc5c0b0,530.55,151.75,16.54,27.64,.43,17.22);
+  block(0xa29e91,530.55,151.75,16.21,27.44,.40,.21);
+  windows({x:530.55,y:151.75,w:16.0,d:27.3,base:2.0,levels:4,columns:7,pitch:3.55,side:-1,
+    colors:[0x5d6f6e,0x6d7c77],ratio:.45,gap:.66});
+  for(const y of [138.38,164.99])block(0xc0b9a8,522.50,y,.38,.48,16.5,.68);
 
   // City hall sits behind the older library, its southern wave rising over a glass grid.
   mass(0x638d93,609.7,123.0,100.4,47.5,42.3);

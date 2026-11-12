@@ -3,9 +3,14 @@ import {FEED_MS, ITEMS} from "./public/activities.js";
 import {isInsideMuseum} from "./public/visit-layout.js";
 import {BUS_COUNT,BUS_SEATS,BUS_BOARD_REACH,busAt,busStopById,busSeatPose} from "./public/sejong-bus.js";
 import {bikeDockReach,bikeDocks,bikeMountReach,bikeParkDuration} from "./public/sejong-bike.js";
+import {HEADWEAR,KEEPSAKES} from "./public/wearable-options.js";
 import {GITHUB_PAGES_ORIGIN} from "./public/hosting.js";
 import {ensureSocialTables} from "./database/social-schema.mjs";
+import {ensureRoomPhotos,roomPhotoPayload,selectRoomPhoto,validPhoto,writeRoomPhoto} from "./server/room-photo.mjs";
+import {getRoomWeather} from "./server/room-weather.mjs";
 import {cleanupSocial,clinkStatement,leaveClinks,selectSocial,socialPayload,startFountainShow} from "./server/social.mjs";
+import {ensureMinigameTables} from "./database/minigame-schema.mjs";
+import {cleanupMinigames,leaveMinigames,minigamePayload,minigameStatements,selectMinigames,validMinigame} from "./server/minigames.mjs";
 
 const json = (data, status = 200) => Response.json(data,{status,headers:{"Cache-Control":"no-store"}});
 const validId = (value) => typeof value==="string" && /^[a-f0-9]{32}$/.test(value);
@@ -18,7 +23,9 @@ const hairStyles = new Set(["short","bob","long","bun"]);
 const eyeStyles = new Set(["round","soft","bright"]);
 const outfitStyles = new Set(["coat","hoodie","puffer","tee","hanbok"]);
 const validLook = (look) => look==null ||
-  hairStyles.has(look.hair) && eyeStyles.has(look.eyes) && outfitStyles.has(look.outfit);
+  hairStyles.has(look.hair) && eyeStyles.has(look.eyes) && outfitStyles.has(look.outfit) &&
+  (look.headwear===undefined||HEADWEAR.includes(look.headwear)) &&
+  (look.keepsake===undefined||KEEPSAKES.includes(look.keepsake));
 const validAvatar = (a) => validPoint(a) &&
   (a.character===undefined || a.character==="man" || a.character==="woman") &&
   validLook(a.look) &&
@@ -32,6 +39,7 @@ const validAvatar = (a) => validPoint(a) &&
   (a.seat==null || Number.isInteger(a.seat) && finite(a.seat,0,80)) &&
   (a.seatSide==null || (a.seatSide===0 || a.seatSide===1) && a.seat!=null) &&
   (a.running===undefined || typeof a.running==="boolean") &&
+  (a.umbrella===undefined || typeof a.umbrella==="boolean") &&
   (a.wish===undefined || validTime(a.wish)) &&
   (a.wishOrigin==null || validPoint(a.wishOrigin)) &&
   (a.wishHeading===undefined || finite(a.wishHeading,0,360)) &&
@@ -157,7 +165,8 @@ async function enterRoom(db,body){
   `).bind(target.id,id,now,JSON.stringify(initialAvatar),JSON.stringify(view),key,nickname,
     JSON.stringify(clothes),target.id,active,target.id,active,fallback,active,now-bikeParkDuration).all();
   if(!results[0])return json({error:"산책방에 다시 입장해 주세요."},409);
-  return json({room:target.id,code:target.code,mode:action==="open"?"open":"private",profile:results[0],serverTime:now});
+  return json({room:target.id,code:target.code,mode:action==="open"?"open":"private",profile:results[0],
+    serverTime:now,weather:await getRoomWeather(db,now)});
 }
 
 function avatarUpdate(db,room,id,key,avatar,view,now,active,pendingFeed="",bikeAction){
@@ -457,10 +466,13 @@ export async function api(request,env){
     return json({error:"잘못된 산책방 정보예요."},400);
   }
   const {room,id,key=null,avatar,view,signal,hand,feed,bus,bike,show,clink,leave,lookPings}=body;
+  const minigame=body.minigame;
   if(leave===true){
     await ensureSocialTables(db);
+    await ensureMinigameTables(db);
     await db.batch([
       leaveClinks(db,{room,id,key,now:Date.now()}),
+      leaveMinigames(db,{room,id,key,now:Date.now()}),
       db.prepare(`
         DELETE FROM handholds WHERE room=? AND (leader=? OR follower=?)
         AND EXISTS (SELECT 1 FROM walkers WHERE room=? AND id=? AND player_key IS ?)
@@ -475,11 +487,16 @@ export async function api(request,env){
   if(bike!=null&&(!key||avatar===undefined||!validBike(bike)))return json({error:"자전거 요청을 읽을 수 없어요."},400);
   if(show!=null&&(!key||avatar===undefined||!validShow(show)))return json({error:"분수 공연 요청을 읽을 수 없어요."},400);
   if(clink!=null&&(!key||avatar===undefined||!validClink(clink,id)))return json({error:"건배 요청을 읽을 수 없어요."},400);
+  const photo=body.photo;
+  if(photo!=null&&(!key||avatar===undefined||!validPhoto(photo)))return json({error:"단체 사진 요청을 읽을 수 없어요."},400);
+  if(minigame!=null&&(!key||avatar===undefined||!validMinigame(minigame)))return json({error:"민속놀이 요청을 읽을 수 없어요."},400);
   if(signal!=null&&(avatar===undefined||!validSignal(signal,id)))return json({error:"‘여기 봐’ 위치를 읽을 수 없어요."},400);
   if(avatar!==undefined&&(!validAvatar(avatar)||!validView(view)))return json({error:"산책 위치를 읽을 수 없어요."},400);
   const chat=avatar?.chat==null?null:cleanChat(avatar.chat);
   if(avatar?.chat!=null&&(!key||!chat))return json({error:"말풍선은 1~80자로 입력해 주세요."},400);
+  await ensureRoomPhotos(db);
   await ensureSocialTables(db);
+  await ensureMinigameTables(db);
   const now=Date.now(),active=now-walkerLifetime,online=now-9000,bikeCutoff=now-bikeParkDuration;
   const currentFeed=feed&&feed.at>=now-FEED_MS&&feed.at<=now+1500;
   const operations=[];
@@ -490,6 +507,7 @@ export async function api(request,env){
     if(Math.random()<.004){
       operations.push(db.prepare("DELETE FROM walkers WHERE updated < ?").bind(now-86400000));
       operations.push(...cleanupSocial(db,room,now-86400000));
+      operations.push(...cleanupMinigames(db,room,now-600000));
       operations.push(db.prepare(`
         DELETE FROM handholds WHERE created < ? AND
           (SELECT COUNT(*) FROM walkers WHERE room=handholds.room AND updated>=?
@@ -502,6 +520,11 @@ export async function api(request,env){
   if(bus)operations.push(...busStatements(db,room,id,key,bus,now,active));
   if(bus||bike)operations.push(releaseTransportHands(db,room,id,key));
   if(hand)operations.push(...handStatements(db,room,id,key,hand,now,online));
+  if(photo)operations.push(writeRoomPhoto(db,{room,id,key,now,online,photo}));
+  const photoSelection=operations.push(selectRoomPhoto(db,room,now))-1;
+  const minigameContext={room,id,key,now,online,minigame};
+  if(minigame)operations.push(...minigameStatements(db,minigameContext));
+  const minigameSelection=operations.push(selectMinigames(db,minigameContext))-1;
   const socialContext={room,id,key,now,online,show,clink};
   if(show)operations.push(startFountainShow(db,socialContext));
   if(clink)operations.push(clinkStatement(db,socialContext));
@@ -537,7 +560,10 @@ export async function api(request,env){
   }
   return json({
     serverTime:now,
+    weather:await getRoomWeather(db,now),
     ...socialPayload(results.at(-3).results[0],{...socialContext,avatar:receiver.avatar}),
+    photoSession:roomPhotoPayload(results[photoSelection],receiver.avatar),
+    ...minigamePayload(results[minigameSelection].results[0],minigame),
     handholds:results.at(-1).results.map(link=>({
       id:link.id,leader:link.leader,follower:link.follower,side:link.side,active:link.accepted!==null
     })),

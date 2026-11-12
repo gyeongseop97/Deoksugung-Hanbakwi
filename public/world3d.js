@@ -5,7 +5,11 @@ import { solidAt, platformAt, waterDepth, loftHeight, bridge, gate, middle, hall
 import { addParkLife } from "./park-life.js";
 import { addPalaceBirds } from "./palace-birds.js";
 import { addPalaceSky } from "./palace-sky.js";
+import { resolveSeoulEnvironment } from "./seoul-environment.js";
+import { addSeoulPrecipitation, makeSeasonFoliage } from "./seoul-weather-scene.js";
 import { addStands, addRegionalStands, makeItemProps, regionalStations, registerRegionalStands } from "./street-stands.js";
+import { registerHanbokRental } from "./passport-data.js";
+import { addHanbokRental } from "./wearables-models.js";
 import { assembleMuseum, registerMuseumNavigation, isInsideMuseum, museumOutsideDoor, museumInsideDoor, museumInsideSpawn, stairHeight } from "./museum.js";
 import { PET_MS, FEED_MS, jumpLift } from "./activities.js";
 import { makeWalkerModels } from "./walker-model.js";
@@ -22,6 +26,7 @@ import { bikeDocks, isCycling } from "./sejong-bike.js";
 import { buildSejongBusModels } from "./sejong-bus-model.js";
 import { BUS_FLOOR, busAt, busSeatPose } from "./sejong-bus.js";
 import { addPalacePeople } from "./palace-people.js";
+import { addStreetPeople } from "./street-people.js";
 import { decodeWishFace, WISH_WIDTH, WISH_HEIGHT, WISH_COLORS, WISH_FLIGHT_MS } from "./wish-art.js";
 
 export function makeWorld(container,{onCatFlee,catSeed}={}) {
@@ -55,22 +60,27 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
   new ResizeObserver(resize).observe(container);
   resize();
   const skyUniforms={
-    horizon:{value:new T.Color(0xcce4f0)},zenith:{value:new T.Color(0x367ec5)}
+    horizon:{value:new T.Color(0xcce4f0)},zenith:{value:new T.Color(0x367ec5)},
+    solar:{value:new T.Vector3(-.6,.66,.34)},twilight:{value:0},twilightTint:{value:new T.Color(0xffa978)}
   };
   const sky=new T.Mesh(new T.SphereGeometry(705,32,20),new T.ShaderMaterial({
     side:T.BackSide,depthWrite:false,uniforms:skyUniforms,
     vertexShader:`
-      varying float elevation;
+      varying vec3 skyDirection;
       void main(){
-        elevation=normalize(position).y;
+        skyDirection=position;
         gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);
       }
     `,
     fragmentShader:`
-      varying float elevation;
-      uniform vec3 horizon,zenith;
+      varying vec3 skyDirection;
+      uniform vec3 horizon,zenith,solar,twilightTint;
+      uniform float twilight;
       void main(){
-        gl_FragColor=vec4(mix(horizon,zenith,smoothstep(-.06,.54,elevation)),1.0);
+        vec3 direction=normalize(skyDirection);
+        vec3 color=mix(horizon,zenith,smoothstep(-.06,.54,direction.y));
+        float glow=(1.-smoothstep(.03,.46,abs(direction.y)))*pow(max(0.,dot(direction,solar)),2.5);
+        gl_FragColor=vec4(mix(color,twilightTint,twilight*glow*.74),1.);
         #include <colorspace_fragment>
       }
     `
@@ -91,6 +101,7 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
   sun.shadow.bias=-.00035;sun.shadow.normalBias=.045;
   const shadowRight=new T.Vector3().crossVectors(new T.Vector3(0,1,0),sunDirection).normalize();
   const shadowUp=new T.Vector3().crossVectors(sunDirection,shadowRight).normalize();
+  const worldUp=new T.Vector3(0,1,0);
   const shadowFocus=new T.Vector3();
   function aimShadow(x,y,z){
     const texel=shadowReach*2/sun.shadow.mapSize.x;
@@ -105,6 +116,7 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
   moonLight.position.set(-145,94,33);
   scene.add(hemi,sun,sun.target,moonLight);
   const drawPalaceSky=addPalaceSky(T,heavens,{sunDirection:sunDirection.clone().multiplyScalar(142)});
+  const drawPrecipitation=addSeoulPrecipitation(T,outdoors),foliage=makeSeasonFoliage(T);
   const wx=x=>x-300,wz=y=>y-225;
   const randomFrom=seed=>()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};
   const rand=randomFrom(220621);
@@ -142,6 +154,7 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
   registerPlazaNavigation(benches);
   const drawWater=addWater(T,deoksRoot,fountains,makeKit(deoksRoot));
   registerRegionalStands();
+  registerHanbokRental();
   const stations=[...addStands(T,transportRoot,makeKit(transportRoot)),...regionalStations];
   outdoors.add(deoksRoot,corridorRoot,transportRoot);
   const createItemProp=makeItemProps(T,kit);
@@ -188,12 +201,19 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     }
   }
   const palacePeople=addPalacePeople(T,scene,kit,walkerModels,{floorHeight:point=>floorHeight(point),labelSprite:(...args)=>labelSprite(...args),handheld});
+  const streetPeople=addStreetPeople(T,scene,kit,walkerModels,{floorHeight,labelSprite,handheld});
   const nightSky=addNightSky(T,heavens,randomFrom(173408));
   const dayHorizon=new T.Color(0xcce4f0),nightHorizon=new T.Color(0x23384f);
   const dayZenith=new T.Color(0x367ec5),nightZenith=new T.Color(0x080e21);
   const dayFog=new T.Color(0xc6dbe3),nightFog=new T.Color(0x1b2b40);
   const ambientDay=new T.Color(0xe8f0ff),ambientNight=new T.Color(0xa7c1ff);
-  let night=0,scannedMiddle=false;
+  const cloudHorizon=new T.Color(0xc8d0d5),cloudZenith=new T.Color(0x879bab),cloudNight=new T.Color(0x18283c);
+  const warmHorizon=new T.Color(0xedb49a),warmZenith=new T.Color(0x63718d);
+  const sunlightDay=new T.Color(0xffe7bd),sunlightWarm=new T.Color(0xffa568);
+  const winterGround=new T.Color(0xa1a7a3),ordinaryGround=new T.Color(0x86765a);
+  const overcastAmbient=new T.Color(0xc7d4df),fogHorizon=new T.Color(0xd1d9db);
+  const atmosphere={cloud:.13,rain:0,snow:0,windX:0,windZ:0,fog:0,twilight:0};
+  let night=0,scannedMiddle=false,environmentShown=false;
   const lanterns=new Map();
   const lanternModel=makeWishLantern(kit);
   function removeLantern(id,entry){
@@ -208,8 +228,8 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     return {model,point:spec,groups,angle:spec.angle};
   });
   const deoksChunks=finishBuild(consolidate(deoksRoot,new Set([classical,middleModel,hallModel,
-    ...surveyedPavilions.flatMap(pavilion=>pavilion.groups)])));
-  const corridorChunks=finishBuild(consolidate(corridorRoot,new Set()));
+    ...surveyedPavilions.flatMap(pavilion=>pavilion.groups)]),foliage.register));
+  const corridorChunks=finishBuild(consolidate(corridorRoot,new Set(),foliage.register));
   const transportChunks=finishBuild(consolidate(transportRoot,new Set()));
   const guideMarker=makeGuideMarker();
   guideMarker.position.set(wx(ticketGuide.x),2.42,wz(ticketGuide.y));
@@ -297,16 +317,17 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     updatePlaza=yield* assembleGwanghwamunPlaza(T,plazaRoot,makeKit(plazaRoot),{birdPerches});
     addRegionalStands(T,plazaRoot,makeKit(plazaRoot),"gwanghwamun");
     addDocks(plazaRoot,dock=>dock.y<=-280&&dock.y>-790);
-    const chunks=yield* consolidate(plazaRoot,new Set());
+    const chunks=yield* consolidate(plazaRoot,new Set(),foliage.register);
     plazaWildlife=birds.loadPlaza(birdPerches);
     return chunks;
   }};
   const palace={root:palaceRoot,bounds:gbBounds,*build(){
     const {groups}=yield* buildGyeongbokDistrict(palaceRoot);
     addRegionalStands(T,palaceRoot,makeKit(palaceRoot),"gyeongbokgung");
+    addHanbokRental(T,palaceRoot,makeKit(palaceRoot));
     addDocks(palaceRoot,dock=>dock.y<=-790);
     const surveyed=gbSurveyModels.filter(id=>groups.has(id));
-    const chunks=yield* consolidate(palaceRoot,new Set(surveyed.map(id=>groups.get(id))));
+    const chunks=yield* consolidate(palaceRoot,new Set(surveyed.map(id=>groups.get(id))),foliage.register);
     for(const id of surveyed)addSurvey(palaceRoot,id,gbSite[id],[groups.get(id)],gbSite[id].angle);
     northWildlife=(function*(){yield* birds.loadNorth();yield* parkLife.loadNorth();})();
     return chunks;
@@ -574,11 +595,36 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     const anchor=me,angle=view.pan*Math.PI/180,indoors=museum.isInside(anchor.x,anchor.y),
       atPlaza=inGwanghwamunPlaza(anchor.x,anchor.y);
     if(advanceWorld(anchor,indoors))return;
-    night+=(Number(Boolean(view.night))-night)*Math.min(1,delta*4.2);
-    skyUniforms.horizon.value.copy(dayHorizon).lerp(nightHorizon,night);
-    skyUniforms.zenith.value.copy(dayZenith).lerp(nightZenith,night);
-    scene.fog.color.copy(dayFog).lerp(nightFog,night);
-    hemi.color.copy(ambientDay).lerp(ambientNight,night);
+    const weather=state.environment&&resolveSeoulEnvironment(state.environment,clock);
+    const ease=environmentShown?Math.min(1,delta*4.2):1;
+    const targetNight=weather?.night??Number(Boolean(view.night));
+    night+=(targetNight-night)*ease;
+    environmentShown=true;
+    for(const key of ["cloud","rain","snow","windX","windZ","fog","twilight"]){
+      const target=weather?.[key]??(key==="cloud"?.13:0);
+      atmosphere[key]+=(target-atmosphere[key])*ease;
+    }
+    if(weather){
+      const {x,y,z}=weather.sun;
+      skyUniforms.solar.value.set(x,y,z);
+      sunDirection.set(x,Math.max(.09,y),z).normalize();
+      shadowRight.crossVectors(worldUp,sunDirection).normalize();
+      shadowUp.crossVectors(sunDirection,shadowRight).normalize();
+    }
+    const {cloud,fog,twilight}=atmosphere;
+    const season=weather?.season??"autumn";
+    foliage.update(season,atmosphere.snow);
+    skyUniforms.twilight.value=twilight*(1-cloud*.77)*(1-fog);
+    skyUniforms.horizon.value.copy(dayHorizon).lerp(warmHorizon,twilight*.57).lerp(cloudHorizon,cloud*.85)
+      .lerp(fogHorizon,fog).lerp(nightHorizon,night);
+    skyUniforms.zenith.value.copy(dayZenith).lerp(warmZenith,twilight*.65).lerp(cloudZenith,cloud*.87)
+      .lerp(fogHorizon,fog*.58).lerp(nightZenith,night).lerp(cloudNight,cloud*night*.55);
+    scene.fog.color.copy(dayFog).lerp(warmHorizon,twilight*.34).lerp(cloudHorizon,cloud*.8)
+      .lerp(fogHorizon,fog).lerp(nightFog,night);
+    scene.fog.density=indoors?.0039:.0039+cloud*.00065+fog*.016;
+    hemi.color.copy(ambientDay).lerp(overcastAmbient,cloud*.58).lerp(ambientNight,night);
+    hemi.groundColor.copy(season==="winter"?winterGround:ordinaryGround);
+    sun.color.copy(sunlightDay).lerp(sunlightWarm,twilight*.84);
     // Gradually follow the northward route without shifting the skyline at district boundaries.
     const horizonFollow=T.MathUtils.smoothstep(180-anchor.y,0,220);
     heavens.position.set((wx(anchor.x)-21)*horizonFollow,0,(wz(anchor.y)+14)*horizonFollow);
@@ -624,9 +670,10 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
       guideMarker.scale.setScalar((state.guideNearby ? .88 : .78)+pulse);
       guideMarker.material.opacity=state.guideNearby?1:.82;
     }
-    hemi.intensity=indoors?1.72:1.42-night*.88;
-    sun.intensity=indoors?0:3.05*(1-night);moonLight.intensity=indoors?0:night*.95;
-    const shadowed=quality.shadows&&!indoors&&night<.97;
+    hemi.intensity=indoors?1.72:1.42-night*.88+cloud*(1-night)*.12;
+    sun.intensity=indoors?0:3.05*(1-night)*(1-cloud*.83)*(1-fog*.68)*(1-twilight*.38);
+    moonLight.intensity=indoors?0:night*.95*(1-cloud*.52);
+    const shadowed=quality.shadows&&!indoors&&sun.intensity>.24;
     if(sun.castShadow!==shadowed)sun.castShadow=shadowed;
     if(shadowed&&(renderer.shadowMap.autoUpdate||now>=shadowAt)){
       aimShadow(wx(anchor.x),0,wz(anchor.y));renderer.shadowMap.needsUpdate=true;shadowAt=now+45;
@@ -640,7 +687,9 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     const roster=[me,...peers],present=new Set(roster.map(player=>player.id));
     if(!indoors){
       if(deoksRoot.parent===outdoors&&distanceToDistrict(anchor,deoksBounds)<120){drawWater(now*.001,night);drawPond(now*.001,night);}
-      nightSky(night);drawPalaceSky(now,night);birds.update(clock,delta,roster);
+      nightSky(night*(1-cloud*.91)*(1-fog*.89));
+      drawPalaceSky(clock,night,{cloud,fog,twilight,direction:weather?skyUniforms.solar.value:undefined,haze:scene.fog.color});
+      birds.update(clock,delta,roster);
     }
     const parkedNearby=new Set();
     for(const bike of parkedBikes){
@@ -654,8 +703,9 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     for(const [id,model] of parkedModels)if(!parkedNearby.has(id)){model.removeFromParent();parkedModels.delete(id);}
     for(const {id,feed} of roster)if(feed&&feed.at<=clock&&feed.at+FEED_MS>clock)parkLife.feed(feed.id,feed.at,id);
     for(const {pet} of roster)if(pet&&pet.at<=clock&&pet.at+PET_MS>clock)parkLife.pet(pet.id,pet.at);
-    parkLife.update(clock,indoors?null:anchor,roster);
+    parkLife.update(clock,indoors?null:anchor,roster,season==="autumn");
     palacePeople.update(clock,now,delta,indoors?null:anchor,roster,Boolean(quality.sparse));
+    streetPeople.update(clock,now,delta,indoors?null:anchor,Boolean(quality.sparse));
     for(const [id,model] of models){
       if(present.has(id))continue;
       walkerModels.dispose(model);
@@ -671,6 +721,7 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
       drawRipples(player.id,player,now,waterDepth(player.x,player.y)>0&&jumpLift(player,clock)<.3);
       walkerModels.update(model,player,{now,clock,delta,seat:seatAt(player,clock),floor:footing(player),jump:jumpLift(player,clock),emojiTexture,chatTexture,
         turnEase:player===me?1-Math.exp(-delta*22):1});
+      if(model.label)model.label.visible=!state.photoCapture;
     });
     const seat=seatAt(anchor,clock),bus=anchor.bus&&busAt(anchor.bus.index,clock);
     const outsideBus=bus&&!firstPerson;
@@ -717,6 +768,15 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
         gaze.set(Math.sin(angle)*Math.cos(direction),-Math.sin(direction),-Math.cos(angle)*Math.cos(direction));
         camera.lookAt(gaze.add(camera.position));
       }
+    }
+    if(state.photoCamera){
+      const photo=state.photoCamera,yaw=photo.pan*Math.PI/180,tilt=photo.tilt*Math.PI/180;
+      camera.position.set(wx(photo.x),floorHeight(photo)+photo.height,wz(photo.y));
+      gaze.set(Math.sin(yaw)*Math.cos(tilt),-Math.sin(tilt),-Math.cos(yaw)*Math.cos(tilt));
+      camera.lookAt(gaze.add(camera.position));
+      if(camera.fov!==photo.fov){camera.fov=photo.fov;camera.updateProjectionMatrix();}
+      cameraDistance=camera.position.distanceTo(anchorPoint);
+      guideMarker.visible=false;showMarker.visible=false;
     }
     cameraUp.set(0,1,0).applyQuaternion(camera.quaternion);
     for(const model of models.values())if(model.group.visible&&model.chatSprite)walkerModels.placeChat(model,cameraUp);
@@ -776,6 +836,13 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
       light.scale.setScalar(Math.min(1,.26+age*1.3,(duration-age)/2.4));
     });
     for(const [id,entry] of lanterns)if(!lit.has(id))removeLantern(id,entry);
+    const wet=Math.max(atmosphere.rain,atmosphere.snow)>.018;
+    const photoGround=wet&&state.photoCamera?floorHeight(state.photoCamera):null;
+    const walkerFloor=wet?floorHeight(anchor):0;
+    drawPrecipitation({x:camera.position.x,z:camera.position.z,floor:photoGround??walkerFloor,
+      walkerX:wx(anchor.x),walkerZ:wz(anchor.y),walkerFloor,clock,atmosphere,
+      sheltered:Boolean(anchor.umbrella),inside:indoors||Boolean(anchor.bus&&firstPerson),
+      sparse:quality.sparse,pixelRatio:quality.pinned?quality.max:quality.ratio,night});
     renderer.render(scene,camera);
     if(firstPerson){
       firstPersonView??=makeFirstPersonView(T,createItemProp);
@@ -820,9 +887,13 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     guideMarker.visible=marker;showMarker.visible=musicMarker;camera.fov=previous;camera.updateProjectionMatrix();
     return picture;
   }
+  function capturePhoto(state){
+    render({...state,firstPerson:false,photoCapture:true},performance.now());
+    return renderer.domElement.toDataURL("image/jpeg",.92);
+  }
   const renderStats=()=>({...renderer.info.render,geometries:renderer.info.memory.geometries,textures:renderer.info.memory.textures,
     areas:{plaza:Boolean(plaza.chunks),palace:Boolean(palace.chunks),museum:Boolean(gallery.chunks)}});
-  return {render,pick,previewWalker,clearChat,floorHeight,groundHeight,renderStats,snapshot,benches,stations,parkLife,birds,palacePeople,museum};
+  return {render,pick,previewWalker,clearChat,floorHeight,groundHeight,renderStats,snapshot,capturePhoto,benches,stations,parkLife,birds,palacePeople,museum};
 }
 
 // The world is assembled from tens of thousands of small boxes and cylinders. Drawing each
@@ -835,18 +906,23 @@ function finishBuild(build){
   return step.value;
 }
 
-function* consolidate(scene,fallbackGroups,cell=48){
+function* consolidate(scene,fallbackGroups,registerSeason,cell=48){
   scene.updateMatrixWorld(true);
   const plainMaterials=new Map(),instanceGroups=new Map(),mergeGroups=new Map(),made=[];
   const local=new T.Matrix4(),inverse=new T.Matrix4(),normalMatrix=new T.Matrix3(),centre=new T.Vector3(),vertex=new T.Vector3();
   const inverses=new Map();
   function plainKey(material){
-    return (material.flatShading?"f":"s")+material.side+"/"+material.roughness.toFixed(2)+"/"+material.metalness.toFixed(2);
+    return (material.flatShading?"f":"s")+material.side+"/"+material.roughness.toFixed(2)+"/"+material.metalness.toFixed(2)+
+      "/"+(material.userData.seasonFoliage??"");
   }
   function plainMaterial(key,source,vertexColors){
     const id=key+(vertexColors?"/v":"/i");
-    if(!plainMaterials.has(id))plainMaterials.set(id,new T.MeshStandardMaterial({color:0xffffff,vertexColors,
-      roughness:source.roughness,metalness:source.metalness,flatShading:source.flatShading,side:source.side}));
+    if(!plainMaterials.has(id)){
+      const material=new T.MeshStandardMaterial({color:0xffffff,vertexColors,
+        roughness:source.roughness,metalness:source.metalness,flatShading:source.flatShading,side:source.side});
+      if(source.userData.seasonFoliage)registerSeason?.(material,source.userData.seasonFoliage);
+      plainMaterials.set(id,material);
+    }
     return plainMaterials.get(id);
   }
   const candidates=[];
@@ -867,6 +943,7 @@ function* consolidate(scene,fallbackGroups,cell=48){
     const place=owner===scene?Math.floor(centre.x/cell)+"/"+Math.floor(centre.z/cell):"local";
     const plain=!material.map&&!material.bumpMap&&!material.normalMap&&!material.emissiveMap&&!material.vertexColors&&
       material.emissive.getHex()===0;
+    if(!plain&&material.userData.seasonFoliage)registerSeason?.(material,material.userData.seasonFoliage);
     const look=plain?plainKey(material):"m"+material.id;
     const entry={mesh,owner,plain,look};
     const instanceKey=owner.id+"|"+place+"|"+look+"|"+geometry.id;

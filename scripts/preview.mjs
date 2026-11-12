@@ -7,6 +7,7 @@ import { createClient } from "@libsql/client";
 import { initializeDatabase } from "../database/initialize.mjs";
 import { adaptDatabase } from "../server/database.mjs";
 import { handleRoomRequest } from "../server/room-handler.mjs";
+import { handleProfileRequest } from "../server/profile-transfer.mjs";
 
 const client = createClient({ url: "file::memory:" });
 await initializeDatabase(client);
@@ -47,7 +48,8 @@ createServer(async (incoming, outgoing) => {
         options.body = Readable.toWeb(incoming);
         options.duplex = "half";
       }
-      response = await handleRoomRequest(new Request(url, options), () => database);
+      const handle=url.pathname==="/api/profile"?handleProfileRequest:handleRoomRequest;
+      response = await handle(new Request(url, options), () => database);
     } else {
       response = await staticResponse(url);
     }

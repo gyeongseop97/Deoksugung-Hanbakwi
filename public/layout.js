@@ -226,7 +226,7 @@ export const city = [
   {...p("서울시의회 별관",37.56454,126.97400),w:39,d:23,h:16},
   {...p("정동제일교회",37.56522,126.97298),w:21,d:26,h:11,brick:true,church:true},
   {...p("서울시립미술관",37.56410,126.97365),w:41,d:24,h:16,brick:true},
-  {...p("서울도서관",37.56633,126.97766),w:49,d:25,h:19},
+  {...p("서울도서관",37.566283,126.977873),w:55,d:22.4,h:19},
   {...p("정동극장",37.56563,126.97308),w:27,d:21,h:14}
 ];
 export const landmarks=[spawn,ticket,gate,bridge,middle,court,hall,stoneHall,stoneFountain,palacePond,...palace,...route,...pavilions];

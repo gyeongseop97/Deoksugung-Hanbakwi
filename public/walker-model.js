@@ -2,6 +2,7 @@ import {FEED_MS, PET_MS, JUMP_HEIGHT, avatarHands} from "./activities.js";
 import {bikeFit,bikePedal,makeRidingBike} from "./sejong-bike-model.js";
 import {isCycling} from "./sejong-bike.js";
 import {CLINK_DURATION_MS} from "./social-events.js";
+import {makeUmbrella,makeWearables} from "./wearables-models.js";
 
 const TAU = Math.PI * 2;
 const HAIR = ["short", "bob", "long", "bun"];
@@ -368,6 +369,7 @@ function chimaGeometry(T) {
 }
 
 export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
+  const wearables=makeWearables(T),umbrellaTemplate=makeUmbrella(T);
   const sphere = new T.SphereGeometry(1,16,12);
   const head = chibiHead(T);
   const shadowGeometry = new T.CircleGeometry(.40,24);
@@ -558,9 +560,9 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
     group.add(shadow);
     group.visible = false;
     group.traverse(mesh => { if (mesh.isMesh && mesh !== shadow) mesh.castShadow = true; });
-    return {group,body,floorY:null,teeHem,pelvis,chest,torso,waist,faceMesh,ears,headJoint,hairMesh,pin,overcoat,hem,pufferCollar,hanbokDetails,skirt,legs,arms,label,
+    return {group,body,floorY:null,teeHem,pelvis,chest,torso,waist,face,garb,faceMesh,ears,headJoint,hairMesh,pin,overcoat,hem,pufferCollar,hanbokDetails,skirt,legs,arms,label,
       shadow,emote,chatSprite:null,chatMessage:null,itemPivot,itemProp:createItemProp(itemPivot),palette,offset,phase:(offset%100)/100,
-      stride:0,sprint:0,seatBlend:0,petBlend:0,appearance:"",lastX:null,lastY:null,bike:null};
+      stride:0,sprint:0,seatBlend:0,petBlend:0,appearance:"",lastX:null,lastY:null,bike:null,hat:null,charm:null,umbrella:null};
   }
 
   const down = new T.Vector3(0,-1,0), forward = new T.Vector3(0,0,1);
@@ -591,11 +593,18 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
     const requestedOutfit = look?.outfit === "hoodie" ? "puffer" : look?.outfit;
     const outfit = OUTFITS.includes(requestedOutfit) ? requestedOutfit : "coat";
     const chima = outfit === "hanbok" && position.character === "woman";
-    const key = `${hair}/${eyes}/${outfit}/${chima}`;
+    const headwear=Object.hasOwn(wearables.headwear,look?.headwear)?look.headwear:"none";
+    const keepsake=Object.hasOwn(wearables.keepsakes,look?.keepsake)?look.keepsake:"none";
+    const key = `${hair}/${eyes}/${outfit}/${chima}/${headwear}/${keepsake}`;
     if (key !== model.appearance) {
       model.appearance = key;
       model.hairMesh.geometry = hairGeometry[hair];
-      model.pin.visible = hair === "bob";
+      model.pin.visible = hair === "bob"&&headwear==="none";
+      model.hat?.removeFromParent();model.charm?.removeFromParent();
+      model.hat=wearables.headwear[headwear]?.clone()??null;
+      model.charm=wearables.keepsakes[keepsake]?.clone()??null;
+      if(model.hat){model.hat.name=headwear;model.face.add(model.hat);}
+      if(model.charm){model.charm.name=keepsake;model.garb.add(model.charm);}
       model.torso.geometry = torsoGeometry[outfit];
       model.torso.material = outfit === "coat" ? model.palette.lining : model.palette.tops[outfit];
       model.torso.scale.set(chima ? .94 : 1,1,chima ? .94 : 1);
@@ -693,6 +702,8 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
     const contact=clink?Math.max(0,1-Math.abs(clinkAge-900)/170)*.045:0;
     const waving = !clink && !riding && waveAge >= 0 && waveAge < 2.45 && !pet && !feeding && !(claspSide && carrying);
     const waveLift = waving ? smooth(Math.min(waveAge/.27,(2.45-waveAge)/.36)) : 0;
+    const umbrellaSide=position.umbrella&&!riding&&!position.bus&&!pet
+      ?SIDE.find(side=>side!==claspSide&&(!carrying||side!==itemSide)&&(!waving||side!==waveSide)):undefined;
 
     const facing = Math.PI - (seat?.heading ?? position.clink?.heading ?? position.heading ?? 252) * Math.PI/180;
     const turn = facing - group.rotation.y;
@@ -815,6 +826,9 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
         inverseChest.copy(chest.quaternion).invert();
         clasp.set(side*.608-pelvis.position.x,.930-pelvis.position.y-chest.position.y,.078).applyQuaternion(inverseChest);
         x = clasp.x; y = clasp.y; z = clasp.z;
+      } else if (side === umbrellaSide) {
+        x=side*.288;y=.385+seated*.075;z=.205;
+        pole.set(side*.67,-.32,-.33);
       } else if (waving && side === waveSide) {
         x = mix(x,side*(.590+Math.sin(waveAge*17)*.075),waveLift);
         y = mix(y,.640+Math.cos(waveAge*17)*.034,waveLift);
@@ -844,6 +858,14 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
       solve(arm,arm.target,pole);
       arm.end.rotation.set(0,0,waving && side === waveSide ? side*waveLift*Math.sin(waveAge*21)*.20 : 0);
     }
+    if(umbrellaSide&&!model.umbrella){model.umbrella=umbrellaTemplate.clone();model.umbrella.name="umbrella";chest.add(model.umbrella);}
+    if(model.umbrella){
+      model.umbrella.visible=Boolean(umbrellaSide);
+      if(umbrellaSide){
+        model.umbrella.position.copy(arms[umbrellaSide===1?1:0].target);
+        model.umbrella.rotation.set(-.073,0,umbrellaSide*.20+pendulum*sway*.035);
+      }
+    }
     itemPivot.visible = carrying;
     if (carrying) {
       const arm=arms[itemSide===1?1:0];
@@ -855,7 +877,8 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
 
     const reaction = position.emote, age = (clock-reaction?.at)/1000;
     emote.visible = age >= -.3 && age < 3.15 && Boolean(emojiTexture);
-    const labelY = (model.hairMesh.geometry === hairGeometry.bun ? 1.90 : 1.84)+(riding ? CYCLING_LIFT : seated*(SEAT_LIFT-.107)-crouch*.166);
+    const labelY = (model.hat ? 2.03 : model.hairMesh.geometry === hairGeometry.bun ? 1.90 : 1.84)+
+      (riding ? CYCLING_LIFT : seated*(SEAT_LIFT-.107)-crouch*.166);
     if (model.label) model.label.position.y = labelY;
     if (emote.visible) {
       const map = emojiTexture(reaction.emoji);

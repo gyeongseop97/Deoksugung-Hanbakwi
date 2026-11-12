@@ -3,7 +3,7 @@ import {makeTreeBuilder} from "./lowpoly-trees.js";
 import {addPlazaCity} from "./plaza-city.js";
 import {addPlazaMonuments,plazaMonumentFootprints} from "./plaza-monuments.js";
 import {plazaAt,plazaOutline,plazaBeds,plazaSites,plazaTransitStops,insidePlazaPolygon,
-  plazaRoadProfile,plazaCrossings,eastCurb,eastRoadWidth,sajikRoad,haechiBasin} from "./plaza-layout.js";
+  plazaRoadProfile,plazaCrossings,plazaCrossingApronHalf,eastCurb,eastRoadWidth,sajikRoad,haechiBasin} from "./plaza-layout.js";
 import {PLAZA_SHOW_VIEW_METRES,plazaShowFrame,plazaShowJet} from "./plaza-show.js";
 
 const between=(a,b,t)=>a+(b-a)*t;
@@ -136,6 +136,7 @@ export function* assembleGwanghwamunPlaza(T,scene,kit,{birdPerches}={}){
   for(const n of plazaCrossings){
     const curb=eastCurb(n);
     for(let i=.65;i<eastRoadWidth;i+=1.08)block(0xd7d7cf,curb+i,n,.56,6.75,.014,0);
+    for(const side of [-.52,eastRoadWidth+.58])block(0xa8a99f,curb+side,n,1.93,plazaCrossingApronHalf*2,.027,.011);
     for(const side of [-.8,eastRoadWidth+.8])block(0xd1a84a,curb+side,n,.38,6.9,.021,.028);
   }
   for(let n=530;n<551;n+=1.04)block(0xdeddd1,sajikRoad.crossX,n,sajikRoad.crossWidth-.45,.52,.018,0);

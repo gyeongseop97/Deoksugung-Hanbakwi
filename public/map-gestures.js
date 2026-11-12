@@ -10,6 +10,20 @@ export function bindMapGestures(surface,{getView,setView,onTap}){
     const matrix=surface.getScreenCTM();
     return matrix?new DOMPoint(x,y).matrixTransform(matrix.inverse()):null;
   }
+  function zoom({view,base},scale,start,end=start){
+    const ratio=Math.max(base.w*.23/view.w,Math.min(base.w*1.30/view.w,scale));
+    setView({x:start.x-(end.x-view.x)*ratio,y:start.y-(end.y-view.y)*ratio,w:view.w*ratio,h:view.h*ratio});
+  }
+  surface.addEventListener("wheel",event=>{
+    const state=getView(),delta=event.deltaY;
+    if(!state||!Number.isFinite(delta)||!delta||event.ctrlKey||event.metaKey||contacts.size)return;
+    const anchor=projected(point(event));
+    if(!anchor)return;
+    event.preventDefault();
+    const unit=event.deltaMode===1?16:event.deltaMode===2?surface.clientHeight:1;
+    const amount=Math.max(-.65,Math.min(.65,delta*unit*.0025));
+    zoom(state,Math.exp(amount),anchor);
+  },{passive:false});
   surface.addEventListener("pointerdown",event=>{
     if(event.pointerType!=="touch"||event.button!==0)return;
     event.preventDefault();
@@ -24,13 +38,12 @@ export function bindMapGestures(surface,{getView,setView,onTap}){
     if(!contact||!state)return;
     const before=contact.current,after=point(event);
     contact.current=after;
-    const {view,base}=state;
+    const {view}=state;
     if(contacts.size===2){
       const other=[...contacts.values()].find(value=>value!==contact).current;
       const start=projected(midpoint(before,other)),end=projected(midpoint(after,other));
       if(!start||!end)return;
-      const ratio=Math.max(base.w*.23/view.w,Math.min(base.w*1.30/view.w,gap(before,other)/gap(after,other)));
-      setView({x:start.x-(end.x-view.x)*ratio,y:start.y-(end.y-view.y)*ratio,w:view.w*ratio,h:view.h*ratio});
+      zoom(state,gap(before,other)/gap(after,other),start,end);
       return;
     }
     if(contact.pinch)return;

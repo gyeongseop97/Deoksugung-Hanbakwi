@@ -142,13 +142,28 @@ export function addPalaceSky(T,scene,{sunDirection}={}){
   const clouds=cloudLayer(T,sky),sun=sunDisk(T,sky,sunDirection);
   const cityDay=[new T.Color(0xffffff),new T.Color(0xd5dde2),new T.Color(0x8c999d)];
   const cityNight=[new T.Color(0x596a7c),new T.Color(0x536479),new T.Color(0x566673)];
-  return function update(now,night){
-    for(const {material,day,night:dark} of hills)material.color.copy(day).lerp(dark,night);
-    for(let i=0;i<city.length;i++)city[i].color.copy(cityDay[i]).lerp(cityNight[i],night);
+  const cloudDay=new T.Color(0xffffff),cloudNight=new T.Color(0x6b7f99),cloudWarm=new T.Color(0xffc795);
+  return function update(now,night,{cloud=.13,fog=0,twilight=0,direction,haze}={}){
+    for(const {material,day,night:dark} of hills){
+      material.color.copy(day).lerp(dark,night);
+      if(haze)material.color.lerp(haze,fog*.83+cloud*.17);
+    }
+    for(let i=0;i<city.length;i++){
+      city[i].color.copy(cityDay[i]).lerp(cityNight[i],night);
+      if(haze)city[i].color.lerp(haze,fog*.85+cloud*.13);
+    }
     const light=Math.max(0,1-night*1.35);
-    sun.visible=clouds.visible=light>.015;
-    if(!sun.visible)return;
-    sun.material.opacity=light;clouds.material.opacity=light*.92;
+    if(direction){
+      sun.position.copy(direction).multiplyScalar(598);
+      sun.position.x+=centre.x;
+      sun.position.z+=centre.z;
+    }
+    sun.material.opacity=light*(1-cloud)**1.65*(1-fog*.92);
+    sun.material.color.copy(cloudDay).lerp(cloudWarm,twilight*.76);
+    sun.visible=sun.material.opacity>.025&&sun.position.y>0;
+    clouds.material.color.copy(cloudDay).lerp(cloudWarm,twilight*.58).lerp(cloudNight,night);
+    clouds.material.opacity=(.52+cloud*.48)*(1-night*(.99-cloud*.36))*(1-fog*.45);
+    clouds.visible=clouds.material.opacity>.05;
     clouds.position.x=Math.sin(now*.000048)*13;clouds.position.z=Math.sin(now*.000021)*6;
   };
 }

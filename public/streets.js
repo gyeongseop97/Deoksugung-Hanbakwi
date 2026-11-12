@@ -129,6 +129,7 @@ export function buildJeongdong(T,scene,kit,{deferGyeongbok=false}={}) {
   const pavingMaterial=new T.MeshStandardMaterial({map:stoneFloor,bumpMap:stoneFloor,bumpScale:.9,roughness:.91});
   const roadMaterial=new T.MeshStandardMaterial({map:asphalt,roughness:1});
   const earthMaterial=new T.MeshStandardMaterial({map:groundMap,roughness:1});
+  gardenMaterials.lawn.userData.seasonFoliage="ground";
   const brickMaterial=new T.MeshStandardMaterial({map:brickMap,bumpMap:brickMap,bumpScale:1.2,roughness:.89});
   function uvScale(mesh,u,v){
     const uv=mesh.geometry.attributes.uv;

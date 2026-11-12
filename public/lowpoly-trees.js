@@ -36,9 +36,14 @@ export function makeTreeBuilder(T,scene,{clearance,rand,fits=()=>true}){
   const wood=new T.CylinderGeometry(.62,1,1,6);
   wood.computeBoundingBox();
   const materials=new Map();
-  function facet(color){
-    if(!materials.has(color))materials.set(color,new T.MeshStandardMaterial({color,roughness:.86,flatShading:true}));
-    return materials.get(color);
+  function facet(color,kind=""){
+    const key=`${color}/${kind}`;
+    if(!materials.has(key)){
+      const material=new T.MeshStandardMaterial({color,roughness:.86,flatShading:true});
+      if(kind)material.userData.seasonFoliage=kind;
+      materials.set(key,material);
+    }
+    return materials.get(key);
   }
   const up=new T.Vector3(0,1,0),axis=new T.Vector3();
   const pick=list=>list[Math.floor(rand()*list.length)];
@@ -56,7 +61,7 @@ export function makeTreeBuilder(T,scene,{clearance,rand,fits=()=>true}){
   function blob(parts,state,set,palette,x,y,z,rx,ry=rx,rz=rx,tone=rand()){
     if(!fits(x,y,z,Math.max(rx,rz)))return null;
     const shade=Math.min(palette.leaf.length-1,Math.max(0,Math.floor(tone*palette.leaf.length)));
-    const mesh=new T.Mesh(pick(set),facet(palette.leaf[shade]));
+    const mesh=new T.Mesh(pick(set),facet(palette.leaf[shade],palette===treePalettes.pine?"evergreen":"leaf"));
     mesh.position.set(x,y,z);mesh.scale.set(rx,ry,rz);
     mesh.rotation.set(rand()*.5,rand()*6.283,rand()*.5);
     mesh.name="Tree crown";
@@ -188,7 +193,7 @@ export function makeTreeBuilder(T,scene,{clearance,rand,fits=()=>true}){
 
   function shrub(x,z,size,palette){
     const colors=typeof palette==="string"?treePalettes[palette]:palette;
-    const mesh=new T.Mesh(pick(medium),facet(pick(colors.leaf)));
+    const mesh=new T.Mesh(pick(medium),facet(pick(colors.leaf),"evergreen"));
     mesh.position.set(x,size*.36,z);mesh.scale.set(size,size*.64,size*.86);mesh.rotation.y=rand()*6.283;
     mesh.name="Garden shrub";scene.add(mesh);
     return clearance.trim(mesh)?mesh:null;

@@ -153,8 +153,6 @@ dialog input,dialog code{display:block;width:100%;padding:9px;border-radius:7px;
 .look-actions{display:flex;align-items:center;flex-wrap:wrap;gap:5px;max-width:100%}
 .look-actions button{min-height:36px;padding:5px 8px;font-size:12px;pointer-events:auto}
 .look-actions button:disabled{opacity:1;color:#b6bfac;border-color:#657562;background:#24352bea}
-.zoom-tools{display:flex;gap:3px}
-.look-actions .zoom-tools button{min-width:36px;padding:0;font-size:21px;line-height:1}
 #landmark-guide-dialog h2{margin:0}
 #landmark-guide-description{margin:12px 0 16px;line-height:1.62}
 .game-hud{
@@ -259,7 +257,6 @@ dialog input,dialog code{display:block;width:100%;padding:9px;border-radius:7px;
   .game-place small{font-size:10px}
   .game-place .desktop-controls-hint{display:none}
   .look-actions button{min-height:44px;font-size:11px}
-  .look-actions .zoom-tools button{min-width:44px}
   #jump kbd{display:none}
   .game-presence{
     position:absolute;z-index:3;top:10px;right:8px;display:block;min-height:40px;
@@ -296,7 +293,7 @@ dialog input,dialog code{display:block;width:100%;padding:9px;border-radius:7px;
 }
 
 #run{background:#17261dec;border-color:#8d9c7f;color:#ece4cb}
-#run[aria-pressed="true"],#sit[aria-pressed="true"],#night[aria-pressed="true"],#perspective[data-active]{color:#2b2a1c;background:#e1c687;border-color:#edd99e}
+#run[aria-pressed="true"],#sit[aria-pressed="true"],#perspective[data-active]{color:#2b2a1c;background:#e1c687;border-color:#edd99e}
 #sit{color:#e6e2c6;border-color:#9b9e79;background:#17261de6}
 .map-links{display:flex;flex-wrap:wrap;gap:5px}
 .map-links button{font-size:11px;min-height:34px;padding:4px 8px}
@@ -600,9 +597,9 @@ dialog input,dialog code{display:block;width:100%;padding:9px;border-radius:7px;
 .hand-following .joystick,.hand-following .game-pad{opacity:.48;pointer-events:none}
 .hand-following .game-pad button{pointer-events:none}
 .room-dot{stroke:#fff0d0;stroke-width:2;paint-order:stroke}
-.room-dot-mini{stroke:#fff0d0;stroke-width:.75}
+.room-dot-mini{stroke:#fff0d0;stroke-width:1.1}
 .museum-map .room-dot,.museum-map .room-dot-mini{stroke-width:.38}
-.mini-landmark{font-size:6px;fill:#f4e5bb;stroke:#243027;stroke-width:1.4;paint-order:stroke;stroke-linejoin:round}
+.mini-landmark{font-size:8.3px;fill:#f4e5bb;stroke:#243027;stroke-width:1.75;paint-order:stroke;stroke-linejoin:round}
 @media(max-width:810px), (orientation:landscape) and (max-height:560px){
   #game .minimap{
     display:block;position:absolute;z-index:3;top:9px;right:8px;
@@ -616,7 +613,7 @@ dialog input,dialog code{display:block;width:100%;padding:9px;border-radius:7px;
     border-radius:4px;padding:2px 4px;
   }
   .mini-north{top:4px;right:4px}
-  .mini-label{bottom:3px;left:4px}
+  .mini-label{bottom:3px;right:4px;padding:1px 3px;font-size:13px}
   .game-info{max-width:calc(100% - clamp(114px,35vw,156px))}
   .bus-status{padding:6px 8px}
   .bus-status h3{font-size:12px}

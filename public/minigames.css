@@ -1,0 +1,25 @@
+.minigame-dialog{width:min(580px,calc(100vw - 24px));max-width:none;max-height:calc(100dvh - 24px);overflow:auto;overscroll-behavior:contain}
+.minigame-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.minigame-header h2{margin:3px 0 0}.minigame-header span{font-size:12px;color:#d5c49c}
+.minigame-dialog .minigame-close{min-width:44px;min-height:44px;padding:0;font-size:24px}
+.minigame-hint{margin:9px 0 12px;line-height:1.55;font-size:14px}
+.minigame-info{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;font-size:13px;color:#e6dfc9;flex-wrap:wrap;font-variant-numeric:tabular-nums}
+.minigame-info strong,.minigame-info [data-score]{color:#f0d498}
+.minigame-dialog canvas{display:block;width:100%;height:auto;border-radius:10px;background:#8b9c76;touch-action:manipulation}
+.minigame-controls{display:flex;gap:7px;margin-top:10px}
+.minigame-controls button{flex:1;min-height:46px;min-width:0;touch-action:manipulation}
+.minigame-controls button[hidden],.minigame-scoreboard[hidden]{display:none}
+.minigame-feedback{min-height:1.3em;margin:8px 0 0;font-size:13px}
+.minigame-scoreboard{border-top:1px solid #d4bd8538;margin-top:10px;padding-top:8px}
+.minigame-scoreboard h3{font-size:14px;margin:0 0 5px;color:#e5c784}
+.minigame-scoreboard ol{display:grid;gap:4px;max-height:108px;margin:0;padding:0 4px 0 26px;overflow:auto;overscroll-behavior:contain}
+.minigame-scoreboard li{font-size:13px;padding:3px 4px;color:#dedfca}
+.minigame-scoreboard li strong{float:right;margin-left:8px;color:#f1d49a;font-variant-numeric:tabular-nums}
+@media(max-width:420px){.minigame-hint{font-size:12px}.minigame-info,.minigame-controls button{font-size:12px}.minigame-scoreboard ol{max-height:90px}}
+@media(max-height:440px){
+  .minigame-dialog{padding:12px}
+  .minigame-hint{margin:4px 0 7px;font-size:12px}
+  .minigame-info{margin-bottom:5px}
+  .minigame-dialog canvas{width:auto;max-width:100%;height:max(86px,calc(100dvh - 224px));margin:auto}
+  .minigame-controls{margin-top:6px}
+}

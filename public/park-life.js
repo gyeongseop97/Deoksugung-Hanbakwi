@@ -646,7 +646,7 @@ export function addParkLife(T,scene,kit){
   setSeed(kit.catSeed);
   const leaves=fallingLeaves(T,scene,kit);
   const heightAt=point=>point.height??kit.floorHeight?.(point)??0;
-  function update(now,anchor,walkers=[]){
+  function update(now,anchor,walkers=[],autumn=true){
     const runners=walkers.filter(actor=>actor.running&&actor.stepping&&actor.seat==null&&
       (actor.blocked||Math.hypot(actor.vx,actor.vy)>2.65));
     const holders=walkers.filter(actor=>!actor.running&&actor.seat==null&&
@@ -823,7 +823,7 @@ export function addParkLife(T,scene,kit){
       }
       cat.paws.instanceMatrix.needsUpdate=true;
     }
-    leaves(now,anchor);
+    leaves(now,autumn?anchor:null);
   }
   function nearestCat(x,y){
     let nearest=null,best=2.2;

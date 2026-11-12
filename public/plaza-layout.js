@@ -57,6 +57,14 @@ export function eastCurb(north){
 }
 export const eastRoadWidth=27;
 export const plazaCrossings=[9,80,246,418,514];
+export const plazaCrossingApronHalf=4.65;
+const plazaEastPavement=(north,clearance=5)=>plazaAt(eastCurb(north)+eastRoadWidth+clearance,north);
+export const plazaEastWalkSpine=[
+  ...[7.2,80,246,344,349].map(north=>plazaEastPavement(north)),
+  plazaEastPavement(353,1.7),plazaEastPavement(363,1.7),
+  ...[369,418,442,504,514].map(north=>plazaEastPavement(north)),
+  plazaAt(38.2,527),plazaAt(38.2,552)
+];
 export const sajikRoad={south:529,north:551,crossX:-13,crossWidth:10.5};
 export const haechiBasin={west:-29,east:-14,south:97,north:138,rampEnd:120,depth:2.05};
 
@@ -101,7 +109,9 @@ export function isPlazaWalkable(x,y){
   const east=x-plazaOrigin.x,north=plazaOrigin.y-y;
   const curb=eastCurb(north),sidewalk=curb+eastRoadWidth;
   if(north>=0&&north<=528){
-    if(east>=curb-2.2&&east<=sidewalk+.4&&plazaCrossings.some(crossing=>Math.abs(north-crossing)<3.7))return true;
+    const landing=east<curb+1.32||east>sidewalk-1.32;
+    const crossingHalf=landing?plazaCrossingApronHalf:3.7;
+    if(east>=curb-2.2&&east<=sidewalk+.4&&plazaCrossings.some(crossing=>Math.abs(north-crossing)<crossingHalf))return true;
     if(east>=sidewalk&&east<=48)return true;
     if(north<430&&east>-55&&east< -45&&!insidePlazaPolygon(x,y,plazaOutline))return true;
   }

@@ -152,6 +152,14 @@ export function makeSound(){
       return enabled;
     },
     bus,plazaShow,
+    busking(note,proximity){
+      const gain=.072*fraction(proximity)**1.8;
+      if(note==null||gain<.001)return;
+      const pitch=440*2**((note-69)/12);
+      tone(pitch,pitch,{gain,attack:.008,decay:.43,type:"triangle"});
+      tone(pitch*2,pitch*2,{gain:gain*.21,attack:.005,decay:.16});
+      if(note===67||note===64)tone(pitch/2,pitch/2,{gain:gain*.42,attack:.013,decay:.48,type:"triangle"});
+    },
     clink(){
       tone(1530,1516,{gain:.043,attack:.004,decay:.16});
       tone(2294,2284,{gain:.019,attack:.005,decay:.095,delay:.003});

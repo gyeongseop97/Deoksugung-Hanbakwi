@@ -67,6 +67,8 @@ Vercel이 게임 화면과 방 API를 제공하고, Turso의 **libSQL** 데이�
 
 `/api/rooms`는 방 만들기와 입장, `/api/room`은 위치와 상호작용 동기화를 담당합니다. 접속 중에는 상태를 짧은 간격으로 주고받아 접속 시간과 인원에 따라 Vercel 함수와 Turso 사용량이 늘어납니다.
 
+게임의 자동 시간은 한국 표준시를 사용합니다. 서울 날씨는 Open-Meteo의 현재 조건을 10분 단위로 조회해 같은 방 참가자에게 공유합니다. 조회가 어려운 시간에는 계절에 맞춘 게임 날씨를 함께 적용합니다. [Open-Meteo 자료](https://open-meteo.com/en/docs), [비상업용 서비스 및 CC BY 4.0 이용 조건](https://open-meteo.com/en/terms)
+
 동기화 지연을 줄이려면 Vercel의 **Settings → Functions → Function Regions**에서 Turso 데이터베이스와 가까운 지역을 선택한 뒤 다시 배포합니다. [Vercel 함수 지역 설정](https://vercel.com/docs/functions/configuring-functions/region)
 
 ## 덕수궁에서 경복궁까지 걷기
