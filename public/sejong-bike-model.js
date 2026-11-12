@@ -176,9 +176,14 @@ function dockSign(T){
   return new T.MeshStandardMaterial({map:texture,roughness:.84});
 }
 
-export function buildBikeDocks(T,scene,{wx,wz,box,cylinder}){
-  const parts=bikeParts(T),signMaterial=dockSign(T),signPanel=new T.PlaneGeometry(.76,.38);
-  for(const dock of bikeDocks){
+export function registerBikeDocks(docks=bikeDocks){
+  for(const dock of docks)addObstacle(dock.x,dock.y,4.12,1.80,Math.PI-dock.heading*Math.PI/180,1.49);
+}
+
+export function buildBikeDocks(T,scene,{wx,wz,box,cylinder},{docks=bikeDocks,register=true}={}){
+  if(register)registerBikeDocks(docks);
+  const parts=bikeParts(T),signMaterial=parts.dockSign??=dockSign(T),signPanel=new T.PlaneGeometry(.76,.38);
+  for(const dock of docks){
     const group=new T.Group(),angle=Math.PI-dock.heading*Math.PI/180;
     group.name=dock.name;
     group.position.set(wx(dock.x),platformAt(dock.x,dock.y)+.051,wz(dock.y));group.rotation.y=angle;
@@ -195,6 +200,5 @@ export function buildBikeDocks(T,scene,{wx,wz,box,cylinder}){
       sign.position.set(1.61,1.30,-.61+side*.031);sign.rotation.y=side<0?Math.PI:0;
       group.add(sign);
     }
-    addObstacle(dock.x,dock.y,4.12,1.80,angle,1.49);
   }
 }

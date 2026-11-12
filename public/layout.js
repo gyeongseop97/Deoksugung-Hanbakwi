@@ -260,9 +260,19 @@ function nearPath(points,x,y,radius){
 }
 
 const obstacleBuckets = new Map();
+let activeObstacles=obstacleBuckets;
+let obstacleRecorder=null;
+// A detached district builds against its own obstacles. The world keeps its baked
+// collision data throughout the build, including between generator steps.
+export function withObstacleScope(buckets,build,record=null){
+  const previous=activeObstacles,previousRecorder=obstacleRecorder;
+  activeObstacles=buckets;obstacleRecorder=record;
+  try{return build();}finally{activeObstacles=previous;obstacleRecorder=previousRecorder;}
+}
 const stride=10;
 function bucketKey(x,y){return Math.floor(x/stride)+Math.floor(y/stride)*1000;}
 export function addObstacle(x,y,width,depth,angle=0,top=Infinity){
+  obstacleRecorder?.(x,y,width,depth,angle,top);
   const c=Math.cos(angle),s=Math.sin(angle);
   const halfWidth=width/2+.29,halfDepth=depth/2+.29;
   const box={x,y,c,s,halfWidth,halfDepth,top};
@@ -270,13 +280,13 @@ export function addObstacle(x,y,width,depth,angle=0,top=Infinity){
   for(let px=Math.floor((x-spanX)/stride);px<=Math.floor((x+spanX)/stride);px++){
     for(let py=Math.floor((y-spanY)/stride);py<=Math.floor((y+spanY)/stride);py++){
       const key=px+py*1000;
-      if(!obstacleBuckets.has(key))obstacleBuckets.set(key,[]);
-      obstacleBuckets.get(key).push(box);
+      if(!activeObstacles.has(key))activeObstacles.set(key,[]);
+      activeObstacles.get(key).push(box);
     }
   }
 }
 export function solidAt(x,y,height=0){
-  const boxes=obstacleBuckets.get(bucketKey(x,y));
+  const boxes=activeObstacles.get(bucketKey(x,y));
   if(!boxes)return false;
   for(const box of boxes){
     if(height>box.top)continue;
@@ -291,7 +301,7 @@ const feetLevel=feet=>feet>0?feet+stepReach:0;
 // Height of the tallest finite box under a point. With soft=true the edge eases down to the
 // ground across the collision margin so a walker does not hover beside the object.
 export function platformAt(x,y,soft=false){
-  const boxes=obstacleBuckets.get(bucketKey(x,y));
+  const boxes=activeObstacles.get(bucketKey(x,y));
   if(!boxes)return 0;
   let top=0;
   for(const box of boxes){
@@ -327,7 +337,7 @@ function crossesObstacle(from,to,level=0){
   let nextY=stepY?((row+Number(stepY>0))*stride-from.y)/dy:Infinity;
   // Traverse only grid buckets touched by the segment; test each box in local space.
   while(true){
-    const boxes=obstacleBuckets.get(col+row*1000);
+    const boxes=activeObstacles.get(col+row*1000);
     if(boxes)for(const box of boxes){
       if(level<=box.top&&crossesBox(from.x,from.y,dx,dy,box))return true;
     }

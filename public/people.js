@@ -44,7 +44,7 @@ export function receivePeople(people,rows,self,serverTime){
     person.nickname=row.nickname;
     person.coat=row.coat;
     person.signal=row.signal;
-    person.available=row.handholdAvailable&&!avatar.bus&&!avatar.bike;
+    person.available=row.handholdAvailable&&!avatar.bus&&!isCycling(avatar);
   }
   for(const id of people.keys())if(!present.has(id))people.delete(id);
 }
@@ -121,7 +121,7 @@ export function handPosition(leader,side){
 }
 
 export function handSide(leader,follower){
-  if(leader.seat!=null||follower.seat!=null||leader.bus||follower.bus||leader.bike||follower.bike||distance(leader,follower.x,follower.y)>2.4||
+  if(leader.seat!=null||follower.seat!=null||leader.bus||follower.bus||isCycling(leader)||isCycling(follower)||distance(leader,follower.x,follower.y)>2.4||
      !clearSegment(leader,follower))return 0;
   const options=[-1,1].map(side=>({side,point:handPosition(leader,side)}))
     .filter(({point})=>clearSegment(leader,point)&&clearSegment(follower,point))
@@ -133,3 +133,4 @@ export function pairFits(from,to,side){
   const previous=handPosition(from,side),next=handPosition(to,side);
   return clearSegment(to,next)&&clearSegment(previous,next);
 }
+import {isCycling} from "./sejong-bike.js";

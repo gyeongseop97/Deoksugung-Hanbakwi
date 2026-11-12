@@ -1,19 +1,26 @@
 import {
   route,entranceWalk,pavilions,city,estateOutline,stonewallVerge,palacePaths,palaceCourts,palaceGardens,palacePlantings,palacePond,palaceWalls,
-  gate,ticket,ticketGuide,bridge,middle,hall,stoneHall,stoneFountain,court,courtAngle,fountain,garden,spawn,addObstacle,solidAt
+  gate,ticket,ticketGuide,bridge,middle,hall,stoneHall,stoneFountain,court,courtAngle,fountain,garden,spawn,addObstacle,solidAt,withObstacleScope
 } from "./layout.js";
 import {buildWestern} from "./western.js";
 import {fromBuilding,pavilionStairAccess} from "./museum.js";
 import {standPlantingFootprints} from "./street-stands.js";
 import {makePalaceClearance} from "./palace-plantings.js";
 import {makeTreeBuilder} from "./lowpoly-trees.js";
-import {buildGyeongbok} from "./gyeongbok.js";
+import {buildGyeongbok,buildSubwayExit} from "./gyeongbok.js";
+import {cityHallStation,cityHallExit3} from "./gyeongbok-layout.js";
+import {gyeongbokObstacles,gyeongbokBenches} from "./gyeongbok-obstacles.js";
 import {furnishHall} from "./palace-interiors.js";
 // Rooms people can walk into, for the lighting: centre (map), size, turn and floor height.
 export const hallRooms=[];
 
-export function buildJeongdong(T,scene,kit) {
-  const {box,cylinder,shape,wx,wz,rand,matte}=kit;
+export function buildJeongdong(T,scene,kit,{deferGyeongbok=false}={}) {
+  const {wx,wz,matte}=kit;
+  let target=scene,activeRand=kit.rand,drawBenchesOnly=false;
+  const rand=()=>activeRand();
+  const box=(color,x,y,z,w,h,d,parent=target)=>kit.box(color,x,y,z,w,h,d,parent);
+  const cylinder=(color,x,y,z,r,h,sides=12,parent=target,top=1)=>kit.cylinder(color,x,y,z,r,h,sides,parent,top);
+  const shape=(geometry,color,x,y,z,parent=target)=>kit.shape(geometry,color,x,y,z,parent);
   const benches=[],trees=[],catWalls=[];
   const treeClearance=makePalaceClearance(T);
   const autumn=[0xe9b940,0xd6a736,0xc99728,0xffcb52,0xba8731,0xe5a943];
@@ -40,7 +47,7 @@ export function buildJeongdong(T,scene,kit) {
   const orient=(object,angle)=>{object.rotation.y=angle;return object;};
   const flat=(geometry,material,x,y,z)=>{
     const mesh=new T.Mesh(geometry,material);
-    mesh.position.set(x,y,z);scene.add(mesh);return mesh;
+    mesh.position.set(x,y,z);target.add(mesh);return mesh;
   };
   function grain(colors,{stones=false,red=false,random=rand}={}) {
     const canvas=document.createElement("canvas");
@@ -269,7 +276,7 @@ export function buildJeongdong(T,scene,kit) {
     }
     return true;
   }
-  const treeKit=makeTreeBuilder(T,scene,{clearance:treeClearance,rand,
+  const treeKit=makeTreeBuilder(T,{add:object=>target.add(object)},{clearance:treeClearance,rand,
     fits:(x,y,z,radius)=>buildingClear(x,z,radius*1.15,y-radius*.9)});
   const weighted=options=>{
     let roll=rand()*options.reduce((sum,[weight])=>sum+weight,0);
@@ -463,7 +470,7 @@ export function buildJeongdong(T,scene,kit) {
   }
 
   function bench(x,z,angle=0){
-    const group=new T.Group();group.position.set(x,0,z);group.rotation.y=angle;scene.add(group);
+    const group=new T.Group();group.position.set(x,0,z);group.rotation.y=angle;target.add(group);
     for(let i=0;i<4;i++)box(0x85593b,0,.47,(i-1.5)*.114,2.18,.075,.105,group);
     for(let i=0;i<3;i++)box(0x976648,0,.62+i*.116,-.24,2.18,.083,.077,group);
     for(const side of [-1,1]){
@@ -474,17 +481,20 @@ export function buildJeongdong(T,scene,kit) {
     // Seat and backrest collide separately so a jump can land on the seat.
     block(x,z,2.21,.61,angle,.52);
     block(x-.24*Math.sin(angle),z-.24*Math.cos(angle),2.21,.13,angle,.98);
-    const xMap=x+300,yMap=z+225;
+    if(drawBenchesOnly)return;
+    benches.push(benchPosition(x+300,z+225,angle));
+  }
+  function benchPosition(xMap,yMap,angle){
     const heading=(Math.atan2(Math.sin(angle),-Math.cos(angle))*180/Math.PI+360)%360;
     const slots=[-.50,.50].map(offset=>{
       const x=xMap+Math.cos(angle)*offset,y=yMap-Math.sin(angle)*offset;
       return {x,y,heading,approach:{x:x+Math.sin(angle)*.87,y:y+Math.cos(angle)*.87}};
     });
     const frontX=Math.sin(angle),frontY=Math.cos(angle);
-    benches.push({x:xMap,y:yMap,slots,catPerch:{
+    return {x:xMap,y:yMap,slots,catPerch:{
       x:xMap+frontX*.132,y:yMap+frontY*.132,height:.5075,heading:angle,
       approach:{x:xMap+frontX*1.23,y:yMap+frontY*1.23}
-    }});
+    }};
   }
   const lampMaterial=new T.MeshStandardMaterial({color:0xf0d6a0,emissive:0xffae53,emissiveIntensity:.03,roughness:.64});
   function lamp(x,z,height=3.42){
@@ -592,7 +602,7 @@ export function buildJeongdong(T,scene,kit) {
   function pavilion(spec){
     const {x,z}=placed(spec),g=new T.Group();
     const {w,d,h,bays,angle=0}=spec;
-    g.position.set(x,0,z);g.rotation.y=angle;scene.add(g);
+    g.position.set(x,0,z);g.rotation.y=angle;target.add(g);
     const raised=spec.raised??.39,lo=(n)=>-w/2+n*w/bays;
     // Buildings that stand on a terrace or gate tower leave the ground below them clear.
     const solid=!spec.noCollision;
@@ -608,7 +618,7 @@ export function buildJeongdong(T,scene,kit) {
       const west=fit?-fit.gap/2:lo(room.a)+.3,east=fit?fit.gap/2:lo(room.b+1)-.3,middle=(west+east)/2,gap=east-west;
       const top=fit?fit.floor:(spec.lift??0)+raised,shift=fit?.z??0,thick=.26,iw=fit?fit.w:w-.55,id=fit?fit.d:d-.55;
       const origin=fromBuilding(spec,0,shift),inside=new T.Group();
-      inside.position.set(wx(origin.x),top-raised,wz(origin.y));inside.rotation.y=angle;scene.add(inside);
+      inside.position.set(wx(origin.x),top-raised,wz(origin.y));inside.rotation.y=angle;target.add(inside);
       inside.name=(spec.name||"전각")+" 내부";
       const wallColor=spec.plain?0x8a6a4c:0x864d39,lintel=Math.min(room.height,3.1);
       const wallBlock=(lx,lz,bw,bd,high)=>{if(solid)blockLocal(spec,lx,shift+lz,bw,bd,high);};
@@ -931,11 +941,39 @@ export function buildJeongdong(T,scene,kit) {
       if(tree(x,z,height,treeMix.edge()))break;
     }
   }
-  // The second map: Gyeongbokgung, reached by subway from the ticket plaza.
-  const subwayStations=buildGyeongbok(T,scene,kit,{pavilion,roof,wall,coveredWall,plot,ribbon,paved,tree,treeMix,treeFits,bench,lamp,
+  const districtKit={...kit,box,cylinder,shape,rand};
+  const districtTools={pavilion,roof,wall,coveredWall,plot,ribbon,paved,tree,treeMix,treeFits,bench,lamp,
     nameplate,block,flat,uvScale,orient,treeKit,treeClearance,waterMaterial,pathClear,
     materials:{stone:stoneMaterial,paving:pavingMaterial,gravel:gravelMaterial,court:courtStoneMaterial,earth:earthMaterial,
-      road:roadMaterial,garden:gardenMaterials}});
-  return {subwayStations,benches,trees,catWalls,fountains:[{x:fp.x,z:fp.z,radius:2.32},{x:sf.x,z:sf.z,radius:4.2,scalloped:true}],
+      road:roadMaterial,garden:gardenMaterials}};
+  for(const station of [cityHallStation,cityHallExit3]){
+    buildSubwayExit(T,scene,districtKit,districtTools,station,"시청 City Hall",0x00a84d);
+  }
+
+  function* buildGyeongbokDistrict(root){
+    const steps=buildGyeongbok(T,root,districtKit,districtTools);
+    const scope=deferGyeongbok?new Map():null;
+    // Starting state of the original palace random stream after Jeongdong's build.
+    let seed=1574068689;
+    const districtRandom=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};
+    for(;;){
+      target=root;activeRand=districtRandom;drawBenchesOnly=deferGyeongbok;
+      let step;
+      try{step=scope?withObstacleScope(scope,()=>steps.next()):steps.next();}
+      finally{target=scene;activeRand=kit.rand;drawBenchesOnly=false;}
+      if(step.done)return step.value;
+      yield;
+    }
+  }
+  let subwayStations;
+  if(deferGyeongbok){
+    for(const [x,y,w,d,angle,top] of gyeongbokObstacles)addObstacle(x,y,w,d,angle,top??Infinity);
+    for(const [x,y,angle] of gyeongbokBenches)benches.push(benchPosition(x,y,angle));
+  }else{
+    const steps=buildGyeongbokDistrict(scene);
+    let step=steps.next();while(!step.done)step=steps.next();
+    subwayStations=step.value;
+  }
+  return {subwayStations,buildGyeongbokDistrict,benches,trees,catWalls,fountains:[{x:fp.x,z:fp.z,radius:2.32},{x:sf.x,z:sf.z,radius:4.2,scalloped:true}],
     lampMaterial,classical,middleModel,hallModel,drawPond,pavilionModels};
 }

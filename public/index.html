@@ -114,6 +114,14 @@
                   <button id="zoom-in" class="quiet" type="button" aria-label="시야 확대" title="시야 확대">+</button>
                 </div>
               </div>
+              <section id="bus-status" class="bus-status" aria-labelledby="bus-status-stop" hidden>
+                <h3 id="bus-status-stop"></h3>
+                <p id="bus-status-direction"></p>
+                <dl class="bus-status-times">
+                  <div id="bus-status-arrival"><dt id="bus-status-arrival-label">다음 버스 도착</dt><dd></dd></div>
+                  <div id="bus-status-departure"><dt>정차 버스 출발</dt><dd></dd></div>
+                </dl>
+              </section>
             </div>
             <button id="game-presence" class="game-presence" type="button" aria-label="접속자 목록 열기" aria-haspopup="dialog" aria-controls="roster-dialog">접속자</button>
             <div id="cat-run-tip" class="cat-run-tip" aria-label="고양이 안내" hidden>
@@ -142,6 +150,7 @@
                 <button id="subway" type="button" class="quiet activity-button" aria-haspopup="dialog" aria-controls="transit-dialog" hidden>지하철 타기</button>
                 <button id="bus-action" type="button" class="quiet activity-button" hidden>버스 타기</button>
                 <button id="bike-action" type="button" class="quiet activity-button" hidden>따릉이 빌리기</button>
+                <button id="bike-park" type="button" class="quiet activity-button" hidden>따릉이에서 내리기</button>
                 <button id="museum-door" type="button" class="quiet activity-button" hidden>입장하기</button>
                 <button id="museum-exhibit" type="button" class="quiet activity-button" aria-haspopup="dialog" hidden>작품 설명</button>
                 <button id="landmark-guide" type="button" class="quiet activity-button" aria-haspopup="dialog" aria-controls="landmark-guide-dialog" hidden>설명 읽기</button>
@@ -207,6 +216,7 @@
             </defs>
             <g id="map-landscape" aria-hidden="true"></g>
             <g id="map-people" aria-hidden="true"></g>
+            <circle id="parked-bike-pin" r="5.8" fill="#8ed7a2" stroke="#f8e5ac" stroke-width="1.8" visibility="hidden" aria-hidden="true"><title>내가 세워둔 따릉이</title></circle>
             <g id="look-pins" aria-hidden="true"></g>
             <g id="track-pin" class="track-map-pin" aria-hidden="true" visibility="hidden"><circle/><circle/></g>
             <g id="my-avatar" class="avatar me"><ellipse cy="11" rx="16" ry="6"/><circle r="14"/><path d="M-7 7a8 8 0 0 1 14 0" class="shoulders"/><circle cy="-3" r="4" class="face"/><text y="-21" text-anchor="middle">나</text></g>

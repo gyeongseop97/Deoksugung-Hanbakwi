@@ -17,8 +17,8 @@ import {cityHallStation,gbSites,gbBounds,gbLake,gbPond,gbPaths,gbCourts,gbLawns,
 import {inGwanghwamunPlaza,plazaAt,plazaBounds,plazaSites,plazaOutline,plazaPaths,plazaShortcuts,plazaBeds,plazaRoadProfile,eastRoadWidth,sajikRoad} from "./plaza-layout.js";
 import {corridorBounds,corridorLandmarks,corridorSidewalks,corridorCrossings,corridorWalkSpine,corridorMainRoad,inSejongCorridor} from "./sejong-corridor-layout.js";
 import {transitRoutes,transitStops} from "./transit-routes.js";
-import {BUS_SEATS,busAt,busSeatPose,busStopById,busStops,busWait,nearBus} from "./sejong-bus.js";
-import {bikeDocks,nearBikeDock} from "./sejong-bike.js";
+import {BUS_SEATS,busAt,busSeatPose,busStopById,busStops,busStopTimes,nearBus} from "./sejong-bus.js";
+import {bikeDocks,bikeMountReach,bikeParkDuration,isCycling,nearBikeDock} from "./sejong-bike.js";
 
 const $=id=>document.getElementById(id);
 const token=()=>Array.from(crypto.getRandomValues(new Uint8Array(16)),byte=>byte.toString(16).padStart(2,"0")).join("");
@@ -46,6 +46,7 @@ let session=null,active=true,joining=false,lastPost=0,lastWishSynced=0,dirty=tru
 let syncTimer,syncDue=Infinity,syncInFlight=null,syncStarted=-Infinity,syncFailures=0;
 let links=[],queuedSignal=null,queuedHand=null,queuedFeed=null,queuedChat=null,toastTimer;
 let queuedBus=null,queuedBike=null,lastBusHeading=null;
+let parkedBikes=[];
 let lastChatAt=0;
 let course=[],pendingSeat=null,seatClaim=null,thumb=[0,0],thumbId,manualInputAt=-Infinity;
 let clockOffset=null,roundTrip=65;
@@ -382,7 +383,7 @@ function resetLocationGuides(){
 }
 
 function handCandidates(){
-  if(!world||!session||me.seat!=null||me.bus||me.bike||myLink()||feedingLocked(gameTime()))return [];
+  if(!world||!session||me.seat!=null||me.bus||isCycling(me)||myLink()||feedingLocked(gameTime()))return [];
   const busy=new Set(links.flatMap(link=>[link.leader,link.follower]));
   return [...people.values()].filter(person=>person.available&&!busy.has(person.id)&&
     near(me,person.position.x,person.position.y)<=2.4&&handSide(me,{...person.avatar,...person.position})!==0)
@@ -536,6 +537,7 @@ async function sync(){
     if(queuedHand===hand)queuedHand=null;
     const confirmed=data.walkers.find(row=>row.id===visit.id)?.avatar;
     confirmTransport(confirmed,data.transport,bus,bike);
+    parkedBikes=data.parkedBikes??[];
     if(chat&&queuedChat===chat){
       queuedChat=null;
       if(confirmed?.chat?.id===chat.id)me.chat=confirmed.chat;
@@ -601,6 +603,8 @@ function returnToLobby(message=""){
   leaveBeacon();session=null;clearSyncTimer();resetInput();
   queuedSignal=queuedHand=queuedFeed=queuedChat=null;people.clear();changeLinks([]);resetLocationGuides();
   queuedBus=queuedBike=lastBusHeading=selectedBus=null;
+  parkedBikes=[];
+  busStatus.hidden=true;
   chatInput.value="";composingChat=false;lastChatAt=0;updateChatSend();
   $("invite").disabled=$("look").disabled=$("look-target").disabled=true;
   world?.clearChat();
@@ -717,12 +721,12 @@ function markPace(){
   $("run").setAttribute("aria-pressed",String(runToggled));$("run").firstChild.textContent=runToggled?"걷기 ":"달리기 ";
 }
 $("run").addEventListener("click",()=>{
-  if(amFollowingHands()||me.bus||me.bike)return;
+  if(amFollowingHands()||me.bus||isCycling(me))return;
   runToggled=!runToggled;markPace();$("game").focus({preventScroll:true});
 });
 function jump(){
   const time=gameTime();
-  if(!session||!world||me.bus||me.bike||queuedBus||queuedBike||feedingLocked(time)||time-me.jump<JUMP_MS)return;
+  if(!session||!world||me.bus||isCycling(me)||queuedBus||queuedBike||feedingLocked(time)||time-me.jump<JUMP_MS)return;
   if(pendingSeat)course=[];
   pendingSeat=seatClaim=null;stand();
   jumpBase=standingHeight();
@@ -758,7 +762,7 @@ function confirmSeat(claim,avatar){
   dirty=true;
 }
 function interactBench(){
-  if(me.bus||me.bike||queuedBus||queuedBike||myLink()?.active||pendingSeat||seatClaim)return;
+  if(me.bus||isCycling(me)||queuedBus||queuedBike||myLink()?.active||pendingSeat||seatClaim)return;
   if(me.seat!=null){stand();return;}
   const {choice}=benchNearby();
   if(choice)walkTo(choice.approach,choice);
@@ -780,7 +784,7 @@ function walkTo(target,seat=null){
   // Upstairs there is no route grid: head straight for the spot and let each step be checked.
   const aloft=me.up||loftStair(me.x,me.y)!=null;
   let steps=aloft?[target]:wet?[]:planWalk(me,target,feet);
-  if(!steps.length&&!me.bike)steps=planWalk(me,target,feet,true);
+  if(!steps.length&&!isCycling(me))steps=planWalk(me,target,feet,true);
   if(!steps.length){toast("걸을 수 있는 길을 터치해 주세요.");return;}
   course=steps;seatClaim=null;pendingSeat=seat;
 }
@@ -822,8 +826,8 @@ function refreshShortcuts(){
 shortcutButtons.forEach((id,index)=>$(id).addEventListener("click",()=>{
   const destination=shortcutsHere()[index];
   if(!session||riding||!destination||!walkable(destination.x,destination.y))return;
-  if(me.bus||me.bike||queuedBus||queuedBike){
-    toast(me.bike?"따릉이를 대여소에 반납한 뒤 순간이동할 수 있어요.":"버스에서 내린 뒤 순간이동할 수 있어요.");return;
+  if(me.bus||isCycling(me)||queuedBus||queuedBike){
+    toast(isCycling(me)?"따릉이에서 내린 뒤 순간이동할 수 있어요.":"버스에서 내린 뒤 순간이동할 수 있어요.");return;
   }
   const linkId=myLink()?.id??(queuedHand?.action==="offer"?queuedHand.id:null);
   if(linkId){queuedHand={action:"release",id:linkId};changeLinks(links);}
@@ -921,7 +925,7 @@ const clearSceneTouch=bindSceneTouch($("game"),gameShell,{
   },
   onDrag:(dx,dy)=>{
     ownView={...ownView,pan:normalize(ownView.pan+dx*.34),
-      tilt:Math.max(firstPerson?-72:-24,Math.min(firstPerson?65:48,ownView.tilt+dy*.26))};
+      tilt:Math.max(-87,Math.min(firstPerson?65:48,ownView.tilt+dy*.26))};
     dirty=true;
   },
   onPinch:adjustZoom
@@ -941,7 +945,7 @@ function move(x,y){
   if(!session||me.bus||queuedBus||queuedBike||(x===me.x&&y===me.y))return false;
   // Stairs and upper floors follow their own rules; everywhere else the ground decides.
   const loft=loftStep(me,x,y);
-  if(me.bike){
+  if(isCycling(me)){
     if(loft!==undefined||!clearSegment(me,{x,y},.28,.18))return false;
   }else if(loft===null||loft===undefined&&!wadeSegment(me,{x,y},.36,feetHeight(gameTime())))return false;
   const aim=normalize(Math.atan2(x-me.x,me.y-y)*180/Math.PI);
@@ -953,7 +957,7 @@ function move(x,y){
 }
 function nearWishFountain(){
   // Lanterns rise from the Jeongdong fountain and from the pond around Hyangwonjeong.
-  return Boolean(world&&session&&me.seat==null&&!me.bus&&!me.bike&&
+  return Boolean(world&&session&&me.seat==null&&!me.bus&&!isCycling(me)&&
     (near(fountain,me.x,me.y)<13||near(wishPond,me.x,me.y)<wishPond.reach));
 }
 const wishDrawing=makeWishDrawing(art=>{
@@ -1020,7 +1024,7 @@ function nearbyStation(){
   return best;
 }
 function canUseItem(time){
-  return Boolean(!me.bus&&!me.bike&&me.item?.remaining&&time-me.item.started>=ITEMS[me.item.kind].duration);
+  return Boolean(!me.bus&&!isCycling(me)&&me.item?.remaining&&time-me.item.started>=ITEMS[me.item.kind].duration);
 }
 function feedingLocked(time){
   return Boolean(queuedFeed&&time-queuedFeed.at<FEED_MS||me.feed&&time-me.feed.at<FEED_MS);
@@ -1031,18 +1035,20 @@ function feedCatNearby(){
 }
 function portalNearby(){
   const museum=world?.museum;
-  if(!museum||me.bus||me.bike||queuedBus||queuedBike)return null;
+  if(!museum||me.bus||isCycling(me)||queuedBus||queuedBike)return null;
   const inside=museum.isInside(me.x,me.y);
   const door=inside?museum.insideDoor:museum.outsideDoor;
   return near(door,me.x,me.y)<2.25&&clearSegment(me,door)?{inside,museum}:null;
 }
-const busDialog=$("bus-seat-dialog"),travelStatus=$("travel-status");
+const busDialog=$("bus-seat-dialog"),travelStatus=$("travel-status"),busStatus=$("bus-status");
+const busArrival=$("bus-status-arrival"),busDeparture=$("bus-status-departure");
+const BUS_STOP_INFO_REACH=20;
 let selectedBus=null;
 const seatButtons=Array.from({length:BUS_SEATS},(_,seat)=>{
   const button=document.createElement("button");
   button.type="button";button.className="quiet";
   button.addEventListener("click",()=>{
-    const context=transportReady(gameTime())&&nearBus(me,gameTime());
+    const context=boardableBus(gameTime());
     if(!context||context.bus.index!==selectedBus?.index||context.stop.id!==selectedBus.stop.id||seatTaken(context.bus.index,seat))return;
     queuedBus={action:"board",index:context.bus.index,seat};
     busDialog.close();setMap(false);resetInput();wakeSync();focusGame();
@@ -1065,7 +1071,10 @@ function travelTime(ms){
 function refreshBusSeats(time){
   if(!busDialog.open||!selectedBus)return;
   const {index,stop}=selectedBus,bus=busAt(index,time),here=bus?.stopId===stop.id;
-  setText($("bus-seat-time"),here?`${stop.direction} · ${travelTime(bus.remaining)} 뒤 출발`:"버스가 출발했어요. 다음 버스를 기다려 주세요.");
+  const {arrivalMs,departureMs}=busStopTimes(stop.id,time);
+  const status=here?`${stop.direction} · ${travelTime(bus.remaining)} 뒤 출발`:
+    departureMs===null?"선택한 버스가 출발했어요.":"다른 버스가 정차했어요. 창을 닫고 좌석을 다시 골라 주세요.";
+  setText($("bus-seat-time"),`${status} · 다음 버스 ${travelTime(arrivalMs)} 뒤 도착`);
   seatButtons.forEach((button,seat)=>{
     const occupied=here&&seatTaken(index,seat);
     button.disabled=!here||occupied;
@@ -1076,23 +1085,54 @@ function nearbyBikeDock(){
   const dock=nearBikeDock(me);
   return dock&&clearSegment(me,dock.access,.32,.18)?dock:null;
 }
+function nearbyParkedBike(){
+  const bike=me.bike?.parked;
+  return bike&&near(bike,me.x,me.y)<=bikeMountReach&&clearSegment(me,bike,.32,.18);
+}
 function nearbyBusStop(){
-  return busStops.find(stop=>near(stop.board,me.x,me.y)<4.2&&clearSegment(me,stop.board,.32,.22));
+  let closest=null,range=BUS_STOP_INFO_REACH;
+  for(const stop of busStops){
+    const distance=near(stop.board,me.x,me.y);
+    if(distance<=range){closest=stop;range=distance;}
+  }
+  return closest;
+}
+function boardableBus(time,ready=transportReady(time)){
+  if(!ready||isCycling(me))return null;
+  const context=nearBus(me,time);
+  return context&&clearSegment(me,context.stop.board,.32,.22)?context:null;
+}
+function showCountdown(row,ms){
+  row.hidden=ms==null;
+  if(ms!=null)setText(row.lastElementChild,travelTime(ms));
+}
+function updateBusStatus(bus,stop,time){
+  const next=bus?.traveling?busStopById(bus.nextStopId):null;
+  const shown=stop??next;
+  busStatus.hidden=!shown;
+  if(!shown)return;
+  const schedule=bus?null:busStopTimes(shown.id,time);
+  setText($("bus-status-stop"),shown.name);
+  setText($("bus-status-direction"),bus?"세종대로 순환버스 · 탑승 중":shown.direction);
+  setText($("bus-status-arrival-label"),bus?"다음 정류장 도착":"다음 버스 도착");
+  showCountdown(busArrival,next?bus.eta:schedule?.arrivalMs);
+  showCountdown(busDeparture,bus?.stopId?bus.remaining:schedule?.departureMs);
 }
 function updateTransport(time){
   const bus=me.bus&&busAt(me.bus.index,time),ready=transportReady(time);
-  const stop=bus?busStopById(bus.stopId):ready&&!me.bike?nearbyBusStop():null;
+  const stop=bus?busStopById(bus.stopId):world&&!riding?nearbyBusStop():null;
   const dock=ready&&nearbyBikeDock();
-  const boarding=stop&&!bus&&nearBus(me,time);
-  const next=bus&&busStopById(bus.nextStopId);
-  setActivity("bike-action",queuedBike?"대여소 확인 중":dock?me.bike?"따릉이 반납하기":"따릉이 빌리기":null,Boolean(queuedBike));
+  const boarding=boardableBus(time,ready);
+  const parked=me.bike?.parked,cycling=isCycling(me);
+  setActivity("bike-action",queuedBike?"따릉이 확인 중":dock&&(!me.bike||cycling)?cycling?"따릉이 반납하기":"따릉이 빌리기":null,Boolean(queuedBike));
+  setActivity("bike-park",ready?cycling?"따릉이에서 내리기":nearbyParkedBike()?"따릉이 다시 타기":null:null);
   const button=$("bus-action");
   setActivity("bus-action",queuedBus?"버스 확인 중":bus&&stop?"버스 내리기":boarding?"버스 타기":null,Boolean(queuedBus));
   if(boarding)attr(button,"aria-haspopup","dialog");else button.removeAttribute("aria-haspopup");
-  const label=bus?(stop?`${stop.name} · ${travelTime(bus.remaining)} 뒤 출발`:
-    `${next.name} · ${travelTime(bus.eta)} 남음`):me.bike?"따릉이 이용 중 · 지정 대여소에서 반납":
-    stop?`${stop.direction} · ${boarding?`${travelTime(boarding.bus.remaining)} 뒤 출발`:`${travelTime(busWait(stop.id,time))} 뒤 도착`}`:"";
+  const label=cycling?"따릉이 이용 중 · 지정 대여소에서 반납":parked&&(dock||nearbyParkedBike())?
+    `세워둔 따릉이 · ${travelTime(parked.at+bikeParkDuration-time)} 뒤 회수`:"";
   travelStatus.hidden=!label;setText(travelStatus,label);
+  updateBusStatus(bus,stop,time);
   refreshBusSeats(time);
 }
 $("bus-action").addEventListener("click",()=>{
@@ -1102,15 +1142,22 @@ $("bus-action").addEventListener("click",()=>{
     if(!busAt(me.bus.index,time)?.stopId)return;
     queuedBus={action:"exit",index:me.bus.index};wakeSync();focusGame();return;
   }
-  const context=transportReady(time)&&!me.bike&&nearbyBusStop()&&nearBus(me,time);
+  const context=boardableBus(time);
   if(!context)return;
   selectedBus={index:context.bus.index,stop:context.stop};
   resetInput();busDialog.showModal();refreshBusSeats(time);
 });
 $("bike-action").addEventListener("click",()=>{
   const dock=transportReady(gameTime())&&nearbyBikeDock();
-  if(!dock)return;
-  queuedBike={action:me.bike?"return":"take",dock:dock.id};resetInput();wakeSync();focusGame();
+  if(!dock||me.bike?.parked)return;
+  queuedBike={action:isCycling(me)?"return":"take",dock:dock.id};resetInput();wakeSync();focusGame();
+});
+$("bike-park").addEventListener("click",()=>{
+  if(!transportReady(gameTime()))return;
+  if(isCycling(me))queuedBike={action:"park"};
+  else if(nearbyParkedBike())queuedBike={action:"mount"};
+  else return;
+  resetInput();wakeSync();focusGame();
 });
 function confirmTransport(avatar,result,bus,bike){
   if(!avatar)return;
@@ -1130,15 +1177,21 @@ function confirmTransport(avatar,result,bus,bike){
   }
   if(bike&&queuedBike===bike){
     queuedBike=null;
-    if(result?.bike==="taken")toast("따릉이를 빌렸어요. 평소처럼 움직이면 자전거가 달려요.");
-    else if(result?.bike==="returned")toast("따릉이를 반납했어요.");
-    else toast("따릉이 대여소 가까이에서 다시 시도해 주세요.");
+    const outcome=result?.bike;
+    if(outcome==="parked"||outcome==="mounted"){
+      resetInput();Object.assign(me,{x:avatar.x,y:avatar.y,heading:avatar.heading,vx:0,vy:0,blocked:false,running:false});
+      setText($("location"),placeName(me));
+    }
+    if(outcome==="taken")toast("따릉이를 빌렸어요. 평소처럼 움직이면 자전거가 달려요.");
+    else if(outcome==="returned")toast("따릉이를 반납했어요.");
+    else if(outcome==="parked")toast("따릉이를 세웠어요. 10분 안에 돌아와 다시 탈 수 있어요.");
+    else if(outcome==="unavailable")toast(bike.action==="mount"?"세워둔 따릉이 가까이에서 다시 타 주세요.":"지금은 따릉이를 이용할 수 없어요.");
   }
 }
 const transitDialog=$("transit-dialog"),transitOptions=$("transit-options");
 let riding=false,rideArrival,rideEnd;
 function nearbyTransit(){
-  if(!world||!session||me.seat!=null||me.bus||me.bike||queuedBus||queuedBike)return null;
+  if(!world||!session||me.seat!=null||me.bus||isCycling(me)||queuedBus||queuedBike)return null;
   let closest=null,distance=4.5;
   for(const stop of transitStops){
     if(stop.mode!=="subway")continue;
@@ -1302,13 +1355,13 @@ function updateActivities(time,guideNearby){
   if(me.item&&me.item.remaining===0&&time-me.item.started>=ITEMS[me.item.kind].duration){
     me.item=null;dirty=true;
   }
-  const eligible=world&&session&&!me.bus&&!me.bike&&!queuedBus&&!queuedBike;
+  const eligible=world&&session&&!me.bus&&!isCycling(me)&&!queuedBus&&!queuedBike;
   const feeding=feedingLocked(time);
   setActivity("visitor-guide",guideNearby?"관람 안내 읽기":null);
   const landmark=eligible&&nearbyPalaceGuide(me);
   setActivity("landmark-guide",landmark?"설명 읽기":null);
   if(landmark)attr($("landmark-guide"),"aria-label",landmark.title+" 설명 읽기");
-  $("jump").hidden=Boolean(me.bus||me.bike);
+  $("jump").hidden=Boolean(me.bus||isCycling(me));
   $("jump").disabled=!eligible||feeding||time-me.jump<JUMP_MS;
   const atFountain=nearWishFountain();
   if($("wish").hidden===Boolean(atFountain))$("wish").hidden=$("wish").disabled=!atFountain;
@@ -1381,7 +1434,7 @@ function motion(now,elapsed){
   const leader=follower&&people.get(link.leader);
   // Wading through a pond is slow going, and there is no running in the water.
   const wading=waterDepth(me.x,me.y)>0,pace=(runToggled||shiftHeld)&&!wading;
-  const speed=elapsed*(me.bike?9.4:wading?1.1:pace?6.675:2.58);
+  const speed=elapsed*(isCycling(me)?9.4:wading?1.1:pace?6.675:2.58);
   let blocked=false;
   if(leader){
     const next=pairedPose(link,leader.position,me,now);
@@ -1395,15 +1448,15 @@ function motion(now,elapsed){
     }else walkCourse(speed);
   }
   const moved=oldX!==me.x||oldY!==me.y;
-  soundscape(gameTime(now),moved&&!me.bike&&me.seat==null?Math.min(1.2,Math.hypot(me.x-oldX,me.y-oldY)):0,wading);
+  soundscape(gameTime(now),moved&&!isCycling(me)&&me.seat==null?Math.min(1.2,Math.hypot(me.x-oldX,me.y-oldY)):0,wading);
   if(moved){
     const location=placeName(me);
     if($("location").textContent!==location)$("location").textContent=location;
   }
-  const cap=me.bike?12:8;
+  const cap=isCycling(me)?12:8;
   const vx=moved&&elapsed?Math.max(-cap,Math.min(cap,(me.x-oldX)/elapsed)):0;
   const vy=moved&&elapsed?Math.max(-cap,Math.min(cap,(me.y-oldY)/elapsed)):0;
-  const running=leader?Boolean(leader.avatar.running):!me.bike&&(moved||blocked)&&pace;
+  const running=leader?Boolean(leader.avatar.running):!isCycling(me)&&(moved||blocked)&&pace;
   if(me.vx!==vx||me.vy!==vy||me.blocked!==blocked||me.running!==running){
     Object.assign(me,{vx,vy,blocked,running});dirty=true;
   }
@@ -1424,7 +1477,7 @@ function actors(now,stepping){
   for(const link of links){
     if(!link.active)continue;
     const leader=actor(link.leader),follower=actor(link.follower);
-    if(!leader||!follower||leader.bus||follower.bus||leader.bike||follower.bike)continue;
+    if(!leader||!follower||leader.bus||follower.bus||isCycling(leader)||isCycling(follower))continue;
     if(follower!==self)Object.assign(follower,pairedPose(link,leader,follower,now));
     leader.hand=-link.side;follower.hand=link.side;
     follower.stepping=leader.stepping;follower.running=leader.running;
@@ -1444,11 +1497,11 @@ function frame(now){
   // second leaves the rest of each frame for drawing.
   if(now>=interfaceAt){
     interfaceAt=now+95;
-    guideNearby=!me.bus&&!me.bike&&nearVisitorGuide();
+    guideNearby=!me.bus&&!isCycling(me)&&nearVisitorGuide();
     updateActivities(time,guideNearby);
     updateTransport(time);
-    $("run").hidden=Boolean(me.bus||me.bike);
-    const seatEnabled=world&&session&&!me.bus&&!me.bike&&!queuedBus&&!queuedBike&&!myLink()?.active&&!feedingLocked(time);
+    $("run").hidden=Boolean(me.bus||isCycling(me));
+    const seatEnabled=world&&session&&!me.bus&&!isCycling(me)&&!queuedBus&&!queuedBike&&!myLink()?.active&&!feedingLocked(time);
     const bench=seatEnabled&&me.seat==null&&!pendingSeat&&!seatClaim?benchNearby():null;
     const seatLabel=me.seat!=null?"일어나기":seatClaim?"자리 확인 중":pendingSeat?"벤치로 이동 중":
       bench?.choice?"앉기":bench?.nearby?"빈자리 없음":null;
@@ -1462,7 +1515,7 @@ function frame(now){
     refreshShortcuts();
     updateHandControls();updateLocationGuides(time);updateMaps(self,others);
   }
-  lastScene={me:self,peers:[...others.values()],view:ownView,firstPerson,guideNearby,destination:course.at(-1),clock:time};
+  lastScene={me:self,peers:[...others.values()],parkedBikes,view:ownView,firstPerson,guideNearby,destination:course.at(-1),clock:time};
   world?.render(lastScene,now);
 }
 
@@ -1706,6 +1759,13 @@ function updateMaps(self,others){
   overviewButton.hidden=indoors;
   attr($("my-avatar"),"transform","translate("+self.x+" "+self.y+")"+(indoors?" scale(.18)":overview?" scale(2.8)":palace?" scale(2.2)":plaza||corridor?" scale(1.55)":""));
   const coat=hexCoat(self.coat??0xe5b672);
+  const parked=self.bike?.parked,parkedPin=$("parked-bike-pin");
+  attr(parkedPin,"visibility",parked&&!indoors?"visible":"hidden");
+  if(parked){
+    attr(parkedPin,"cx",parked.x);attr(parkedPin,"cy",parked.y);
+    attr(parkedPin,"data-walk-x",parked.x);attr(parkedPin,"data-walk-y",parked.y);
+    attr(parkedPin,"r",overview?16:palace?10:6);
+  }
   $("my-avatar").querySelector("circle").style.fill=coat;
   attr($("mini-my"),"fill",coat);
   attr($("mini-my"),"transform","translate("+self.x+" "+self.y+") rotate("+self.heading+")"+(indoors?" scale(.47)":""));

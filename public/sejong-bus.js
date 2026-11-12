@@ -1,10 +1,10 @@
 import {at as palaceAt} from "./gyeongbok-layout.js";
 import {eastCurb, eastRoadWidth, plazaAt} from "./plaza-layout.js";
 
-export const BUS_COUNT=6;
+export const BUS_COUNT=5;
 export const BUS_SEATS=8;
-export const BUS_DWELL_MS=30_000;
-export const BUS_CYCLE_MS=360_000;
+export const BUS_DWELL_MS=20_000;
+export const BUS_CYCLE_MS=300_000;
 export const BUS_DEPARTURE_MS=BUS_CYCLE_MS/BUS_COUNT;
 export const BUS_BOARD_REACH=4.2;
 export const BUS_FLOOR=.71;
@@ -42,18 +42,18 @@ export const busStopById=id=>stopIndex.get(id)??null;
 // The south-end turn stays within the Sejong-daero lanes. The north-end turn uses the
 // Sajik-ro pullout by Dongsipjagak, leaving the pedestrian island on the bus's right.
 const itineraries=[
-  {travelMs:92_000,points:[deoksugung.berth,point(484,222),point(487.4,247),point(490.3,278),point(490.7,297),
+  {travelMs:83_000,points:[deoksugung.berth,point(484,222),point(487.4,247),point(490.3,278),point(490.7,297),
     point(493.4,305.2),point(502.8,309),point(511.6,306.6),point(516.3,299.1),point(516.1,285),point(513.4,256),
     point(513.3,135),point(512.5,-70),point(512.2,-240),point(513.6,-292),point(515.3,-301),plazaEast(16),plazaEast(131),
     plazaEast(239),plazaEast(290),plazaEast(335),point(north.x,north.y+10),plazaNorth.berth]},
-  {travelMs:36_000,points:[plazaNorth.berth,point(north.x,north.y-11),plazaEast(386),plazaEast(440),plazaEast(476,5.8),
+  {travelMs:35_000,points:[plazaNorth.berth,point(north.x,north.y-11),plazaEast(386),plazaEast(440),plazaEast(476,5.8),
     plazaEast(505,7.0),plazaEast(518,5.1),plazaEast(532),point(524,-832.3),point(536,-834.4),point(592,-834.4),
     point(625,-834),point(634,-829.2),point(639,eastIsland.y),gyeongbokgung.berth]},
-  {travelMs:35_000,points:[gyeongbokgung.berth,point(660,eastIsland.y),point(667.5,eastIsland.y-.9),point(672,-833),
+  {travelMs:34_000,points:[gyeongbokgung.berth,point(660,eastIsland.y),point(667.5,eastIsland.y-.9),point(672,-833),
     point(671.7,-840.6),point(665.4,-844.4),point(652,-844.7),point(583,-844.7),point(528,-844.7),
     point(511,-844.5),point(499.2,-842.9),point(495,-836.5),point(494.7,-827.4),
     plazaWest(513),plazaWest(481),plazaWest(441),plazaWest(397),point(south.x,south.y-11),plazaSouth.berth]},
-  {travelMs:77_000,points:[plazaSouth.berth,point(south.x,south.y+11),plazaWest(329),plazaWest(285),plazaWest(238),
+  {travelMs:68_000,points:[plazaSouth.berth,point(south.x,south.y+11),plazaWest(329),plazaWest(285),plazaWest(238),
     plazaWest(125),plazaWest(22),point(493.2,-286),point(486.9,-247),point(484.1,-176),point(484.4,-110),
     point(485.9,-34),point(488.7,61),point(489.6,113),point(488.3,150),point(484.8,180),point(484,194),deoksugung.berth]}
 ];
@@ -136,11 +136,20 @@ export function busAt(index,time){
   return null;
 }
 
-export function busWait(stopId,time){
+export function busStopTimes(stopId,time){
   const index=busStops.findIndex(stop=>stop.id===stopId);
   if(index<0||!Number.isFinite(time))return null;
   const phase=cyclePhase(time,route[index].offset,BUS_DEPARTURE_MS);
-  return phase<BUS_DWELL_MS?0:BUS_DEPARTURE_MS-phase;
+  return {
+    arrivalMs:BUS_DEPARTURE_MS-phase,
+    departureMs:phase<BUS_DWELL_MS?BUS_DWELL_MS-phase:null
+  };
+}
+
+export function busWait(stopId,time){
+  const schedule=busStopTimes(stopId,time);
+  if(!schedule)return null;
+  return schedule.departureMs===null?schedule.arrivalMs:0;
 }
 
 // +Z faces forward in the bus model; negative local X is the curb side in right-hand traffic.

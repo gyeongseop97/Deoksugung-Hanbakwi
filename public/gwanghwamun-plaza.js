@@ -7,8 +7,59 @@ import {plazaAt,plazaOutline,plazaBeds,plazaSites,plazaTransitStops,insidePlazaP
 
 const between=(a,b,t)=>a+(b-a)*t;
 const rect=(left,right,bottom,top)=>[[left,bottom],[right,bottom],[right,top],[left,top]].map(([e,n])=>plazaAt(e,n));
+const westLamps=[33,96,137,174,227,309,369,401,444,493];
+const benchSites=[[-24,26,1.57],[-23,43,1.57],[-23,58,1.57],[-44,83,1.57],[-34,93,0],
+  [-39,157,1.57],[-32,188,-1.57],[-37,205,1.57],[-37,254,0],[-20,287,1.57],[-43,300,-1.57],
+  [-32,340,1.57],[-27,398,1.57],[-29,434,1.57],[-7,466,1.57],[-40,479,-1.57],[-32,514,0]];
+const shadeSites=[[-33,174,4,1.22],[-35,177,4,1.22],[-38,209,4,1.22]];
+const [station]=plazaTransitStops;
+const eastLamps=[],railings=[];
+const byCrossing=n=>plazaCrossings.some(cross=>Math.abs(cross-n)<6);
+for(let n=28;n<518;n+=21.5)if(!byCrossing(n))eastLamps.push(n);
+for(let n=18;n<518;n+=3.15)if(!byCrossing(n)&&Math.abs(358-n)>=8)railings.push(n);
+
+// The pathfinder and seat IDs are available before the plaza's meshes are built.
+export function registerPlazaNavigation(benches){
+  function obstacle(e,n,w,d,top=Infinity,angle=0){
+    const {x,y}=plazaAt(e,n);addObstacle(x,y,w,d,angle,top);
+  }
+  for(const n of eastLamps)obstacle(eastCurb(n)-.9,n,.30,.30);
+  for(const n of westLamps)obstacle(-49,n,.30,.30);
+  for(const n of railings)obstacle(eastCurb(n)-.32,n+1.54,.12,3.11,.87);
+  for(const [e,n,angle] of benchSites){
+    const {x,y}=plazaAt(e,n),dx=Math.sin(angle),dy=Math.cos(angle);
+    obstacle(e,n,2.28,.54,.515,angle);
+    const heading=(Math.atan2(dx,-dy)*180/Math.PI+360)%360;
+    const slots=[-.56,.56].map(offset=>{
+      const sx=x+dy*offset,sy=y-dx*offset;
+      return {x:sx,y:sy,heading,approach:{x:sx+dx*.86,y:sy+dy*.86}};
+    });
+    benches.push({x,y,slots,catPerch:{x,y,height:.515,heading:angle,approach:{x:x+dx*1.12,y:y+dy*1.12}}});
+  }
+  obstacle(station.east-.55,station.north,7.8,4.04);
+  const {west,east,south,north}=haechiBasin;
+  for(const side of [west,east])obstacle(side,(north+south)/2,.33,north-south,1.02);
+  obstacle((west+east)/2,south,east-west,.48,1.02);
+  for(let i=0;i<4;i++)obstacle(west+1.05+i*.98,108,.96,17.2,1.02);
+  obstacle(plazaSites.ruins.east,plazaSites.ruins.north,10.9,14.0);
+  obstacle(-34,404,9.2,.48,1.36);
+  obstacle(-34,402.5,9.3,2.14,.255);
+  for(const [e,n,w,d] of shadeSites)obstacle(e,n,w,d,.83);
+  for(let i=0;i<23;i++)obstacle(-44.8,284+i*2.78,.78,.80,6.274);
+  for(const name of ["yi","sejong"]){
+    const site=plazaSites[name],size=plazaMonumentFootprints[name];
+    obstacle(site.east,site.north,size.width,size.depth);
+  }
+}
 
 export function buildGwanghwamunPlaza(T,scene,kit,{benches}){
+  registerPlazaNavigation(benches);
+  const build=assembleGwanghwamunPlaza(T,scene,kit);
+  let step=build.next();
+  while(!step.done)step=build.next();
+  return step.value;
+}
+export function* assembleGwanghwamunPlaza(T,scene,kit){
   const group=new T.Group();group.name="광화문광장";scene.add(group);
   const {wx,wz,box,cylinder,matte}=kit;
   let seed=3720957;
@@ -21,22 +72,18 @@ export function buildGwanghwamunPlaza(T,scene,kit,{benches}){
   const lampGlass=lamp(0xf1e8c8,0xffcb81,.05,1.8);
   const water=lamp(0x6cabc2,0x1a5f83,.04,.30);
   const world=(e,n)=>{const point=plazaAt(e,n);return {x:wx(point.x),z:wz(point.y)};};
-  function block(color,e,n,w,d,h,base=0,rotation=0,collide=false){
+  function block(color,e,n,w,d,h,base=0,rotation=0){
     const {x,z}=world(e,n),mesh=box(color?.isMaterial?0xffffff:color,x,base+h/2,z,w,h,d,group);
     if(color?.isMaterial)mesh.material=color;
     mesh.rotation.y=rotation;
-    if(collide){const point=plazaAt(e,n);addObstacle(point.x,point.y,w,d,rotation,base+h);}
     return mesh;
-  }
-  function collision(e,n,w,d,top=Infinity){
-    const point=plazaAt(e,n);addObstacle(point.x,point.y,w,d,0,top);
   }
   function segments(points,visit){
     for(let i=1;i<points.length;i++)visit(points[i-1],points[i]);
   }
-  function line(color,a,b,width,height,base=0,solid=false){
+  function line(color,a,b,width,height,base=0){
     const dx=b.east-a.east,dn=b.north-a.north;
-    return block(color,(a.east+b.east)/2,(a.north+b.north)/2,Math.hypot(dx,dn)+.015,width,height,base,Math.atan2(dn,dx),solid);
+    return block(color,(a.east+b.east)/2,(a.north+b.north)/2,Math.hypot(dx,dn)+.015,width,height,base,Math.atan2(dn,dx));
   }
 
   function stoneTexture(){
@@ -98,6 +145,7 @@ export function buildGwanghwamunPlaza(T,scene,kit,{benches}){
 
   const trees=makeTreeBuilder(T,group,{rand:random,clearance:{meshFits:()=>true,trim:()=>true}});
   for(const bed of plazaBeds){
+    yield;
     const lawn=bed.kind==="lawn",pine=bed.kind==="pine";
     surface(bed.outline,lawn?matte(bed.id==="yukjo-lawn"?0x8c9b53:0x768849):soil,lawn?.039:.22);
     const closed=[...bed.outline,bed.outline[0]];
@@ -146,19 +194,14 @@ export function buildGwanghwamunPlaza(T,scene,kit,{benches}){
     cylinder(0x535b5a,x,.20,z,.16,.4,8,group);
     block(0x5b6361,e+side*.48,n,1.03,.082,.083,height-.12);
     block(lampGlass,e+side*1.03,n,.46,.21,.083,height-.16);
-    collision(e,n,.30,.30);
   }
-  for(let n=28;n<518;n+=21.5){
-    if(!plazaCrossings.some(cross=>Math.abs(cross-n)<6))pole(eastCurb(n)-.9,n);
-  }
-  for(const n of [33,96,137,174,227,309,369,401,444,493])pole(-49,n,4.1,1);
-  for(let n=18;n<518;n+=3.15){
-    if(plazaCrossings.some(cross=>Math.abs(cross-n)<6)||Math.abs(358-n)<8)continue;
+  for(const n of eastLamps)pole(eastCurb(n)-.9,n);
+  for(const n of westLamps)pole(-49,n,4.1,1);
+  for(const n of railings){
     const e=eastCurb(n)-.32;
     block(0x666f6d,e,n,.076,.076,.82,.03);
     block(0x707876,e,n+1.54,.053,3.10,.052,.74);
     block(0x707876,e,n+1.54,.045,3.10,.044,.37);
-    collision(e,n+1.54,.12,3.11,.87);
   }
 
   function bench(e,n,angle=0){
@@ -166,21 +209,11 @@ export function buildGwanghwamunPlaza(T,scene,kit,{benches}){
     seat.position.set(x,.025,z);seat.rotation.y=angle;group.add(seat);
     for(const side of [-1,1])box(0x8d9390,side*.86,.23,0,.17,.46,.54,seat);
     for(let k=0;k<5;k++)box(k%2===0?0xa17650:0x986f4d,0,.483,(k-2)*.103,2.30,.061,.095,seat);
-    addObstacle(p.x,p.y,2.28,.54,angle,.515);
-    const dx=Math.sin(angle),dy=Math.cos(angle),heading=(Math.atan2(dx,-dy)*180/Math.PI+360)%360;
-    const slots=[-.56,.56].map(offset=>{
-      const x=p.x+dy*offset,y=p.y-dx*offset;
-      return {x,y,heading,approach:{x:x+dx*.86,y:y+dy*.86}};
-    });
-    benches.push({x:p.x,y:p.y,slots,catPerch:{x:p.x,y:p.y,height:.515,heading:angle,
-      approach:{x:p.x+dx*1.12,y:p.y+dy*1.12}}});
   }
-  for(const [e,n,angle] of [[-24,26,1.57],[-23,43,1.57],[-23,58,1.57],[-44,83,1.57],[-34,93,0],
-    [-39,157,1.57],[-32,188,-1.57],[-37,205,1.57],[-37,254,0],[-20,287,1.57],[-43,300,-1.57],
-    [-32,340,1.57],[-27,398,1.57],[-29,434,1.57],[-7,466,1.57],[-40,479,-1.57],[-32,514,0]])bench(e,n,angle);
+  for(const [e,n,angle] of benchSites)bench(e,n,angle);
+  yield;
 
   // The subway exit canopy stands outside the walking lane.
-  const [station]=plazaTransitStops;
   const sx=station.east,sn=station.north;
   block(0xb7b7ae,sx,sn,8.7,4.1,.15,.02);
   block(0x596967,sx-1.1,sn,6.3,4.1,2.48,.17);
@@ -191,7 +224,6 @@ export function buildGwanghwamunPlaza(T,scene,kit,{benches}){
   }
   block(0x293a3e,sx+2.10,sn,3.22,2.92,.08,.17);
   for(let i=0;i<8;i++)block(0x657471,sx+1.0+i*.30,sn,.28,2.88,.035,.255);
-  collision(sx-.55,sn,7.8,4.04);
   sign("광화문역 7",sx+3.73,sn,2.89,Math.PI/2,4.03,.50,{background:"#4e318b",sub:"Gwanghwamun  ·  Line 5"});
 
   // The media ramp is set down into the plaza, with a real sloped walking surface.
@@ -211,15 +243,12 @@ export function buildGwanghwamunPlaza(T,scene,kit,{benches}){
     block(0x596864,side,centre,.08,basinLength,.07,.90);
     block(0xa2a7a1,side,centre,.45,basinLength,.21,.02);
     for(let n=south+.4;n<north;n+=2.2)block(0x697570,side,n,.09,.09,.92,.02);
-    collision(side,centre,.33,basinLength,1.02);
   }
   block(0x8d9291,(west+east)/2,south,east-west,.48,depth+.95,-depth);
-  collision((west+east)/2,south,east-west,.48,1.02);
   for(let i=0;i<4;i++){
     const e=west+1.05+i*.98;
     block(0xb2b0a6,e,108,.93,17.2,.20+i*.16,-depth);
     block(0x8e6a51,e,108,.84,16.9,.055,-depth+.20+i*.16);
-    collision(e,108,.96,17.2,1.02);
   }
   const mediaMaterials=[];
   for(let i=0;i<15;i++){
@@ -246,14 +275,13 @@ export function buildGwanghwamunPlaza(T,scene,kit,{benches}){
     block(0x635e52,ruins.east+(i-5)*1.14,ruins.north,1.17,15.4,.21,2.68+distance*distance*.40,
       0);
   }
-  collision(ruins.east,ruins.north,10.9,14.0);
   sign("사헌부 문터",-36,354.6,.81,0,2.3,.45);
-  block(0x777b74,-34,404,9.2,.48,1.31,.05,0,true);
+  block(0x777b74,-34,404,9.2,.48,1.31,.05);
   block(water,-34,403.71,8.45,.034,.95,.21);
-  block(0x93948a,-34,402.5,9.3,2.14,.21,.045,0,true);
+  block(0x93948a,-34,402.5,9.3,2.14,.21,.045);
   block(water,-34,402.44,8.78,1.74,.027,.264);
-  for(const [e,n,w,d] of [[-33,174,4,1.22],[-35,177,4,1.22],[-38,209,4,1.22]]){
-    block(0x8e7154,e,n,w,d,.10,.73,0,true);
+  for(const [e,n,w,d] of shadeSites){
+    block(0x8e7154,e,n,w,d,.10,.73);
     for(const dx of [-1.65,1.65])block(0x6a7065,e+dx,n,.15,d-.20,.73);
   }
 
@@ -276,18 +304,17 @@ export function buildGwanghwamunPlaza(T,scene,kit,{benches}){
   for(let i=0;i<23;i++){
     const n=284+i*2.78,e=-44.8;
     block(0x747c77,e,n,1.22,1.23,.12,.024);
-    block(granite[i%granite.length],e,n,.78,.80,6.13,.144,0,true);
+    block(granite[i%granite.length],e,n,.78,.80,6.13,.144);
     const inset=lamp(0xdfcfac,0xe8aa63,.15,1.54);
     block(inset,e+.39,n,.04,.29,2.28,2.70);
   }
   sign("감사의 정원",-44.8,281.6,.8,0,2.28,.52,{sub:"GARDEN OF GRATITUDE"});
 
+  yield;
   addPlazaMonuments(T,group,kit,{yi:plazaSites.yi,sejong:plazaSites.sejong});
-  for(const name of ["yi","sejong"]){
-    const site=plazaSites[name],size=plazaMonumentFootprints[name];
-    collision(site.east,site.north,size.width,size.depth);
-  }
+  yield;
   addPlazaCity(T,group,kit);
+  yield;
   const fountains=addPlazaFountains({T,group,world,block,water,random});
   return function updatePlaza(now,night,anchor){
     if(!anchor){fountains(now,night,null);return;}

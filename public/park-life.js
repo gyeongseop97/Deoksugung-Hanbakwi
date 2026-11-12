@@ -595,22 +595,12 @@ export function addParkLife(T,scene,kit){
   const palaceRoam=makeCatRoaming({trails:gbCatTrails,origin:gbStation.arrive,plan:false});
   const plazaRoam=makeCatRoaming({trails:gbPlazaCatTrails,origin:gbPlazaCatTrails[0][0],plan:false});
   const hunting=createCatHunts(kit.birds,clearSegment);
-  let seed,sight=39;
+  let seed,population,sight=39,northLoaded=!kit.deferNorth;
   const setSparse=value=>{sight=value?24:39;};
-  function setSeed(value){
-    const next=String(value??"preview");
-    if(next===seed)return;
-    seed=next;
-    for(const cat of live){cat.paws.dispose();cat.group.removeFromParent();}
-    live.length=0;
-    social.reset();
-    hunting.reset();
-    const hash=catSeedNumber(seed),random=randomSequence(hash);
-    const count=18+Math.floor(random()*7),palaceCount=30+Math.floor(random()*7),plazaCount=4,coats=[];
-    const total=count+palaceCount+plazaCount;
-    while(coats.length<total)coats.push(...shuffled(cats,random).slice(0,total-coats.length));
-    const used={homes:new Set(),benches:new Set(),walls:new Set(),trees:new Set()};
-    for(const [index,coat] of coats.entries()){
+  function buildCats(limit){
+    const {hash,count,palaceCount,coats,used}=population;
+    while(population.index<limit){
+      const index=population.index++,coat=coats[index];
       // The first group lives around Deoksugung, the rest in Gyeongbokgung.
       const wander=index<count?roam:index<count+palaceCount?palaceRoam:plazaRoam;
       const origin=index<count?spawn:index<count+palaceCount?gbStation.arrive:gbPlazaCatTrails[0][0];
@@ -627,6 +617,30 @@ export function addParkLife(T,scene,kit){
         routeAt:null,updatedAt:null,petFrom:0,petUntil:0,petPose:null,canPet:false,escape:null,checkAt:0,
         lure:null,lureCheckAt:0,feeding:null,pose:null,social:null,hunt:null,rejoin:null,frame:{}});
     }
+  }
+  function setSeed(value){
+    const next=String(value??"preview");
+    if(next===seed)return;
+    seed=next;
+    for(const cat of live){cat.paws.dispose();cat.group.removeFromParent();}
+    live.length=0;
+    social.reset();
+    hunting.reset();
+    const hash=catSeedNumber(seed),random=randomSequence(hash);
+    const count=18+Math.floor(random()*7),palaceCount=30+Math.floor(random()*7),plazaCount=4,coats=[];
+    const total=count+palaceCount+plazaCount;
+    while(coats.length<total)coats.push(...shuffled(cats,random).slice(0,total-coats.length));
+    const used={homes:new Set(),benches:new Set(),walls:new Set(),trees:new Set()};
+    population={hash,count,palaceCount,coats,used,index:0};
+    buildCats(northLoaded?total:count);
+  }
+  function* loadNorth(){
+    // Resume the original room's sequence, or the current room's sequence if it changed.
+    while(population.index<population.coats.length){
+      buildCats(Math.min(population.coats.length,population.index+2));
+      if(population.index<population.coats.length)yield;
+    }
+    northLoaded=true;
   }
   setSeed(kit.catSeed);
   const leaves=fallingLeaves(T,scene,kit);
@@ -862,5 +876,5 @@ export function addParkLife(T,scene,kit){
   }
   // How many cats live on each map (used when checking a build).
   const census=()=>({deoksugung:live.filter(cat=>!cat.palace).length,gyeongbokgung:live.filter(cat=>cat.palace).length});
-  return {update,nearestCat,nearestFeedCat,pet,feed,resetInteractions,setSeed,census,setSparse};
+  return {update,nearestCat,nearestFeedCat,pet,feed,resetInteractions,setSeed,census,setSparse,loadNorth};
 }
