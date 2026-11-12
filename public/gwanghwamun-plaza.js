@@ -8,7 +8,7 @@ import {plazaAt,plazaOutline,plazaBeds,plazaSites,plazaTransitStops,insidePlazaP
 const between=(a,b,t)=>a+(b-a)*t;
 const rect=(left,right,bottom,top)=>[[left,bottom],[right,bottom],[right,top],[left,top]].map(([e,n])=>plazaAt(e,n));
 
-export function buildGwanghwamunPlaza(T,scene,kit,{gatehouse,haetae=[],benches}){
+export function buildGwanghwamunPlaza(T,scene,kit,{benches}){
   const group=new T.Group();group.name="광화문광장";scene.add(group);
   const {wx,wz,box,cylinder,matte}=kit;
   let seed=3720957;
@@ -71,10 +71,7 @@ export function buildGwanghwamunPlaza(T,scene,kit,{gatehouse,haetae=[],benches})
   surface(basinHole,matte(0x696e60),-2.24);
   surface(plazaOutline,stone,.025,[basinHole]);
   surface(rect(-55,-45,0,430),stone,.021);
-  surface(rect(-61,54,551,620),stone,.018);
-  surface(rect(42,80,490,528),matte(0xaea28a),.018);
-  surface(rect(-116,88,-26,0),road,-.018);
-  surface(rect(-123,99,sajikRoad.south,sajikRoad.north),road,-.012);
+  surface(rect(-310,310,sajikRoad.south,sajikRoad.north),road,-.012);
   const roadside=plazaRoadProfile.map(([north,east])=>plazaAt(east,north));
   const farCurb=plazaRoadProfile.map(([north,east])=>plazaAt(east+eastRoadWidth,north));
   surface([...roadside,...farCurb.slice().reverse()],road,-.012);
@@ -94,7 +91,6 @@ export function buildGwanghwamunPlaza(T,scene,kit,{gatehouse,haetae=[],benches})
     for(const side of [-.8,eastRoadWidth+.8])block(0xd1a84a,curb+side,n,.38,6.9,.021,.028);
   }
   for(let n=530;n<551;n+=1.04)block(0xdeddd1,sajikRoad.crossX,n,sajikRoad.crossWidth-.45,.52,.018,0);
-  for(let n=-19;n<0;n+=1.05)block(0xcdcfc5,1,n,8.2,.51,.015,0);
   for(let e=-116;e<94;e+=7.5){
     if(Math.abs(e-sajikRoad.crossX)<10)continue;
     block(0xc9c5b5,e,539.5,3.6,.11,.012,.003);
@@ -269,23 +265,6 @@ export function buildGwanghwamunPlaza(T,scene,kit,{gatehouse,haetae=[],benches})
     for(const dx of [-1.65,1.65])block(0x6a7065,e+dx,n,.15,d-.20,.73);
   }
 
-  // Exposed foundations across from the northern part of the plaza.
-  surface(rect(52,78,493,525),matte(0xa69780),.049);
-  for(const [e,n,w,d] of [[62,503,13,.6],[59,511,.68,13],[68,512,.57,15],[63,518,13,.72],[65,497,9,.65]]){
-    block(0x8a8372,e,n,w,d,.31,.052);
-    const along=w>d,length=Math.max(w,d);
-    for(let i=.4;i<length-.3;i+=.79){
-      const shift=i-length/2;
-      block(i%2<1?0xa69c85:0xb6aa92,e+(along?shift:0),n+(along?0:shift),along?.70:w+.05,along?d+.04:.70,.14,.34);
-    }
-  }
-  for(const [a,b] of [[plazaAt(51.8,493),plazaAt(51.8,525)],[plazaAt(51.8,493),plazaAt(78,493)]]){
-    line(0x737d77,a,b,.06,.065,.91,true);
-    const length=Math.hypot(b.east-a.east,b.north-a.north);
-    for(let i=0;i<length;i+=1.65)block(0x596963,between(a.east,b.east,i/length),between(a.north,b.north,i/length),.09,.09,.94,.04);
-  }
-  sign("의정부지",51.1,517,.96,-Math.PI/2,2.7,.55);
-
   // The tiled enclosure on the opposite south-east corner houses the commemorative stele.
   const stele={east:52,north:12};
   block(0xa19a89,stele.east,stele.north,6.0,5.2,.45,.018);
@@ -317,7 +296,6 @@ export function buildGwanghwamunPlaza(T,scene,kit,{gatehouse,haetae=[],benches})
     collision(site.east,site.north,size.width,size.depth);
   }
   addPlazaCity(T,group,kit);
-  addNorth({T,group,gatehouse,haetae,world,block,surface,stone});
   const fountains=addPlazaFountains({T,group,world,block,water,random});
   return function updatePlaza(now,night,anchor){
     if(!anchor){fountains(now,night,null);return;}
@@ -329,83 +307,6 @@ export function buildGwanghwamunPlaza(T,scene,kit,{gatehouse,haetae=[],benches})
   };
 }
 
-function addNorth({T,group,gatehouse,haetae,world,block,surface,stone}){
-  const gate=plazaSites.gate,axis=gate.east;
-  const ridge=[[-244,14],[-216,22],[-184,32],[-161,39],[-138,42],[-121,50],[-105,52],[-91,61],
-    [-77,63],[-63,58],[-48,53],[-29,48],[-12,45],[8,49],[22,45],[45,36],[71,29],[95,24],[133,20],[186,12]];
-  for(const [index,north] of [802,766,727].entries()){
-    const peaks=ridge.map(([east,height],i)=>{
-      const {x}=world(east+index*18,north);
-      return new T.Vector2(x,height*(1-index*.13)+Math.sin(i*1.54+index)*3.2);
-    });
-    const polygon=new T.Shape([new T.Vector2(peaks[0].x,-5),...peaks,new T.Vector2(peaks.at(-1).x,-5)]);
-    const mountains=new T.Mesh(new T.ShapeGeometry(polygon),new T.MeshBasicMaterial({color:[0x617d77,0x5f7664,0x596c55][index]}));
-    mountains.position.z=world(0,north).z;group.add(mountains);
-  }
-  surface(rect(-63,49,554,614),stone,.026);
-  if(gatehouse){
-    const roof=gatehouse.clone(true),point=world(axis,gate.north);
-    roof.position.set(point.x,gatehouse.position.y,point.z);group.add(roof);
-  }
-  const stoneColors=[0x9c9a90,0xb0ada1,0xb6b2a6,0xaaa99d,0xa39e90];
-  const blocks=[[-15.6,-10.6],[-6.2,-2.9],[2.9,6.2],[10.6,15.6]];
-  for(const [lo,hi] of blocks){
-    block(0xa8a499,axis+(lo+hi)/2,gate.north,hi-lo,11.45,6.60);
-    for(let row=0;row<11;row++)for(let x=lo+.35;x<hi-.15;x+=.78){
-      const e=x+(row%2)*.22;
-      if(e>=hi-.26)continue;
-      block(stoneColors[Math.abs(row+Math.round(x*14))%5],axis+e,gate.north-5.74,.72,.035,.565,.065+row*.592);
-    }
-  }
-  for(const [lo,hi] of [[-10.6,-6.2],[-2.9,2.9],[6.2,10.6]]){
-    const span=hi-lo,centre=axis+(lo+hi)/2,spring=span>5?3.78:3.50;
-    const panel=new T.Shape();panel.moveTo(-span/2,spring);
-    panel.absarc(0,spring,span/2,Math.PI,0,true);
-    panel.lineTo(span/2,6.60);panel.lineTo(-span/2,6.60);panel.closePath();
-    const geometry=new T.ExtrudeGeometry(panel,{depth:11.42,bevelEnabled:false,curveSegments:18});
-    const material=new T.MeshStandardMaterial({color:0xa29e91,roughness:.94});
-    const mesh=new T.Mesh(geometry,material),point=world(centre,gate.north);
-    mesh.position.set(point.x,0,point.z-5.71);mesh.castShadow=mesh.receiveShadow=true;group.add(mesh);
-    block(0x403a31,centre,gate.north+3.2,span-.19,.24,spring+.52);
-  }
-  block(0xb4afa0,axis,gate.north,32.2,11.7,.52,6.47);
-  for(const side of [-1,1]){
-    const e=axis+side*54;
-    block(0xaaa598,e,gate.north,78,1.05,4.3);
-    block(0x4f5048,e,gate.north,78.2,1.58,.23,4.31);
-    block(0x414841,e,gate.north,78.5,1.18,.15,4.53);
-    for(let i=0;i<6;i++){
-      block(i%2?0xb2aea2:0xa09d90,e,gate.north-.54,77.85,.032,.56,.12+i*.66);
-      for(let x=-37.6;x<38;x+=1.48)block(0x8a887e,e+x+(i%2)*.68,gate.north-.558,.035,.035,.49,.155+i*.66);
-    }
-  }
-  // Walkable treads to the axial ceremonial terrace; stone rails bound both sides.
-  for(const [n,len,h,w] of [[556.3,1.7,.15,28.8],[557.7,1.4,.30,28.6],[559.0,1.3,.45,28.45],[579.9,40.5,.60,28.25]]){
-    block(0xb1ab9c,axis,n,w,len,h,.03,0,true);
-  }
-  for(let n=561;n<=594;n+=1.55){
-    block(Math.round(n)%3?0xb2ad9e:0xaca697,axis,n,22.4,1.52,.013,.635);
-    block(0xa7a393,axis,n,.09,1.5,.014,.65);
-  }
-  for(const side of [-1,1]){
-    const e=axis+side*13.45;
-    block(0x999486,e,578,.63,39.5,.29,.64,0,true);
-    block(0xa39f91,e,578,.33,38.6,.16,1.39);
-    for(let n=558.8;n<598;n+=2.0){
-      block(0x989387,e,n,.47,.48,.73,.65,0,true);
-      block(0xb2ad9d,e,n,.55,.55,.14,1.37);
-    }
-    const animal=axis+side*19.6;
-    block(0xa39f93,animal,556.7,3.1,4.3,.4,.03,0,true);
-    block(0xb1ab9c,animal,556.7,2.6,3.8,.72,.43,0,true);
-    block(0xbab4a5,animal,556.7,2.8,4.0,.14,1.15,0,true);
-    const carved=haetae[side===-1?0:1];
-    if(carved){
-      const statue=carved.clone(true),{x,z}=world(animal,556.7);
-      statue.position.set(x,1.29,z);group.add(statue);
-    }
-  }
-}
 
 function addPlazaFountains({T,group,world,block,water,random}){
   const sources=[];
