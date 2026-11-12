@@ -1,6 +1,6 @@
 import {addObstacle,route,stoneFountain} from "./layout.js";
 import {sparklerStall} from "./gyeongbok-layout.js";
-import {standBatcher,standSign} from "./regional-stands.js";
+import {addConvenienceStore,standBatcher,standSign} from "./regional-stands.js";
 import {makeRegionalItemProps} from "./regional-item-props.js";
 
 export {addRegionalStands,regionalStations,registerRegionalStands} from "./regional-stands.js";
@@ -78,53 +78,6 @@ export function addStands(T,scene,{wx,wz,box,cylinder}){
       cylinder(0x648255,x+dx,.39+h*.35,z,r,h,6,parent,.30);
     }
   }
-  function convenienceStore(shop,group){
-    const {width:w,depth:d,height:h}=shop,z=d/2;
-    const cream=0xe8e4d7,teal=0x146761,trim=0x2d5554,glassTint=0x83a8aa;
-    box(cream,0,h/2,-.52,w,h,d-1.04,group);
-    box(0xc8c4b6,0,.19,-.44,w+.10,.38,d-.72,group);
-    box(cream,0,h-.33,0,w,.66,d,group);
-    box(0x525f59,0,h+.055,0,w+.28,.18,d+.21,group);
-    box(0xb7b7aa,0,.047,z+.57,w+.30,.094,1.16,group);
-    box(teal,0,2.93,z+.16,w+.04,.68,.30,group);
-    box(0xf4bf54,0,3.26,z+.318,w+.08,.075,.05,group);
-    box(0x77c2a8,0,2.62,z+.315,w+.08,.079,.05,group);
-    standSign(T,group,shop.name,null,2.12,-.12,2.94,z+.325,"#146761","#fff4d9");
-    standSign(T,group,"24시",null,1.27,w*.371,2.94,z+.326,"#f4c35f","#215c53");
-
-    const panes=new T.MeshBasicMaterial({color:glassTint,transparent:true,opacity:.21,depthWrite:false});
-    function pane(x,y,width,height,depth=z+.045){
-      const window=new T.Mesh(new T.PlaneGeometry(width,height),panes);
-      window.position.set(x,y,depth);group.add(window);
-    }
-    for(const side of [-1,1]){
-      const x=side*2.40,sideWidth=2.40;
-      box(0xc8c4b6,x,.20,z-.24,sideWidth+.1,.4,.57,group);
-      box(cream,side*(w/2-.16),1.43,z-.02,.34,2.49,.21,group);
-      box(trim,side*1.19,1.51,z+.052,.10,2.18,.13,group);
-      box(trim,side*3.62,1.51,z+.052,.10,2.18,.13,group);
-      box(trim,x,.44,z+.052,sideWidth,.10,.13,group);
-      box(trim,x,2.53,z+.052,sideWidth,.10,.13,group);
-      box(trim,x,1.49,z+.052,.047,2.14,.08,group);
-      pane(x,1.49,sideWidth,2.05);
-      for(let row=0;row<3;row++){
-        const y=.60+row*.53;
-        box(0x514c45,x,y,z-.24,2.26,.07,.56,group);
-        for(let i=0;i<8;i++){
-          const color=[0xf5c359,0x76bfc0,0xf3927b,0xf6ecce,0x82a66c,0xe99fc1][(i+row+side+1)%6];
-          const height=.14+(i+row*2)%3*.055;
-          box(color,x+(i-3.5)*.267,y+.044+height/2,z-.13,.16,height,.12,group);
-        }
-      }
-    }
-    for(const x of [-.92,0,.92])box(trim,x,1.31,z+.095,.075,2.45,.11,group);
-    box(trim,0,2.53,z+.095,1.89,.08,.11,group);
-    box(trim,0,.085,z+.095,1.89,.10,.11,group);
-    pane(0,1.30,1.81,2.33,z+.101);
-    box(0x9baca5,0,1.04,z+.128,1.81,.105,.027,group);
-    for(const x of [-.153,.153])box(0xe2e5db,x,1.20,z+.154,.040,.20,.042,group);
-    standSign(T,group,"츄르",null,.75,2.85,1.98,z+.094,"#f4c35f","#3d4c47");
-  }
   function shopModel(shop,group){
     const {width:w,depth:d,height:h,base,walls,frame,roof,shade,stripe}=shop,z=d/2;
     box(walls,0,h/2,0,w,h,d,group);
@@ -179,7 +132,7 @@ export function addStands(T,scene,{wx,wz,box,cylinder}){
   }
   for(const {shop,x,y,sideX,sideY,angle,centerX,centerY} of shopPlots){
     const group=new T.Group();group.position.set(wx(centerX),0,wz(centerY));group.rotation.y=angle;scene.add(group);
-    if(shop.kind==="churu")convenienceStore(shop,group);
+    if(shop.kind==="churu")addConvenienceStore(T,group,{box},shop);
     else shopModel(shop,group);
     batchDetails(group);
     addObstacle(centerX,centerY,shop.width,shop.depth,angle,shop.height+.35);

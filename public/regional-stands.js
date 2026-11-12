@@ -12,7 +12,9 @@ const palaceShops=[
   {kind:"yakgwa",name:"꽃담 한과",subtitle:"YAKGWA",east:79,north:651,angle:-Math.PI/2,
     paint:0x9e624b,sign:"#7f483a",ink:"#fff0ce"},
   {kind:"makgeolli",name:"소주방 막걸리",subtitle:"MAKGEOLLI",east:kitchen.east-5,north:kitchen.north-14,angle:0,
-    paint:0x56716b,sign:"#405d58",ink:"#f0e7d1"}
+    paint:0x56716b,sign:"#405d58",ink:"#f0e7d1"},
+  {kind:"churu",name:"경복궁 편의점",subtitle:"고양이 간식",east:-45.5,north:79,angle:-Math.PI/2,
+    paint:0x47746a,sign:"#365c52",ink:"#fff0c9"}
 ].map(shop=>({...shop,...palaceAt(shop.east,shop.north,shop.name),area:"gyeongbokgung",w:7.1,d:4.4,h:3.81}));
 const avenueShops=[
   {kind:"coffee",name:"세종로 로스터리",subtitle:"COFFEE ROASTERS",north:103,wall:0x9c9686,paint:0x3d564a,
@@ -20,8 +22,9 @@ const avenueShops=[
   {kind:"cake",name:"오후 케이크",subtitle:"CAKE & PATISSERIE",north:119,wall:0xd8c2ac,paint:0xaa696e,
     counter:0xdcaaa0,glass:0xf7d1b4,sign:"#f3d9c9",ink:"#723f4a"},
   {kind:"wine",name:"와인 서가",subtitle:"WINE BAR",north:135,wall:0x957973,paint:0x543b45,
-    counter:0x80574f,glass:0xe0b490,sign:"#573a48",ink:"#f8dba1"}
-].map(shop=>({...shop,...plazaAt(52.10,shop.north,shop.name),area:"gwanghwamun",angle:-Math.PI/2,w:15.94,d:7.2,h:8.4}));
+    counter:0x80574f,glass:0xe0b490,sign:"#573a48",ink:"#f8dba1"},
+  {kind:"churu",name:"광화문 편의점",north:232,w:7.8,d:5.7,h:3.62}
+].map(shop=>({w:15.94,d:7.2,h:8.4,...shop,...plazaAt(52.10,shop.north,shop.name),area:"gwanghwamun",angle:-Math.PI/2}));
 const shops=[...palaceShops,...avenueShops];
 
 export const regionalStations=shops.map(({x,y,d,angle,name,kind,area})=>({kind,name,area,
@@ -49,6 +52,53 @@ export function standSign(T,parent,text,subtitle,width,x,y,z,background,ink,heig
   const map=new T.CanvasTexture(canvas);map.colorSpace=T.SRGBColorSpace;
   const panel=new T.Mesh(new T.PlaneGeometry(width,height),new T.MeshBasicMaterial({map}));
   panel.position.set(x,y,z);parent.add(panel);
+}
+
+export function addConvenienceStore(T,group,{box},{name,width:w,depth:d,height:h}){
+  const z=d/2,cream=0xe8e4d7,teal=0x146761,trim=0x2d5554,glassTint=0x83a8aa;
+  box(cream,0,h/2,-.52,w,h,d-1.04,group);
+  box(0xc8c4b6,0,.19,-.44,w+.10,.38,d-.72,group);
+  box(cream,0,h-.33,0,w,.66,d,group);
+  box(0x525f59,0,h+.055,0,w+.28,.18,d+.21,group);
+  box(0xb7b7aa,0,.047,z+.57,w+.30,.094,1.16,group);
+  box(teal,0,2.93,z+.16,w+.04,.68,.30,group);
+  box(0xf4bf54,0,3.26,z+.318,w+.08,.075,.05,group);
+  box(0x77c2a8,0,2.62,z+.315,w+.08,.079,.05,group);
+  standSign(T,group,name,null,2.12,-.12,2.94,z+.325,"#146761","#fff4d9");
+  standSign(T,group,"24시",null,1.27,w*.371,2.94,z+.326,"#f4c35f","#215c53");
+
+  const panes=new T.MeshBasicMaterial({color:glassTint,transparent:true,opacity:.21,depthWrite:false});
+  function pane(x,y,width,height,depth=z+.045){
+    const window=new T.Mesh(new T.PlaneGeometry(width,height),panes);
+    window.position.set(x,y,depth);group.add(window);
+  }
+  for(const side of [-1,1]){
+    const x=side*2.40,sideWidth=2.40;
+    box(0xc8c4b6,x,.20,z-.24,sideWidth+.1,.4,.57,group);
+    box(cream,side*(w/2-.16),1.43,z-.02,.34,2.49,.21,group);
+    box(trim,side*1.19,1.51,z+.052,.10,2.18,.13,group);
+    box(trim,side*3.62,1.51,z+.052,.10,2.18,.13,group);
+    box(trim,x,.44,z+.052,sideWidth,.10,.13,group);
+    box(trim,x,2.53,z+.052,sideWidth,.10,.13,group);
+    box(trim,x,1.49,z+.052,.047,2.14,.08,group);
+    pane(x,1.49,sideWidth,2.05);
+    for(let row=0;row<3;row++){
+      const y=.60+row*.53;
+      box(0x514c45,x,y,z-.24,2.26,.07,.56,group);
+      for(let i=0;i<8;i++){
+        const color=[0xf5c359,0x76bfc0,0xf3927b,0xf6ecce,0x82a66c,0xe99fc1][(i+row+side+1)%6];
+        const height=.14+(i+row*2)%3*.055;
+        box(color,x+(i-3.5)*.267,y+.044+height/2,z-.13,.16,height,.12,group);
+      }
+    }
+  }
+  for(const x of [-.92,0,.92])box(trim,x,1.31,z+.095,.075,2.45,.11,group);
+  box(trim,0,2.53,z+.095,1.89,.08,.11,group);
+  box(trim,0,.085,z+.095,1.89,.10,.11,group);
+  pane(0,1.30,1.81,2.33,z+.101);
+  box(0x9baca5,0,1.04,z+.128,1.81,.105,.027,group);
+  for(const x of [-.153,.153])box(0xe2e5db,x,1.20,z+.154,.040,.20,.042,group);
+  standSign(T,group,"츄르",null,.75,2.85,1.98,z+.094,"#f4c35f","#3d4c47");
 }
 
 export function standBatcher(T){
@@ -114,7 +164,9 @@ export function addRegionalStands(T,root,kit,area){
     const building=new T.Group();building.name=shop.name;
     building.position.set(wx(shop.x),area==="gyeongbokgung"?.048:0,wz(shop.y));building.rotation.y=shop.angle;
     group.add(building);
-    if(area==="gyeongbokgung")booth(shop,building);else avenue(shop,building);
+    if(area==="gyeongbokgung")booth(shop,building);
+    else if(shop.kind==="churu")addConvenienceStore(T,building,kit,{name:shop.name,width:shop.w,depth:shop.d,height:shop.h});
+    else avenue(shop,building);
     batch(building);
   }
 
@@ -123,6 +175,12 @@ export function addRegionalStands(T,root,kit,area){
       cylinder(0xeee4c6,x,y-.096*size,z,.095*size,.026*size,14,parent);
       cylinder(0xece0be,x,y,z,.070*size,.166*size,14,parent,1.22);
       cylinder(0x7a4b33,x,y+.086*size,z,.078*size,.011*size,14,parent);
+      return;
+    }
+    if(kind==="churu"){
+      box(0xe68674,x,y,z,.085*size,.19*size,.035*size,parent);
+      box(0xffd388,x,y+.053*size,z+.020*size,.074*size,.065*size,.008*size,parent);
+      box(0xf9e3b7,x,y-.069*size,z+.020*size,.064*size,.023*size,.008*size,parent);
       return;
     }
     const display=new T.Group();display.position.set(x,y,z);display.scale.setScalar(size);parent.add(display);props[kind](display);
@@ -178,6 +236,10 @@ export function addRegionalStands(T,root,kit,area){
     for(const x of [-1.36,0,1.36]){
       box(trayColor,x,1.164,front-.50,.89,.035,.62,parent);
       for(const dx of [-.24,.24])sample(shop.kind,parent,x+dx,1.26,front-.52,1.16);
+    }
+    if(shop.kind==="churu"){
+      box(0x705038,1.96,1.40,front-.42,.85,.47,.17,parent);
+      standSign(T,parent,"츄르",null,.78,1.96,1.40,front-.327,"#e5bc76","#3b4e43",.40);
     }
     if(shop.kind==="makgeolli")for(const [x,z,s] of [[-2.65,.65,1.22],[2.47,.45,1.46],[2.88,-.51,1.08]])clayJar(parent,x,z,s);
     if(shop.kind==="yakgwa")for(const x of [-2.35,2.35]){

@@ -116,7 +116,7 @@ const photoMode=bindPhotoMode($("photo-controls"),{
   onClose(){sceneWrap.classList.remove("photo-active");if(session){resetInput();focusGame();}},
   onCapture:takePhoto,onShare(camera){queuedPhoto={id:token(),camera};wakeSync();},notice:toast
 });
-$("passport-open").addEventListener("click",()=>{resetInput();passport.open();});
+$("passport-open").addEventListener("click",()=>{mobileSettings.open=false;resetInput();passport.open();});
 $("profile-transfer-open").addEventListener("click",()=>passport.openTransfer());
 $("hanbok-rental").addEventListener("click",()=>{
   if(!passport.nearRental(me))return;
@@ -154,23 +154,15 @@ const mobileHeader=matchMedia("(max-width:810px), (orientation:landscape) and (m
 function placeViewControls(){
   if(mobileHeader.matches){
     $("mobile-view-controls").append($("perspective"));
-    $("mobile-settings-actions").append($("sound"),$("night"),$("character"),$("photo-mode-open"),$("passport-open"));
+    $("mobile-settings-actions").append($("sound"),$("night"),$("character"),$("photo-mode-open"),$("invite"),$("settings-leave"));
   }else{
     mobileSettings.open=false;
     $("view-controls").append($("perspective"),$("sound"),$("night"),$("photo-mode-open"));
-    $("game-room-controls").prepend($("passport-open"),$("character"));
+    $("game-room-controls").append($("character"),$("invite"));
   }
-  labelInvite();
 }
 mobileHeader.addEventListener("change",placeViewControls);
 placeViewControls();
-function labelInvite(){
-  if(!session)return;
-  const open=session.mode==="open";
-  const button=$("invite");
-  button.textContent=open?"오픈방":mobileHeader.matches?"초대":"초대코드";
-  button.setAttribute("aria-label",open?"오픈서버 정보":"초대코드");
-}
 gameShell.addEventListener("pointerdown",event=>{
   if(!event.target.closest("#nearby-controls,#joystick"))nearbyControls.close();
   if(mobileSettings.open&&!mobileSettings.contains(event.target))mobileSettings.open=false;
@@ -845,7 +837,7 @@ async function enterRoom(action,code){
     else sessionStorage.removeItem("jeongdong-room-code");
     history.replaceState(null,"",location.pathname+location.search+(session.code?"#code="+session.code:""));
     $("invite").disabled=false;
-    labelInvite();
+    $("invite").hidden=session.mode==="open";
     $("look-hint").textContent=(session.mode==="open"?"근처 동행에게":"방 전체에")+" 내 위치를 5초 동안 표시해요.";
     $("lobby-status").textContent="";entryFlow.hidden=true;gameShell.hidden=false;
     world?.parkLife.setSeed(session.room);
@@ -881,13 +873,52 @@ $("invite-form").addEventListener("submit",event=>{
 });
 joinCode.addEventListener("input",()=>{joinCode.value=joinCode.value.toUpperCase();});
 function openInvite(){
-  if(!session)return;
-  if(session.mode==="open"){$("open-room-dialog").showModal();return;}
+  if(!session?.code)return;
+  mobileSettings.open=false;
   $("invite-code").value=session.code;$("invite-dialog").showModal();
 }
 $("invite").addEventListener("click",openInvite);
-$("leave-room").addEventListener("click",()=>returnToLobby());
-$("leave-open-room").addEventListener("click",()=>returnToLobby());
+const leaveDialog=$("leave-save-dialog"),leaveStatus=$("leave-save-status");
+const leaveActions=["leave-save-confirm","leave-without-save","leave-save-cancel"].map($);
+let savingLeave=null;
+function setLeaveBusy(busy){
+  for(const button of leaveActions)button.disabled=busy;
+}
+function requestLeave(){
+  if(!session||leaveDialog.open)return;
+  resetInput();mobileSettings.open=false;
+  setLeaveBusy(false);setText(leaveStatus,"");
+  leaveDialog.showModal();
+  $("leave-save-cancel").focus({preventScroll:true});
+}
+for(const id of ["settings-leave","leave-room"])$(id).addEventListener("click",requestLeave);
+$("leave-save-cancel").addEventListener("click",()=>leaveDialog.close());
+leaveDialog.addEventListener("cancel",event=>{if(savingLeave&&savingLeave===session)event.preventDefault();});
+$("leave-without-save").addEventListener("click",()=>{if(session&&savingLeave!==session)returnToLobby();});
+$("leave-save-confirm").addEventListener("click",async()=>{
+  const visit=session;
+  if(!visit||!leaveDialog.open||savingLeave===visit)return;
+  savingLeave=visit;
+  setLeaveBusy(true);setText(leaveStatus,"산책 기록을 저장하고 있어요.");
+  try{
+    await Promise.allSettled(photoWrites);
+    if(session!==visit||!leaveDialog.open)return;
+    const code=await passport.saveRecord((done,total)=>{
+      if(total&&session===visit&&leaveDialog.open)setText(leaveStatus,`사진 저장 중 · ${done} / ${total}`);
+    });
+    if(session!==visit||!leaveDialog.open)return;
+    returnToLobby("산책 기록을 저장했어요.");
+    passport.showSavedCode(code);
+  }catch(error){
+    if(session===visit&&leaveDialog.open){
+      const message=error instanceof TypeError||error.name==="TimeoutError"?
+        "연결을 확인한 뒤 다시 저장해 주세요.":error.message||"산책 기록을 저장하지 못했어요.";
+      setText(leaveStatus,message);
+    }
+  }finally{
+    if(savingLeave===visit){savingLeave=null;setLeaveBusy(false);}
+  }
+});
 async function copyInvite(link){
   if(!session?.code)return;
   const value=link?location.origin+location.pathname+"#code="+session.code:session.code;
@@ -1196,6 +1227,7 @@ const wishDrawing=makeWishDrawing(art=>{
 });
 // Souvenir photo in the throne-hall court: face the camera, wave, and save the picture.
 let photoBusy=false,lastScene=null;
+const photoWrites=new Set();
 function nearPhotoZone(){
   return Boolean(world&&session&&me.seat==null&&near(gbPhotoZone,me.x,me.y)<gbPhotoZone.reach);
 }
@@ -1223,7 +1255,14 @@ function confirmRoomPhoto(event,sent){
   if(!photoMode.camera)return;
   if(event?.id!==sent.id||!photoMode.join(event))photoMode.shareFailed();
 }
-async function savePhoto(picture,{date=gameTime(),place=shownPlace(me),mode="solo",download=false}={}){
+function savePhoto(picture,options){
+  const write=writePhoto(picture,options);
+  photoWrites.add(write);
+  const done=()=>photoWrites.delete(write);
+  write.then(done,done);
+  return write;
+}
+async function writePhoto(picture,{date=gameTime(),place=shownPlace(me),mode="solo",download=false}={}){
   let record;
   try{
     record=await makePhotoCard(picture,{date,place,mode,nickname:session?.nickname??nickname.value});

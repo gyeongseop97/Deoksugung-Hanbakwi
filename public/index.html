@@ -84,13 +84,15 @@
     <div class="top-game-actions">
       <div id="mobile-view-controls"></div>
       <div class="top-actions" id="game-room-controls">
-        <button id="passport-open" class="quiet" type="button" aria-haspopup="dialog">산책 기록</button>
+        <button id="passport-open" class="quiet" type="button" data-native-touch aria-haspopup="dialog">산책 기록</button>
         <button id="character" class="quiet" type="button" aria-haspopup="dialog" aria-controls="character-dialog">캐릭터</button>
-        <button id="invite" class="invite" type="button" aria-haspopup="dialog" disabled>초대코드</button>
+        <button id="invite" class="invite" type="button" data-native-touch aria-haspopup="dialog" aria-controls="invite-dialog" disabled>초대코드</button>
       </div>
       <details class="mobile-settings" id="mobile-settings">
         <summary>설정</summary>
-        <div class="mobile-settings-actions" id="mobile-settings-actions" data-scroll-actions></div>
+        <div class="mobile-settings-actions" id="mobile-settings-actions" data-scroll-actions>
+          <button id="settings-leave" class="quiet" type="button" data-native-touch aria-haspopup="dialog" aria-controls="leave-save-dialog">방 나가기</button>
+        </div>
       </details>
     </div>
   </header>
@@ -501,18 +503,20 @@
     <label for="invite-code">이 방의 초대코드</label>
     <input id="invite-code" class="invite-code" type="text" readonly>
     <div class="dialog-actions invite-actions">
-      <button id="leave-room" class="quiet" type="button">방 나가기</button>
+      <button id="leave-room" class="quiet" type="button" data-native-touch aria-haspopup="dialog" aria-controls="leave-save-dialog">방 나가기</button>
       <button id="copy-link" class="quiet" type="button">링크 복사</button>
       <button id="copy" class="primary" type="button">코드 복사</button>
     </div>
   </dialog>
-  <dialog id="open-room-dialog" aria-labelledby="open-room-title">
-    <div class="dialog-top">
-      <h2 id="open-room-title">오픈서버</h2>
-      <button class="quiet close" type="button" aria-label="닫기">×</button>
+  <dialog id="leave-save-dialog" aria-labelledby="leave-save-title" aria-describedby="leave-save-description">
+    <h2 id="leave-save-title">저장하고 나갈까요?</h2>
+    <p id="leave-save-description">이 기기에는 자동으로 저장돼요. 이어하기 코드를 만들면 다른 기기에서도 기록을 불러올 수 있어요.</p>
+    <p id="leave-save-status" role="status"></p>
+    <div class="leave-save-actions">
+      <button id="leave-save-confirm" class="primary" type="button">저장하고 나가기</button>
+      <button id="leave-without-save" class="quiet" type="button">바로 나가기</button>
+      <button id="leave-save-cancel" class="quiet" type="button" autofocus>계속 산책</button>
     </div>
-    <p>누구나 들어올 수 있는 공용 산책방이에요.</p>
-    <div class="dialog-actions"><button id="leave-open-room" class="quiet" type="button">방 나가기</button></div>
   </dialog>
 </body>
 </html>

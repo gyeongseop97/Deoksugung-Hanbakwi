@@ -12,7 +12,23 @@ button:not(:disabled):hover{filter:brightness(1.13)}
 .brand img{display:block;width:auto;height:45px;max-width:100%;object-fit:contain;object-position:left center}
 .top-actions,.view-controls,.dialog-actions{display:flex;gap:8px}
 .top-game-actions{display:flex;align-items:center;gap:8px;flex:none}
-#mobile-view-controls,.mobile-settings{display:none}
+#mobile-view-controls{display:none}
+.mobile-settings{position:relative;flex:none}
+.mobile-settings summary{
+  display:grid;place-items:center;min-width:44px;min-height:44px;padding:4px 11px;list-style:none;cursor:pointer;
+  border:1px solid #697867;border-radius:9px;background:#202e24;color:var(--ink);font-weight:650;
+}
+.mobile-settings summary::-webkit-details-marker{display:none}
+.mobile-settings[open] summary{border-color:#dec18a;color:#f5dca6}
+.mobile-settings-actions{
+  position:absolute;z-index:10;top:calc(100% + 6px);right:0;display:grid;gap:5px;
+  width:min(152px,calc(100vw - 20px));max-height:calc(100dvh - 66px - env(safe-area-inset-bottom,0px));
+  padding:6px;border:1px solid #879679;border-radius:11px;background:#17271f;
+  box-shadow:0 7px 20px #07110ac0;overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y;
+}
+.mobile-settings:not([open]) .mobile-settings-actions{display:none}
+.mobile-settings-actions button{min-height:44px;text-align:left}
+.mobile-settings-actions #settings-leave{color:#f1d8a8;border-color:#7c795c}
 .quiet{color:var(--ink);border-color:#465347;background:#202e24}
 .invite{background:#d6dbb8;color:#232d1f}
 .invite span,.primary span{margin-right:5px}
@@ -240,22 +256,9 @@ dialog input,dialog code{display:block;width:100%;padding:9px;border-radius:7px;
     position:relative;z-index:7;flex:none;height:auto;min-height:calc(52px + env(safe-area-inset-top,0px));gap:6px;
     padding:calc(4px + env(safe-area-inset-top,0px)) max(10px,env(safe-area-inset-right,0px)) 4px max(10px,env(safe-area-inset-left,0px));
   }
-  #mobile-view-controls,.mobile-settings{display:block}
+  #mobile-view-controls{display:block}
   .top-game-actions,.top .top-actions,.top .view-controls{gap:5px}
   .top button,.mobile-settings summary{min-height:44px;padding:4px 8px;font-size:12px}
-  .mobile-settings summary{
-    display:grid;place-items:center;min-width:44px;list-style:none;cursor:pointer;
-    border:1px solid #697867;border-radius:9px;background:#202e24;color:var(--ink);font-weight:650;
-  }
-  .mobile-settings summary::-webkit-details-marker{display:none}
-  .mobile-settings[open] summary{border-color:#dec18a;color:#f5dca6}
-  .mobile-settings-actions{
-    position:absolute;top:calc(100% + 4px);right:max(9px,env(safe-area-inset-right,0px));
-    display:grid;gap:5px;width:133px;padding:6px;border:1px solid #879679;
-    max-height:calc(100dvh - 62px - env(safe-area-inset-bottom,0px));overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y;
-    border-radius:11px;background:#17271f;box-shadow:0 7px 20px #07110ac0;
-  }
-  .mobile-settings-actions button{text-align:left}
   .brand img{height:36px}
   main{padding:0 max(5px,env(safe-area-inset-right,0px)) 0 max(5px,env(safe-area-inset-left,0px))}
   .experience{display:flex;flex:1;flex-direction:column;min-height:0;margin-top:4px}
@@ -599,10 +602,24 @@ dialog input,dialog code{display:block;width:100%;padding:9px;border-radius:7px;
 @media(orientation:landscape) and (max-height:560px){
   .cat-run-tip{top:71px}
 }
-#open-room-dialog .dialog-actions{justify-content:flex-end}
 .invite-code{font:700 23px/1.55 monospace;letter-spacing:.2em;text-align:center}
 .invite-actions{flex-wrap:wrap}
 #leave-room{margin-right:auto}
+#leave-save-dialog{
+  max-width:min(482px,calc(100vw - 24px));max-height:calc(100dvh - 24px);
+  overflow:auto;overscroll-behavior:contain;border-color:#857650;
+}
+#leave-save-title{margin:0;color:#f4e6c5}
+#leave-save-description{margin:10px 0 0;line-height:1.6}
+#leave-save-status{margin:10px 0 0;color:#f4d394;overflow-wrap:anywhere}
+#leave-save-status:empty{margin:0}
+.leave-save-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin-top:16px}
+.leave-save-actions button{min-width:0;min-height:44px;padding:5px 7px;white-space:normal}
+@media(max-width:460px){
+  #leave-save-dialog{padding:16px}
+  .leave-save-actions{grid-template-columns:repeat(2,minmax(0,1fr))}
+  #leave-save-confirm{grid-column:1/-1}
+}
 #game .minimap{display:none}
 .emote-menu{
   position:absolute;bottom:clamp(70px,19%,145px);left:50%;transform:translateX(-50%);

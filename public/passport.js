@@ -213,15 +213,26 @@ export function bindPassport({getLook,applyLook,getProfile,applyProfile,listPhot
   function setBusy(value){busy=value;exportButton.disabled=importButton.disabled=value;}
   const status=message=>{transferStatus.textContent=message;};
   const photoProgress=(done,total)=>{if(total)status(`사진 전송 중 · ${done} / ${total}`);};
+  async function saveRecord(onProgress){
+    if(busy)throw Error("진행 중인 이어하기 작업이 끝난 뒤 다시 시도해 주세요.");
+    const profile=getProfile();
+    if(!profile?.nickname?.trim())throw Error("닉네임을 입력한 뒤 코드를 만들어 주세요.");
+    setBusy(true);
+    try{
+      return await exportWalkProfile({...profile,progress:progress.data()},await listPhotos(),onProgress);
+    }finally{setBusy(false);}
+  }
+  function revealCode(code){
+    $("continue-code").value=code;
+    $("continue-code-row").hidden=false;
+    status("다른 기기에서 이 코드를 입력해 주세요.");
+  }
   exportButton.addEventListener("click",async()=>{
     if(busy)return;
-    const profile=getProfile();
-    if(!profile?.nickname?.trim()){status("닉네임을 입력한 뒤 코드를 만들어 주세요.");return;}
-    setBusy(true);$("continue-code-row").hidden=true;status("산책 기록을 저장하고 있어요.");
+    $("continue-code-row").hidden=true;status("산책 기록을 저장하고 있어요.");
     try{
-      const code=await exportWalkProfile({...profile,progress:progress.data()},await listPhotos(),photoProgress);
-      $("continue-code").value=code;$("continue-code-row").hidden=false;status("다른 기기에서 이 코드를 입력해 주세요.");
-    }catch(error){status(error.message||"코드를 만들지 못했어요.");}finally{setBusy(false);}
+      revealCode(await saveRecord(photoProgress));
+    }catch(error){status(error.message||"코드를 만들지 못했어요.");}
   });
   $("continue-copy").addEventListener("click",async()=>{
     const output=$("continue-code");
@@ -242,6 +253,7 @@ export function bindPassport({getLook,applyLook,getProfile,applyProfile,listPhot
     setRoom:value=>{room=value;},petCat:(id,name,token)=>recordCat(id,name,"pet",token),feedCat:(id,name,token)=>recordCat(id,name,"feed",token),
     open(){selectTab("stamps");show(journal);},nearRental:nearHanbokRental,openRental(){
       $("return-hanbok").hidden=!progress.data().rental;show(rental);
-    },returnRental,openTransfer
+    },returnRental,openTransfer,saveRecord,
+    showSavedCode(code){revealCode(code);openTransfer();}
   };
 }
