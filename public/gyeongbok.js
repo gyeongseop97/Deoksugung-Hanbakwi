@@ -1,5 +1,5 @@
 import {
-  gwanghwamun,gbSites,gbSite,gbCourts,gbLake,gbPond,gbPaths,gbLawns,gbStation,cityHallStation,cityHallExit3,subwayStops,
+  gwanghwamun,gbSites,gbSite,gbCourts,gbLake,gbPond,gbPaths,gbLawns,gbStation,subwayStops,
   gbWoldae,gbHaetae,gbPhotoZone,gbRoyalPavilion,gbUijeongbu,gbBusIsland,gbCrossings,wallHalf,wallNorth,at
 } from "./gyeongbok-layout.js";
 import {solidAt} from "./layout.js";
@@ -10,7 +10,7 @@ export const gbSurveyModels=[];
 // Materials that glow after dark; world3d fades them in with the night.
 export const gbNightGlow=[];
 
-export function buildGyeongbok(T,scene,kit,tools){
+export function* buildGyeongbok(T,scene,kit,tools){
   const {box,cylinder,shape,wx,wz,rand,matte}=kit;
   const {pavilion:timberHall,roof,wall,coveredWall,plot,ribbon,tree,treeMix,treeFits,bench,nameplate,block,flat,uvScale,
     treeKit,treeClearance,waterMaterial,pathClear,materials}=tools;
@@ -123,6 +123,7 @@ export function buildGyeongbok(T,scene,kit,tools){
   for(const [i,{points,width,surface}] of gbPaths.entries()){
     ribbon(points,-width/2,width/2,surface==="stone"?materials.paving:materials.gravel,.03+i*.0004);
   }
+  yield;
 
   // ---- Palace wall and its gates ---------------------------------------------------------
   const wallHeight=4.7;
@@ -294,6 +295,7 @@ export function buildGyeongbok(T,scene,kit,tools){
     }
   }
 
+  yield;
   // ---- Buildings ------------------------------------------------------------------------
   const built=spec=>{groups.set(spec.id,pavilion(spec));return groups.get(spec.id);};
   // What each hall was used for decides how its room is furnished.
@@ -310,6 +312,7 @@ export function buildGyeongbok(T,scene,kit,tools){
       const g=built({...spec,raised:1.1,rise:4.6,hip:true});
       g.name=spec.name;
     }
+    yield;
   }
 
   // Throne hall on a two-tier stone terrace. The terrace and its steps are low boxes, so
@@ -398,6 +401,7 @@ export function buildGyeongbok(T,scene,kit,tools){
   }
   slab(0xb1b1a4,0,streamNorth,bridgeHalf*2,streamWidth+2.4,.08);
 
+  yield;
   // ---- Gyeonghoeru and its pond ----------------------------------------------------------
   const lake=gbLake;
   plot(rect(lake.west,lake.east,lake.south,lake.north),waterMaterial,.043);
@@ -532,6 +536,7 @@ export function buildGyeongbok(T,scene,kit,tools){
     plot(ring,materials.garden.lawn,.11);
   }
 
+  yield;
   // ---- Hyangwonjeong ---------------------------------------------------------------------
   const pond=gbPond;
   const ring=(radius,sides=28)=>Array.from({length:sides},(_,i)=>
@@ -617,6 +622,7 @@ export function buildGyeongbok(T,scene,kit,tools){
   block(hex.x,hex.z,8.2,8.2);
   groups.set("hyangwonjeong",tower);
 
+  yield;
   // ---- Cheongsachorong lanterns ----------------------------------------------------------
   // Red-over-blue silk lanterns on wooden posts line the royal road and both ponds.
   function chorong(east,north){
@@ -669,38 +675,8 @@ export function buildGyeongbok(T,scene,kit,tools){
     block(board.x,board.z,.3,.3,0,1.5);
   }
 
-  // ---- Subway exits ----------------------------------------------------------------------
-  function subwayExit(station,title,stripe){
-    const x=wx(station.x),z=wz(station.y),g=new T.Group();
-    g.position.set(x,0,z);g.rotation.y=station.angle;scene.add(g);g.name=station.name;
-    const steel=0x56646a,glass=0x9cc2c2;
-    box(0x23282b,0,.03,0,2.3,.06,5.2,g);
-    for(let step=0;step<6;step++)box(step%2?0x30373a:0x3a4246,0,.04+step*.012,1.9-step*.62,2.1,.03,.6,g);
-    for(const side of [-1,1]){
-      box(steel,side*1.28,.14,0,.2,.28,5.5,g);
-      box(glass,side*1.28,.72,0,.07,.92,5.4,g);
-      box(steel,side*1.28,1.2,0,.12,.08,5.5,g);
-      for(const end of [-2.65,0,2.65])box(steel,side*1.28,1.3,end,.11,2.6,.11,g);
-    }
-    box(steel,0,.14,-2.7,2.7,.28,.2,g);
-    box(glass,0,.72,-2.7,2.5,.92,.07,g);
-    box(0xd8dfdc,0,2.66,-.05,3.1,.1,5.9,g);
-    box(steel,0,2.58,-.05,3.2,.09,6.0,g);
-    box(stripe,0,2.3,2.86,2.9,.42,.1,g);
-    nameplate(title,g,0,2.3,2.92,2.6,.36,"#f4f4ee","#1e2a30");
-    // Pole sign beside the entrance.
-    box(steel,1.9,1.8,2.6,.14,3.6,.14,g);
-    box(stripe,1.9,3.5,2.6,1.05,.5,.16,g);
-    nameplate("지하철",g,1.9,3.5,2.69,.95,.36,"#fbfbf6","#1e2a30");
-    block(x,z,2.9,5.7,station.angle);
-    g.updateMatrixWorld(true);
-    const pole=g.localToWorld(new T.Vector3(1.9,0,2.6));
-    block(pole.x,pole.z,.2,.2,0,3.7);
-  }
-  scene.updateMatrixWorld(true);
-  subwayExit(cityHallStation,"시청 City Hall",0x00a84d);
-  subwayExit(cityHallExit3,"시청 City Hall",0x00a84d);
-  subwayExit(gbStation,"경복궁 Gyeongbokgung",0xef7c1c);
+  buildSubwayExit(T,scene,kit,tools,gbStation,"경복궁 Gyeongbokgung",0xef7c1c);
+  yield;
 
   // ---- Planting --------------------------------------------------------------------------
   for(const group of groups.values())treeClearance.addModel(group);
@@ -716,13 +692,14 @@ export function buildGyeongbok(T,scene,kit,tools){
         const p=world(west+rand()*(east-west),south+rand()*(north-south));
         treeKit.shrub(p.x,p.z,.5+rand()*.5,["deep","fresh","olive","maple","amber"][Math.floor(rand()*5)]);
       }
-      continue;
+    }else{
+      const area=(east-west)*(north-south);
+      const wanted=Math.min(22,Math.round(area/(kind==="grove"?330:900)));
+      for(let attempt=0,planted=0;attempt<wanted*5&&planted<wanted;attempt++){
+        if(plant(west+rand()*(east-west),south+rand()*(north-south),6+rand()*6.5,treeMix.garden()))planted++;
+      }
     }
-    const area=(east-west)*(north-south);
-    const wanted=Math.min(22,Math.round(area/(kind==="grove"?330:900)));
-    for(let attempt=0,planted=0;attempt<wanted*5&&planted<wanted;attempt++){
-      if(plant(west+rand()*(east-west),south+rand()*(north-south),6+rand()*6.5,treeMix.garden()))planted++;
-    }
+    yield;
   }
   for(const isle of gbLake.isles)plant(isle.east,isle.north,6.5,{style:"branchy",palette:"pine"});
   for(const [east,north] of [[-48,60],[48,60],[-40,110],[40,110],[-150,240],[150,360],[-44,520],[44,540],[70,446],[-70,360]]){
@@ -732,12 +709,15 @@ export function buildGyeongbok(T,scene,kit,tools){
     const p=world(east,north);
     if(!solidAt(p.x+300,p.z+225))bench(p.x,p.z,turn);
   }
-  // ---- Uijeongbu site plaza -----------------------------------------------------------------
-  // The site of Joseon's highest government office, shown as it is today: open lawns, the
-  // footprints of Hyeopseondang, Jeongbondang and Seokhoekdang marked by foundation stones in
-  // a row, the L-shaped inner corridor by the avenue, a round well, and the pond and pavilion
-  // sites behind the main hall, with garden paths and benches round them.
-  {
+  yield;
+  yield* buildUijeongbu();
+  return {stops:subwayStops,groups};
+
+  function* buildUijeongbu(){
+    // The site of Joseon's highest government office, shown as it is today: open lawns, the
+    // footprints of Hyeopseondang, Jeongbondang and Seokhoekdang marked by foundation stones in
+    // a row, the L-shaped inner corridor by the avenue, a round well, and the pond and pavilion
+    // sites behind the main hall, with garden paths and benches round them.
     const {west,east,south,north}=gbUijeongbu,stone=0xb3ad9d;
     plot(rect(18,206,-186,-89),materials.road,.011);
     plot(rect(west,east,south,north),materials.garden.lawn,.02);
@@ -803,5 +783,32 @@ export function buildGyeongbok(T,scene,kit,tools){
       plant(e,n,6.5+rand()*4,rand()<.45?{style:"round",palette:"ginkgo"}:treeMix.garden());
     }
   }
-  return {stops:subwayStops,groups};
 }
+
+export function buildSubwayExit(T,scene,{wx,wz,box},{nameplate,block},station,title,stripe){
+    const x=wx(station.x),z=wz(station.y),g=new T.Group();
+    g.position.set(x,0,z);g.rotation.y=station.angle;scene.add(g);g.name=station.name;
+    const steel=0x56646a,glass=0x9cc2c2;
+    box(0x23282b,0,.03,0,2.3,.06,5.2,g);
+    for(let step=0;step<6;step++)box(step%2?0x30373a:0x3a4246,0,.04+step*.012,1.9-step*.62,2.1,.03,.6,g);
+    for(const side of [-1,1]){
+      box(steel,side*1.28,.14,0,.2,.28,5.5,g);
+      box(glass,side*1.28,.72,0,.07,.92,5.4,g);
+      box(steel,side*1.28,1.2,0,.12,.08,5.5,g);
+      for(const end of [-2.65,0,2.65])box(steel,side*1.28,1.3,end,.11,2.6,.11,g);
+    }
+    box(steel,0,.14,-2.7,2.7,.28,.2,g);
+    box(glass,0,.72,-2.7,2.5,.92,.07,g);
+    box(0xd8dfdc,0,2.66,-.05,3.1,.1,5.9,g);
+    box(steel,0,2.58,-.05,3.2,.09,6.0,g);
+    box(stripe,0,2.3,2.86,2.9,.42,.1,g);
+    nameplate(title,g,0,2.3,2.92,2.6,.36,"#f4f4ee","#1e2a30");
+    // Pole sign beside the entrance.
+    box(steel,1.9,1.8,2.6,.14,3.6,.14,g);
+    box(stripe,1.9,3.5,2.6,1.05,.5,.16,g);
+    nameplate("지하철",g,1.9,3.5,2.69,.95,.36,"#fbfbf6","#1e2a30");
+    block(x,z,2.9,5.7,station.angle);
+    g.updateMatrixWorld(true);
+    const pole=g.localToWorld(new T.Vector3(1.9,0,2.6));
+    block(pole.x,pole.z,.2,.2,0,3.7);
+  }
