@@ -150,6 +150,7 @@ export const gbPaths=[
   {name:"흥복전 앞에서 후원까지",width:5.4,surface:"gravel",points:[at(12,507),at(-20,510),at(-25,548),at(-24,579),at(-23,612),at(-30,650),at(-44,706),at(-30,756),at(12,762)]},
   {name:"흥복전 남쪽 출입길",width:3.8,surface:"gravel",points:[at(12,507),at(15,515),at(15,525)]},
   {name:"향원지 동쪽 길",width:4.0,surface:"gravel",points:[at(54,579),at(73,604),at(74,645),at(60,670),at(58,706),at(50,745),at(31,765),at(12,762)]},
+  {name:"취향교 북쪽 진입로",width:3.5,surface:"gravel",points:[at(12,746),at(12,753),at(12,762)]},
   {name:"함화당·집경당 앞길",width:4.3,surface:"gravel",points:[at(-24,579),at(3,589),at(29,590),at(54,579),at(83,545),at(122,529)]},
   {name:"함화당·집경당 출입길",width:3.6,surface:"gravel",points:[at(29,590),at(29,606),at(28,613)]},
   {name:"건청궁에서 신무문까지",width:4.4,surface:"gravel",points:[at(12,762),at(-10,775),at(-14,797),at(-18,836),at(0,858),at(0,868)]},
