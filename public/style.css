@@ -28,6 +28,8 @@ h1,.scene-title{font-family:Georgia,"Batang",serif;font-size:clamp(37px,5.5vw,66
 .experience{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(0,1fr);gap:16px}
 .panel{display:flex;flex-direction:column;min-width:0;border:1px solid var(--line);border-radius:15px;overflow:hidden;background:var(--panel);box-shadow:0 20px 45px #0003}
 .panel-head{min-height:75px;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 17px}
+.map-panel .panel-head{flex-wrap:wrap}
+.map-panel .panel-head h2{white-space:nowrap}
 .tag{display:block;color:#c9b17f;font-size:10px;letter-spacing:.16em;font-weight:700}
 h2{font-size:19px;line-height:1.2;margin:4px 0 0;font-weight:700;letter-spacing:-.025em}
 .pill{display:flex;align-items:center;gap:6px;padding:4px 9px;background:#172219;border:1px solid #435044;border-radius:20px;font-size:11px;color:#d0cfbd;white-space:nowrap}
