@@ -116,7 +116,7 @@ function perchSites(T,parent,kit,trees,walls){
     if(!solidAt(x,y,top))sites.push({x,y,height:top,kind:"wall"});
   }
   const crowns=new Map(),bucket=(col,row)=>col+row*1000;
-  parent.traverse(mesh=>{
+  if(trees.some(tree=>!tree.top))parent.traverse(mesh=>{
     if(mesh.name!=="Tree crown"&&mesh.name!=="Palace tree crown")return;
     mesh.updateWorldMatrix(true,false);
     const position=new T.Vector3().setFromMatrixPosition(mesh.matrixWorld);
@@ -250,8 +250,9 @@ function wingGeometry(T,side){
   return geometry;
 }
 
-export function addPalaceBirds(T,parent,kit,{trees=[],walls=[],seed}={}){
+export function addPalaceBirds(T,parent,kit,{trees=[],walls=[],seed,deferNorth=false}={}){
   const perches=perchSites(T,parent,kit,trees,walls),birds=[],birdsById=new Map();
+  const treeCount=trees.length,wallCount=walls.length;
   const floor=point=>kit.floorHeight?.(point)??0;
   const group=new T.Group();group.name="궁의 까치와 비둘기";parent.add(group);
   const material=new T.MeshStandardMaterial({roughness:.8,flatShading:true});
@@ -267,15 +268,13 @@ export function addPalaceBirds(T,parent,kit,{trees=[],walls=[],seed}={}){
     batch(wingGeometry(T,1),spots.length,"Bird right wings",feather)];
   const batches=[body,bill,...wings],part=new T.Object3D(),root=new T.Object3D(),joint=new T.Object3D();
   const matrix=new T.Matrix4(),attached=new T.Matrix4(),color=new T.Color();
-  let roomSeed,checkAt=0,walkers=[],groundAt=-Infinity,groundSnapshot,sparse=false;
+  let roomSeed,population,checkAt=0,walkers=[],groundAt=-Infinity,groundSnapshot,sparse=false;
+  let northPerchesReady=!deferNorth,northLoaded=!deferNorth;
 
-  function setSeed(value){
-    const next=String(value??"preview");
-    if(next===roomSeed)return;
-    roomSeed=next;birds.length=0;birdsById.clear();checkAt=0;walkers=[];
-    groundAt=-Infinity;groundSnapshot=undefined;
-    const random=rng(next+":palace birds"),used=new Set(),grounds=feedingGrounds(rng(next+":feeding grounds"));
-    for(const [index,{anchor,dx,dy,kind,cruises}] of spots.entries()){
+  function buildBirds(limit){
+    const {random,used,grounds}=population;
+    while(population.index<limit){
+      const index=population.index++,{anchor,dx,dy,kind,cruises}=spots[index];
       for(let attempt=0;attempt<20;attempt++){
         const radius=attempt?1+attempt*.24:0,angle=random()*Math.PI*2;
         const x=anchor.x+dx+Math.cos(angle)*radius,y=anchor.y+dy+Math.sin(angle)*radius;
@@ -287,6 +286,26 @@ export function addPalaceBirds(T,parent,kit,{trees=[],walls=[],seed}={}){
         break;
       }
     }
+  }
+  function setSeed(value){
+    const next=String(value??"preview");
+    if(next===roomSeed)return;
+    roomSeed=next;birds.length=0;birdsById.clear();checkAt=0;walkers=[];
+    groundAt=-Infinity;groundSnapshot=undefined;
+    population={random:rng(next+":palace birds"),used:new Set(),grounds:feedingGrounds(rng(next+":feeding grounds")),index:0};
+    buildBirds(northLoaded?spots.length:deoksugungSpots);
+  }
+  function* loadNorth(){
+    if(!northPerchesReady){
+      perches.push(...perchSites(T,parent,kit,trees.slice(treeCount),walls.slice(wallCount)));
+      northPerchesReady=true;
+    }
+    // Keep the seeded random stream, flock indices, and existing birds intact.
+    while(population.index<spots.length){
+      buildBirds(Math.min(spots.length,population.index+6));
+      if(population.index<spots.length)yield;
+    }
+    northLoaded=true;
   }
   setSeed(seed);
 
@@ -440,5 +459,5 @@ export function addPalaceBirds(T,parent,kit,{trees=[],walls=[],seed}={}){
   const census=()=>({deoksugung:birds.filter(bird=>!bird.palace).length,gyeongbokgung:birds.filter(bird=>bird.palace).length,
     touring:birds.filter(bird=>bird.patrol.legs.some(leg=>leg.mode==="flight"&&distance(leg.from,leg.to)>20)).length});
   const setSparse=value=>{sparse=Boolean(value);};
-  return {update,setSeed,groundTargets,scare,census,setSparse};
+  return {update,setSeed,groundTargets,scare,census,setSparse,loadNorth};
 }
