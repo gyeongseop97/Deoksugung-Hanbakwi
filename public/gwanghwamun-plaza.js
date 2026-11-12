@@ -331,6 +331,17 @@ export function buildGwanghwamunPlaza(T,scene,kit,{gatehouse,haetae=[],benches})
 
 function addNorth({T,group,gatehouse,haetae,world,block,surface,stone}){
   const gate=plazaSites.gate,axis=gate.east;
+  const ridge=[[-244,14],[-216,22],[-184,32],[-161,39],[-138,42],[-121,50],[-105,52],[-91,61],
+    [-77,63],[-63,58],[-48,53],[-29,48],[-12,45],[8,49],[22,45],[45,36],[71,29],[95,24],[133,20],[186,12]];
+  for(const [index,north] of [802,766,727].entries()){
+    const peaks=ridge.map(([east,height],i)=>{
+      const {x}=world(east+index*18,north);
+      return new T.Vector2(x,height*(1-index*.13)+Math.sin(i*1.54+index)*3.2);
+    });
+    const polygon=new T.Shape([new T.Vector2(peaks[0].x,-5),...peaks,new T.Vector2(peaks.at(-1).x,-5)]);
+    const mountains=new T.Mesh(new T.ShapeGeometry(polygon),new T.MeshBasicMaterial({color:[0x617d77,0x5f7664,0x596c55][index]}));
+    mountains.position.z=world(0,north).z;group.add(mountains);
+  }
   surface(rect(-63,49,554,614),stone,.026);
   if(gatehouse){
     const roof=gatehouse.clone(true),point=world(axis,gate.north);
