@@ -1,5 +1,6 @@
 import {addObstacle} from "./layout.js";
 import {makeTreeBuilder} from "./lowpoly-trees.js";
+import {plazaAt,eastCurb,eastRoadWidth} from "./plaza-layout.js";
 import {corridorProfile,corridorProfileAt,corridorSidewalks,corridorMainRoad,corridorBranches,corridorCrossings,
   insideCorridorPolygon} from "./sejong-corridor-layout.js";
 
@@ -51,6 +52,8 @@ export function buildSejongCorridor(T,scene,kit){
   surface(rectangle(507,6,326,610),matte(0x71766b),-.071);
   for(const walk of corridorSidewalks)surface(walk,paved,.039);
   surface(corridorMainRoad,asphalt,.021);
+  const [,southWest,southEast]=corridorProfileAt(-292),northWest=eastCurb(0);
+  surface([{x:southWest,y:-291.8},{x:southEast,y:-291.8},plazaAt(northWest+eastRoadWidth,.3),plazaAt(northWest,.3)],asphalt,.009);
   for(const {outline} of corridorBranches)surface(outline,asphalt,.053);
   const cycleBand=[...corridorProfile.map(([y,,west])=>({x:west-2.25,y})),
     ...corridorProfile.slice().reverse().map(([y,,west])=>({x:west-.26,y}))];
