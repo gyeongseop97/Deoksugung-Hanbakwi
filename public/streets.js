@@ -188,13 +188,6 @@ export function buildJeongdong(T,scene,kit) {
   }
   const s=placed(spawn);
   paved(s.x-1,s.z+4,39,39,.025);
-  paved(wx(473.75),wz(232),7.5,114,.03);
-  box(0xa9a698,wx(477.6),.07,wz(232),.22,.14,114);
-  const avenue=[{x:gate.x+23,y:40},{x:gate.x+25,y:433}];
-  ribbon(avenue,-5.7,-3.7,pavingMaterial,.040);
-  ribbon(avenue,-3.7,18.0,roadMaterial,.013);
-  ribbon(avenue,9.8,9.91,matte(0xe1c66d),.024);
-  for(let i=0;i<17;i++)box(0xf1e4c6,s.x+6+i*.93,.029,s.z+23,.54,.014,3.6);
   const plaza=placed(city[0]);
   paved(plaza.x,plaza.z,city[0].w,city[0].d,.032);
 
@@ -560,12 +553,6 @@ export function buildJeongdong(T,scene,kit) {
     }
   }
   for(const spec of city.slice(1))facade(spec);
-  for(let i=0;i<8;i++){
-    const x=s.x+61+rand()*100,z=s.z-150+i*43;
-    const w=17+rand()*19,h=22+rand()*36,d=16+rand()*22;
-    box(i%2===0?0xa6b4bb:0x91a3ad,x,h/2,z,w,h,d);
-    for(let row=0;row<Math.floor(h/3.8);row++)box(0x8198a4,x-w/2-.04,2.4+row*3.8,z,.085,1.5,d*.83);
-  }
 
   function roof(group,w,d,y,rise,hip=true){
     const geometry=new T.BufferGeometry(),data=[];
