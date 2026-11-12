@@ -57,12 +57,13 @@ function initialAvatar(){
     }
   }catch{}
   return {x:ticketApproach.x+1,y:ticketApproach.y-2.4,heading:entranceHeading,vx:0,vy:0,wish:0,wishOrigin:null,wishHeading:0,wishArt:null,wave:0,jump:0,emote:null,chat:null,
-    seat:null,seatSide:null,bus:null,bike:null,item:null,umbrella:false,blushUntil:0,blushLevel:0,pet:null,feed:null,running:false,blocked:false,character,look};
+    seat:null,seatSide:null,bus:null,bike:null,item:null,umbrella:false,blushUntil:0,blushLevel:0,pet:null,feed:null,running:false,blocked:false,up:false,character,look};
 }
 const me=initialAvatar(),people=new Map(),markers=new Map(),seenSignals=new Map(),lookPings=new Map(),formations=new Map();
 let ownView=initialView(),trackedPersonId=null,world,worldLoading,worldFailed=false;
 let firstPerson=localStorage.getItem("jeongdong-first-person")==="true";
 let session=null,active=true,joining=false,lastPost=0,lastWishSynced=0,dirty=true;
+let pageVersion=0,walkPositionAt=0,lastWalkPosition=null;
 let syncTimer,syncDue=Infinity,syncInFlight=null,syncStarted=-Infinity,syncFailures=0;
 let links=[],queuedSignal=null,queuedHand=null,queuedFeed=null,queuedChat=null,toastTimer;
 let queuedBus=null,queuedBike=null,lastBusHeading=null;
@@ -753,9 +754,39 @@ async function sync(){
   }
 }
 
-function leaveBeacon(){
-  if(!session)return;
-  const body=JSON.stringify({room:session.room,id:session.id,key:session.key,leave:true});
+function walkPositionKey(name,code){
+  const normalized=name.normalize("NFC").trim().replace(/\s+/g," ");
+  return "jeongdong-walk-position:v1:"+JSON.stringify([normalized,code||"open"]);
+}
+function readWalkPosition(name,code){
+  try{
+    const pose=JSON.parse(localStorage.getItem(walkPositionKey(name,code)));
+    if(pose&&[pose.x,pose.y,pose.heading,pose.height].every(Number.isFinite)&&
+      pose.heading>=0&&pose.heading<=360&&typeof pose.up==="boolean")return pose;
+  }catch{}
+  return null;
+}
+function walkPositionHeight(point){
+  const loft=loftHeight(point);
+  if(point.up&&loft<=0)return null;
+  const height=Math.max(platformAt(point.x,point.y),loft);
+  return walkable(point.x,point.y,height)?height:null;
+}
+function rememberWalkPosition(){
+  if(!session||!world||riding||me.bus||isCycling(me)||me.seat!=null||
+    (me.jump&&gameTime()-me.jump<JUMP_MS))return;
+  const {x,y,heading}=me,up=Boolean(me.up),height=walkPositionHeight(me);
+  if(height===null)return;
+  const record=JSON.stringify({x,y,heading,up,height});
+  if(record===lastWalkPosition)return;
+  try{
+    localStorage.setItem(walkPositionKey(session.nickname,session.code),record);
+    lastWalkPosition=record;
+  }catch{}
+}
+function leaveBeacon(visit=session){
+  if(!visit)return;
+  const body=JSON.stringify({room:visit.room,id:visit.id,key:visit.key,leave:true});
   if(isGitHubPages()){
     fetch(gameApiUrl("/api/room"),{method:"POST",keepalive:true,credentials:"omit",body}).catch(()=>{});
   }else navigator.sendBeacon("/api/room",body);
@@ -781,6 +812,7 @@ function showProfile(){
 }
 function returnToLobby(message=""){
   const old=session;
+  rememberWalkPosition();
   leaveBeacon();session=null;clearSyncTimer();resetInput();
   queuedSignal=queuedHand=queuedFeed=queuedChat=null;people.clear();changeLinks([]);resetLocationGuides();
   queuedBus=queuedBike=lastBusHeading=selectedBus=null;
@@ -817,9 +849,25 @@ async function enterRoom(action,code){
   const angle=parseInt(id.slice(0,8),16)/0x100000000*Math.PI*2;
   const offset=.38+parseInt(id.slice(8,12),16)/0x10000*.67;
   avatar.x+=Math.cos(angle)*offset;avatar.y+=Math.sin(angle)*offset;
+  const navigation=pageVersion;
+  const saved=action==="create"?null:readWalkPosition(name,code);
   try{
+    // Complete collision registration before announcing a restored position to the room.
+    if(saved&&!world)await loadWorld();
+    if(!active||navigation!==pageVersion)return;
+    const height=saved&&world?walkPositionHeight(saved):null;
+    const resumed=height!==null&&Math.abs(height-saved.height)<.05;
+    if(resumed){
+      const {x,y,heading,up}=saved;
+      Object.assign(avatar,{x,y,heading,up});
+      view.pan=heading;
+    }
     const sent=performance.now();
     const response=await request("/api/rooms",{action,code,nickname:name,id,key,avatar,view}),data=await response.json();
+    if(!active||navigation!==pageVersion){
+      if(response.ok)leaveBeacon({room:data.room,id,key});
+      return;
+    }
     if(!response.ok)throw Error(data.error);
     clockOffset=null;roundTrip=65;
     updateClock(data.serverTime,sent,performance.now());
@@ -827,10 +875,11 @@ async function enterRoom(action,code){
     environment.liveWeather=data.weather??null;passport.setRoom(session.room);
     Object.assign(me,avatar,{nickname:session.nickname,coat:session.coat});
     ownView=view;dirty=true;lastWishSynced=0;lastPost=Date.now();
+    lastWalkPosition=null;walkPositionAt=0;
     updateChatSend();
     syncStarted=-Infinity;syncFailures=0;
     people.clear();links=[];formations.clear();resetLocationGuides();resetInput();
-    $("location").textContent=ticketApproach.name;
+    $("location").textContent=resumed?placeName(me):ticketApproach.name;
     localStorage.setItem("jeongdong-nickname",session.nickname);
     sessionStorage.setItem("jeongdong-room-mode",session.mode);
     if(session.code)sessionStorage.setItem("jeongdong-room-code",session.code);
@@ -843,7 +892,9 @@ async function enterRoom(action,code){
     world?.parkLife.setSeed(session.room);
     world?.parkLife.resetInteractions();
     world?.birds.setSeed(session.room);
-    loadWorld();focusGame();
+    if(!saved)loadWorld();
+    focusGame();
+    if(resumed)toast("마지막으로 걷던 곳에서 이어 걸어요.");
     if(action==="create")openInvite();
     scheduleSync(0);
   }catch(error){
@@ -935,9 +986,12 @@ document.querySelectorAll("dialog").forEach(dialog=>dialog.addEventListener("clo
   if(session&&document.activeElement===document.body)focusGame();
 }));
 $("model-credits").addEventListener("click",()=>$("credits-dialog").showModal());
-window.addEventListener("pagehide",()=>{active=false;clearSyncTimer();sound.bus(null);sound.plazaShow(null);leaveBeacon();});
+window.addEventListener("pagehide",()=>{
+  rememberWalkPosition();
+  active=false;pageVersion++;clearSyncTimer();sound.bus(null);sound.plazaShow(null);leaveBeacon();
+});
 document.addEventListener("visibilitychange",()=>{
-  if(document.hidden){clearManualInput();sound.bus(null);sound.plazaShow(null);}
+  if(document.hidden){rememberWalkPosition();clearManualInput();sound.bus(null);sound.plazaShow(null);}
   clearSyncTimer();scheduleSync(document.hidden?1150:0);
 });
 window.addEventListener("online",()=>{if(!document.hidden)scheduleSync(0);});
@@ -959,6 +1013,7 @@ function jump(){
   if(!session||!world||riding||me.bus||isCycling(me)||queuedBus||queuedBike||feedingLocked(time)||clinkLocked(time)||time-me.jump<JUMP_MS)return;
   if(pendingSeat)course=[];
   pendingSeat=seatClaim=null;stand();
+  rememberWalkPosition();
   jumpBase=standingHeight();
   me.jump=time;dirty=true;wakeSync();focusGame();
 }
@@ -988,6 +1043,7 @@ function confirmSeat(claim,avatar){
   if(!slot||!walkable(slot.approach.x,slot.approach.y)){
     dirty=true;toast("벤치에 빈자리가 없어요.");return;
   }
+  rememberWalkPosition();
   Object.assign(me,slot.approach,{seat:claim.bench,seatSide:avatar.seatSide??0,heading:slot.heading});
   dirty=true;
 }
@@ -1444,6 +1500,7 @@ $("bike-park").addEventListener("click",()=>{
 function confirmTransport(avatar,result,bus,bike){
   if(!avatar)return;
   const ridingBus=me.bus;
+  if((avatar.bus&&!ridingBus)||(isCycling(avatar)&&!isCycling(me)))rememberWalkPosition();
   me.bus=avatar.bus??null;me.bike=avatar.bike??null;
   if(ridingBus?.index!==me.bus?.index||ridingBus?.seat!==me.bus?.seat){
     resetInput();
@@ -1497,6 +1554,7 @@ function clearTransit(){
 }
 function rideTransit(stop,{target,area,line}){
   if(riding||myLink()?.active||feedingLocked(gameTime())||nearbyTransit()!==stop||!walkable(target.arrive.x,target.arrive.y))return;
+  rememberWalkPosition();
   const linkId=myLink()?.id??(queuedHand?.action==="offer"?queuedHand.id:null);
   if(linkId){queuedHand={action:"release",id:linkId};changeLinks(links);}
   transitDialog.close();setMap(false);riding=true;resetInput();sound.bus(null);sound.plazaShow(null);
@@ -1894,6 +1952,10 @@ function frame(now){
   const time=gameTime(now);
   smoothPeople(people,elapsed,time,roundTrip);
   const stepping=motion(now,elapsed);
+  if(now>=walkPositionAt){
+    walkPositionAt=now+1000;
+    rememberWalkPosition();
+  }
   if(photoMode.camera&&(keys.size||thumbId!==undefined)){
     const [dx,dy]=Array.from(keys,key=>vectors[key]).reduce(([x,y],[vx,vy])=>[x+vx,y+vy],thumb);
     photoMode.move(dx,dy,elapsed);
@@ -2384,7 +2446,7 @@ if(nickname.value&&(savedCode&&(!suppliedCode||suppliedCode===savedCode)||savedO
   showServers();enterRoom(savedOpen&&!suppliedCode?"open":"join",savedCode);
 }
 function loadWorld(){
-  if(world||worldLoading)return;
+  if(world||worldLoading)return worldLoading;
   worldLoading=import("./world3d.js").then(({makeWorld})=>{
     world=makeWorld($("game"),{onCatFlee,catSeed:session?.room});worldFailed=false;
     drawDestinations(world);$("loading-game").hidden=true;
@@ -2392,5 +2454,6 @@ function loadWorld(){
   }).catch(()=>{
     worldFailed=true;$("loading-game").textContent="이 브라우저에서 3D 산책을 열 수 없어요.";
   }).finally(()=>{worldLoading=null;});
+  return worldLoading;
 }
 requestAnimationFrame(frame);

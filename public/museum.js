@@ -137,6 +137,19 @@ for(const {id:gallery} of museumGalleries){
   }
 }
 
+const {minX,maxX,minY,maxY}=museumBounds;
+const midX=(minX+maxX)/2,midY=(minY+maxY)/2,width=maxX-minX,depth=maxY-minY;
+const doorHalf=museumHall.doorWidth/2,wallHeight=5.2;
+const museumWalls=[
+  [midX,minY,width,.34,0xe9dfcb],[midX,maxY,width,.34,0xe9dfcb],
+  [minX,midY,.34,depth,0xe9dfcb],[maxX,midY,.34,depth,0xe9dfcb],
+  ...[(minX+museumHall.minX)/2,(museumHall.maxX+maxX)/2].map(x=>
+    [x,museumHall.splitY,museumHall.minX-minX,.32,0xdfd5c3]),
+  ...museumGalleries.flatMap(({id,doorX,doorY,minY:front,maxY:back})=>
+    [[front,doorY-doorHalf],[doorY+doorHalf,back]].map(([start,end])=>
+      [doorX,(start+end)/2,.32,end-start,galleryColors[id].wall]))
+];
+
 export function addMuseum(T,scene,{wx,wz}){
   registerMuseumNavigation();
   const build=assembleMuseum(T,scene,{wx,wz});
@@ -146,14 +159,13 @@ export function addMuseum(T,scene,{wx,wz}){
 }
 
 export function registerMuseumNavigation(){
+  for(const [x,z,w,d] of museumWalls)addObstacle(x,z,w,d,0,wallHeight);
   for(const [, ,x,z] of casedExhibits)addObstacle(x,z,2.48,2.28,0,2.60);
 }
 
 export function* assembleMuseum(T,scene,{wx,wz}){
   const room=new T.Group();room.name="덕수궁 미술관";room.visible=false;scene.add(room);
   const boxGeometry=new T.BoxGeometry(1,1,1),colors=new Map(),exhibits=[],artworkMeshes=[];
-  const {minX,maxX,minY,maxY}=museumBounds;
-  const midX=(minX+maxX)/2,midY=(minY+maxY)/2,width=maxX-minX,depth=maxY-minY;
   function block(color,x,y,z,w,h,d,rotation=0){
     if(!colors.has(color))colors.set(color,new T.MeshBasicMaterial({color,toneMapped:false}));
     const mesh=new T.Mesh(boxGeometry,colors.get(color));room.add(mesh);
@@ -180,12 +192,6 @@ export function* assembleMuseum(T,scene,{wx,wz}){
     const map=new T.CanvasTexture(canvas);map.colorSpace=T.SRGBColorSpace;
     return panel(map,x,y,z,w,h,rotation);
   }
-  function wall(x,z,w,d,color){
-    block(color,x,2.6,z,w,5.2,d);
-    block(0x635346,x,.14,z,w+.05,.28,d+.05);
-    block(0xf4ebda,x,4.94,z,w+.07,.21,d+.07);
-    addObstacle(x,z,w,d,0,5.2);
-  }
   const canvas=document.createElement("canvas");canvas.width=canvas.height=256;
   const ctx=canvas.getContext("2d"),oak=["#966648","#936247","#8c5b41","#a1704c","#996846","#916344"];
   for(let row=0;row<8;row++){
@@ -201,24 +207,19 @@ export function* assembleMuseum(T,scene,{wx,wz}){
   floorMap.wrapS=floorMap.wrapT=T.RepeatWrapping;floorMap.repeat.set(17,13);floorMap.anisotropy=4;
   panel(floorMap,midX,.012,midY,width+.25,depth+.25).rotation.x=-Math.PI/2;
   block(0xf0e8d9,midX,5.2,midY,width,.16,depth);
-  for(const [x,z,w,d] of [[midX,minY,width,.34],[midX,maxY,width,.34],[minX,midY,.34,depth],[maxX,midY,.34,depth]]){
-    wall(x,z,w,d,0xe9dfcb);
-  }
-  const gap=museumHall.doorWidth/2;
-  for(const x of [(minX+museumHall.minX)/2,(museumHall.maxX+maxX)/2]){
-    wall(x,museumHall.splitY,museumHall.minX-minX,.32,0xdfd5c3);
+  for(const [x,z,w,d,color] of museumWalls){
+    block(color,x,wallHeight/2,z,w,wallHeight,d);
+    block(0x635346,x,.14,z,w+.05,.28,d+.05);
+    block(0xf4ebda,x,4.94,z,w+.07,.21,d+.07);
   }
   for(const gallery of museumGalleries){
     const {id,doorX,doorY,minY:front,maxY:back}=gallery,theme=galleryColors[id];
     const centerX=(gallery.minX+gallery.maxX)/2,centerY=(front+back)/2;
-    for(const [start,end] of [[front,doorY-gap],[doorY+gap,back]]){
-      wall(doorX,(start+end)/2,.32,end-start,theme.wall);
-    }
     block(theme.rug,centerX,.028,centerY,19.2,.026,14.1);
     block(0xb5986e,centerX,.029,centerY,18.65,.027,13.55);
     block(theme.rug,centerX,.031,centerY,18.43,.028,13.33);
     for(const direction of [-1,1]){
-      block(theme.rug,doorX,2.1,doorY+direction*(gap+.09),.44,4.20,.23);
+      block(theme.rug,doorX,2.1,doorY+direction*(doorHalf+.09),.44,4.20,.23);
     }
     block(theme.rug,doorX,3.98,doorY,.36,.96,museumHall.doorWidth+.37);
     const signRotation=gallery.side==="west"?Math.PI/2:-Math.PI/2;
