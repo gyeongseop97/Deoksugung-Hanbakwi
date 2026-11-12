@@ -1,4 +1,5 @@
 import {FEED_MS, ITEMS, PET_MS, JUMP_HEIGHT} from "./activities.js";
+import {bikeFit,bikePedal,makeRidingBike} from "./sejong-bike-model.js";
 
 const TAU = Math.PI * 2;
 const HAIR = ["short", "bob", "long", "bun"];
@@ -14,6 +15,8 @@ const BODY = .74;
 const HEAD = .93;
 const WIDE = 1.14;
 const SEAT_LIFT = .17;
+const CYCLING_HIP = .704;
+const CYCLING_LIFT = bikeFit.saddleY+.09-CYCLING_HIP*BODY;
 const CHAT_BUBBLE_MS = 6000;
 const FACE_TONES = [
   {top:"#f8d1ad", middle:"#f5c8a3", chin:"#edb892", light:"#fff1d55d", cheek:"#e88e897a", radius:14},
@@ -555,7 +558,7 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
     group.traverse(mesh => { if (mesh.isMesh && mesh !== shadow) mesh.castShadow = true; });
     return {group,body,floorY:null,teeHem,pelvis,chest,torso,waist,faceMesh,ears,headJoint,hairMesh,pin,overcoat,hem,pufferCollar,hanbokDetails,skirt,legs,arms,label,
       shadow,emote,chatSprite:null,chatMessage:null,itemPivot,itemProp:createItemProp(itemPivot),palette,offset,phase:(offset%100)/100,
-      stride:0,sprint:0,seatBlend:0,petBlend:0,appearance:"",lastX:null,lastY:null};
+      stride:0,sprint:0,seatBlend:0,petBlend:0,appearance:"",lastX:null,lastY:null,bike:null};
   }
 
   const down = new T.Vector3(0,-1,0), forward = new T.Vector3(0,0,1);
@@ -672,21 +675,23 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
     const wasVisible = group.visible;
     group.visible = true;
     const smoothPose = wasVisible ? 1 - Math.exp(-delta*15) : 1;
-    const airborne = jump/JUMP_HEIGHT;
-    const walking = Boolean(position.stepping && !seat && jump<.06);
+    const riding = Boolean(position.bike && !seat);
+    const lift = riding ? 0 : jump;
+    const airborne = lift/JUMP_HEIGHT;
+    const walking = Boolean(position.stepping && !seat && !riding && jump<.06);
     const running = walking && Boolean(position.running);
-    const held = position.hand === -1 || position.hand === 1;
+    const held = !riding && (position.hand === -1 || position.hand === 1);
     const petAge = clock - position.pet?.at;
     const waveAge = (clock - position.wave) / 1000;
     const item = position.item, spec = item && ITEMS[item.kind];
     const feedAge = clock - position.feed?.at;
-    const feeding = !seat && !walking && !held && item?.kind === "churu" && feedAge >= 0 && feedAge < FEED_MS;
+    const feeding = !seat && !riding && !walking && !held && item?.kind === "churu" && feedAge >= 0 && feedAge < FEED_MS;
     const feedPose = feeding ? smooth(Math.min(feedAge/320,(FEED_MS-feedAge)/360)) : 0;
-    const pet = !feeding && !seat && !walking && !held && petAge >= 0 && petAge < PET_MS;
+    const pet = !feeding && !seat && !riding && !walking && !held && petAge >= 0 && petAge < PET_MS;
     const petPose = pet ? smooth(Math.min(petAge/235,(PET_MS-petAge)/275)) : 0;
     const itemAge = spec && item.started ? Math.max(0,clock-item.started) : Infinity;
-    const carrying = Boolean(spec && (item.remaining > 0 || itemAge < spec.duration));
-    const waving = waveAge >= 0 && waveAge < 2.45 && !pet && !feeding && !(held && carrying);
+    const carrying = Boolean(!riding && spec && (item.remaining > 0 || itemAge < spec.duration));
+    const waving = !riding && waveAge >= 0 && waveAge < 2.45 && !pet && !feeding && !(held && carrying);
     const waveLift = waving ? smooth(Math.min(waveAge/.27,(2.45-waveAge)/.36)) : 0;
 
     const facing = Math.PI - (seat?.heading ?? position.heading ?? 252) * Math.PI/180;
@@ -695,20 +700,33 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
     // Stepping onto or off a ledge eases the floor so the body does not pop.
     model.floorY = wasVisible && model.floorY !== null && Math.abs(floor-model.floorY) < 1.6
       ? mix(model.floorY,floor,1-Math.exp(-delta*17)) : floor;
-    group.position.set(wx(seat?.x ?? position.x),seat ? 0 : model.floorY+jump,wz(seat?.y ?? position.y));
+    group.position.set(wx(seat?.x ?? position.x),seat ? (seat.base ?? 0) : model.floorY+lift,wz(seat?.y ?? position.y));
     const travel = model.lastX === null ? 0 : Math.hypot(position.x-model.lastX,position.y-model.lastY);
     model.lastX = position.x;
     model.lastY = position.y;
+    let pedalAngle = 0;
+    if (riding) {
+      const pedaling = wasVisible && model.bike?.group.visible && travel <= Math.max(.8,delta*22);
+      if (!model.bike) {
+        model.bike = makeRidingBike(T);
+        group.add(model.bike.group);
+      }
+      model.bike.group.visible = true;
+      pedalAngle = model.bike.update(pedaling ? travel : 0);
+    } else if (model.bike) {
+      model.bike.group.visible = false;
+    }
     model.sprint = mix(model.sprint,Number(running),smoothPose);
     model.seatBlend = mix(model.seatBlend,Number(Boolean(seat)),smoothPose);
     model.petBlend = mix(model.petBlend,Math.max(petPose,feedPose),smoothPose);
-    const sprint = model.sprint, seated = model.seatBlend, crouch = model.petBlend;
+    const sprint = riding ? 0 : model.sprint;
+    const seated = riding ? 1 : model.seatBlend, crouch = riding ? 0 : model.petBlend;
     // Short legs take quick little steps.
     const cycleDistance = mix(1.00,1.80,sprint), stance = mix(.57,.36,sprint);
     const velocity = mix(2.58,6.675,sprint);
     const strideTarget = walking ? (position.blocked ? .32 : 1) : 0;
     model.stride = mix(model.stride,strideTarget,smoothPose);
-    const stride = model.stride;
+    const stride = riding ? 0 : model.stride;
     if (walking) {
       const distance = position.blocked || !wasVisible || travel > .6 ? velocity*delta : travel;
       model.phase = (model.phase + Math.max(distance,velocity*delta*.55)/cycleDistance)%1;
@@ -720,12 +738,20 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
     const bob = (.009*(1-sprint)*(1-Math.cos(phase*TAU*2))+.065*sprint*flight)*sway;
     const strideDip = (.074+.020*sprint)*sway;
     const idleRise = .035*(1-stride)*(1-seated)*(1-crouch);
-    body.position.y = seated*SEAT_LIFT;
-    pelvis.position.set(.020*pendulum*sway,.691+bob-strideDip+idleRise+breath*.004-seated*.145-crouch*.225,0);
-    chest.rotation.set(.020 + sprint*.13 + crouch*.34 + seated*.03,pendulum*sway*.10,pendulum*sway*.065);
-    headJoint.rotation.set(-.030-sprint*.070+crouch*.16, -pendulum*sway*.05,breath*.020-pendulum*sway*.045);
+    if (riding) {
+      body.position.y = CYCLING_LIFT;
+      pelvis.position.set(0,CYCLING_HIP,0);
+      chest.rotation.set(.28,0,0);
+      headJoint.rotation.set(-.25,0,breath*.012);
+      inverseChest.copy(chest.quaternion).invert();
+    } else {
+      body.position.y = seated*SEAT_LIFT;
+      pelvis.position.set(.020*pendulum*sway,.691+bob-strideDip+idleRise+breath*.004-seated*.145-crouch*.225,0);
+      chest.rotation.set(.020 + sprint*.13 + crouch*.34 + seated*.03,pendulum*sway*.10,pendulum*sway*.065);
+      headJoint.rotation.set(-.030-sprint*.070+crouch*.16, -pendulum*sway*.05,breath*.020-pendulum*sway*.045);
+    }
     model.shadow.visible = !seat;
-    model.shadow.position.y = .028-jump-(model.floorY-floor);
+    model.shadow.position.y = .028-lift-(model.floorY-floor);
     model.shadow.material.opacity = .25 - sprint*bob*1.12 - airborne*.09;
     model.shadow.scale.set(1+sprint*.05-airborne*.18,1+crouch*.13-airborne*.18,1);
 
@@ -743,6 +769,14 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
     }
     for (let i=0;i<2;i++) {
       const side = SIDE[i], leg = legs[i];
+      if (riding) {
+        const pedal = bikePedal(side,pedalAngle);
+        // Set the sole on top of the flat pedal and keep the shoe level.
+        leg.target.set(pedal.x/BODY,(pedal.y+.011-body.position.y)/BODY+.130-pelvis.position.y,pedal.z/BODY-.046);
+        solve(leg,leg.target,forward);
+        leg.end.quaternion.copy(globalLower).invert();
+        continue;
+      }
       const footPhase = (phase + i*.5)%1;
       const swing = clamp((footPhase-stance)/(1-stance));
       const stroke = footPhase < stance ? stance*.5-footPhase : stance*(smooth(swing)-.5);
@@ -764,6 +798,15 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
       ? smooth(Math.min(itemAge/255,(spec.duration-itemAge)/360)) : 0;
     for (let i=0;i<2;i++) {
       const side = SIDE[i], arm = arms[i];
+      if (riding) {
+        // The palm sits below the wrist, wrapping the centre of the grip.
+        arm.target.set(side*bikeFit.gripX/BODY,(bikeFit.gripY-body.position.y)/BODY+.046-pelvis.position.y-chest.position.y,
+          bikeFit.gripZ/BODY-.012).applyQuaternion(inverseChest);
+        pole.set(side*.5,-.7,-.25);
+        solve(arm,arm.target,pole);
+        arm.end.quaternion.copy(globalLower).invert().multiply(inverseChest);
+        continue;
+      }
       let x = side*.385, y = -.015+seated*.09, z = .020+seated*.21;
       z += side*pendulum*sway*(.17+sprint*.10);
       y += sprint*sway*(.050+Math.max(0,side*pendulum)*.12);
@@ -796,7 +839,7 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
       const armEase = wasVisible && !clasping ? 1 - Math.exp(-delta*29) : 1;
       arm.target.set(mix(arm.target.x,x,armEase),mix(arm.target.y,y,armEase),mix(arm.target.z,z,armEase));
       solve(arm,arm.target,pole);
-      arm.end.rotation.z = waving && side === waveSide ? side*waveLift*Math.sin(waveAge*21)*.20 : 0;
+      arm.end.rotation.set(0,0,waving && side === waveSide ? side*waveLift*Math.sin(waveAge*21)*.20 : 0);
     }
     itemPivot.visible = carrying;
     if (carrying) {
@@ -808,7 +851,7 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
 
     const reaction = position.emote, age = (clock-reaction?.at)/1000;
     emote.visible = age >= -.3 && age < 3.15 && Boolean(emojiTexture);
-    const labelY = (model.hairMesh.geometry === hairGeometry.bun ? 1.90 : 1.84)+seated*(SEAT_LIFT-.107)-crouch*.166;
+    const labelY = (model.hairMesh.geometry === hairGeometry.bun ? 1.90 : 1.84)+(riding ? CYCLING_LIFT : seated*(SEAT_LIFT-.107)-crouch*.166);
     if (model.label) model.label.position.y = labelY;
     if (emote.visible) {
       const map = emojiTexture(reaction.emoji);
