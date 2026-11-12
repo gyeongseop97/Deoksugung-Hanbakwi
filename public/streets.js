@@ -172,7 +172,8 @@ export function buildJeongdong(T,scene,kit) {
   ribbon(route,2.78,2.95,curb,.060);
   ribbon(route,-2.65,-2.57,gold,.020);
   ribbon(route,2.57,2.65,gold,.020);
-  ribbon(entranceWalk,-7.2,7.2,pavingMaterial,.039);
+  // Keep the entrance paving above the adjoining avenue pavement where their footprints meet.
+  ribbon(entranceWalk,-7.2,7.2,pavingMaterial,.054);
   plot(estateOutline,earthMaterial,.008);
   plot(stonewallVerge,gardenMaterials.lawn,.010);
   for(const {outline,kind} of palaceGardens)plot(outline,gardenMaterials[kind],.017);
@@ -744,7 +745,7 @@ export function buildJeongdong(T,scene,kit) {
   const kiosk=new T.Group();kiosk.name=ticket.name;kiosk.position.set(tp.x,0,tp.z);kiosk.rotation.y=ticket.angle;scene.add(kiosk);
   const front=ticket.d/2;
   const threshold=placed(fromBuilding(ticket,0,2.56));
-  paved(threshold.x,threshold.z,9.4,5.1,.046,ticket.angle);
+  paved(threshold.x,threshold.z,9.4,5.1,.068,ticket.angle);
   const booth=new T.Mesh(new T.BoxGeometry(ticket.w,3.03,ticket.d),stoneMaterial);
   booth.position.y=1.54;kiosk.add(uvScale(booth,1.75,1.2));
   box(0x8b8c7e,0,.15,0,ticket.w+.11,.28,ticket.d+.12,kiosk);
