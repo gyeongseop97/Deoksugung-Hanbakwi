@@ -1,5 +1,5 @@
 import {
-  route,palacePaths,palaceCourts,palaceGardens,palacePond,palaceWalls,fountain,ticket,ticketApproach,ticketGuide,gate,bridge,court,
+  route,palacePaths,palaceCourts,palaceGardens,palacePond,palaceWalls,fountain,ticket,ticketApproach,ticketGuide,gate,bridge,court,spawn,
   middle,hall,stoneHall,stoneFountain,city,pavilions,estateOutline,nearest,distance as near,walkable,clearSegment,wadeSegment,waterDepth,loftStep,loftHeight,loftStair,planWalk,platformAt
 } from "./layout.js";
 import {normalize,angleDelta,hexCoat,moving,receivePeople,smoothPeople,handPosition,handSide,pairFits} from "./people.js";
@@ -13,7 +13,8 @@ import {bindSceneTouch} from "./scene-touch.js";
 import {makeSound} from "./sound.js";
 import {ceremonyAt} from "./palace-people.js";
 import {cityHallStation,gbSites,gbBounds,gbLake,gbPond,gbPaths,gbCourts,gbLawns,gbShortcuts,wishPond,gbPhotoZone,gbUijeongbu,gbCrossings,gbBusIsland,inGyeongbok,wallHalf,wallNorth,at as palaceAt} from "./gyeongbok-layout.js";
-import {inGwanghwamunPlaza,plazaAt,plazaBounds,plazaSites,plazaOutline,plazaPaths,plazaShortcuts,plazaBeds,plazaRoadProfile,eastRoadWidth} from "./plaza-layout.js";
+import {inGwanghwamunPlaza,plazaAt,plazaBounds,plazaSites,plazaOutline,plazaPaths,plazaShortcuts,plazaBeds,plazaRoadProfile,eastRoadWidth,sajikRoad} from "./plaza-layout.js";
+import {corridorBounds,corridorLandmarks,corridorSidewalks,corridorCrossings,corridorWalkSpine,corridorMainRoad,inSejongCorridor} from "./sejong-corridor-layout.js";
 import {transitRoutes,transitStops} from "./transit-routes.js";
 
 const $=id=>document.getElementById(id);
@@ -232,7 +233,9 @@ const trackPins=[$("track-pin"),$("mini-track-pin")];
 function setText(node,value){if(node.textContent!==value)node.textContent=value;}
 const sceneTitle=document.querySelector(".scene-title");
 function outdoorMap({x,y}){
-  return inGwanghwamunPlaza(x,y)?"광화문광장":inGyeongbok(x,y)?"경복궁":"덕수궁";
+  if(inGyeongbok(x,y))return "경복궁";
+  if(inGwanghwamunPlaza(x,y))return "광화문광장";
+  return y<179&&inSejongCorridor(x,y)?"세종대로":"덕수궁";
 }
 function shownPlace(point){
   const place=placeName(point);
@@ -322,10 +325,10 @@ function readLookSignals(serverTime){
   }
 }
 function guideLocation(point,indoors){
-  if(!indoors&&!isInsideMuseum(point.x,point.y)&&outdoorMap(point)!==outdoorMap(me)){
-    return {point:null,prefix:outdoorMap(point)+" · 교통편으로 이동"};
+  if(isInsideMuseum(point.x,point.y)===indoors){
+    const area=outdoorMap(point);
+    return {point,prefix:!indoors&&area!==outdoorMap(me)?area:""};
   }
-  if(isInsideMuseum(point.x,point.y)===indoors)return {point,prefix:""};
   return indoors?{point:world?.museum.insideDoor,prefix:"전시관 출구까지"}:
     {point:world?.museum.outsideDoor,prefix:"전시관 입구까지"};
 }
@@ -787,7 +790,7 @@ const plazaDestinations=[
   {label:"광화문 앞",aria:"광화문 앞으로 순간이동",...plazaShortcuts.north},
   {label:"정류장",aria:"세종문화회관 정류장으로 순간이동",...plazaShortcuts.bus}
 ];
-const shortcutsHere=()=>inGwanghwamunPlaza(me.x,me.y)?plazaDestinations:inGyeongbok(me.x,me.y)?gbShortcuts:mapDestinations;
+const shortcutsHere=()=>inGyeongbok(me.x,me.y)?gbShortcuts:inGwanghwamunPlaza(me.x,me.y)?plazaDestinations:mapDestinations;
 let shownShortcuts=null;
 function refreshShortcuts(){
   const shortcuts=shortcutsHere();
@@ -884,7 +887,9 @@ document.querySelectorAll("[data-key]").forEach(button=>{
   });
 });
 $("world").addEventListener("click",event=>{
-  const point=new DOMPoint(event.clientX,event.clientY).matrixTransform($("world").getScreenCTM().inverse());
+  const target=event.target.closest("[data-walk-x]");
+  const point=target?{x:Number(target.dataset.walkX),y:Number(target.dataset.walkY)}:
+    new DOMPoint(event.clientX,event.clientY).matrixTransform($("world").getScreenCTM().inverse());
   walkTo(point);setMap(false);
 });
 const clearSceneTouch=bindSceneTouch($("game"),gameShell,{
@@ -1350,6 +1355,13 @@ function svg(parent,type,attributes,text){
 }
 const outline=points=>points.map(p=>p.x.toFixed(1)+","+p.y.toFixed(1)).join(" ");
 const museumMaps=[];
+let overviewOpen=false,overviewLayer;
+const overviewButton=$("overview-map");
+overviewButton.addEventListener("click",()=>{
+  overviewOpen=!overviewOpen;
+  overviewButton.setAttribute("aria-pressed",String(overviewOpen));
+  overviewButton.textContent=overviewOpen?"주변 지도":"전체 지도";
+});
 function drawMap(base,mini=false){
   svg(base,"rect",{width:600,height:450,fill:"#23302a"});
   if(!mini)svg(base,"rect",{width:600,height:450,fill:"url(#grid)"});
@@ -1383,6 +1395,7 @@ function drawMap(base,mini=false){
     svg(base,"text",{x:point.x,y:point.y+2.6,class:mini?"mini-landmark":"map-label","text-anchor":"middle",
       ...(mini?{}:{style:"font-size:9px;stroke-width:2.6px"})},point===palacePond?"연못":point.name);
   }
+  drawCorridor(base,mini);
   drawGyeongbok(base,mini);
   drawPlaza(base,mini);
   const {minX,maxX,minY,maxY}=museumBounds;
@@ -1414,15 +1427,40 @@ function drawMap(base,mini=false){
   }
   svg(base,"text",{x:548,y:94,class:"map-faint","text-anchor":"middle"},"↑ N");
 }
-// The Gyeongbokgung map shares the same drawing; the view box moves there on arrival.
+function drawCorridor(base,mini){
+  svg(base,"polygon",{points:outline(corridorMainRoad),fill:"#4e5351"});
+  for(const points of corridorSidewalks)svg(base,"polygon",{points:outline(points),fill:"#847c62"});
+  for(const crossing of corridorCrossings)svg(base,"polygon",{points:outline(crossing.outline),fill:"#c7c0aa"});
+  svg(base,"polyline",{points:outline(corridorWalkSpine),fill:"none",stroke:"#d7c291","stroke-width":mini?1.15:2.6,
+    "stroke-linejoin":"round","stroke-dasharray":"3 3"});
+  for(const [index,point] of corridorLandmarks.entries()){
+    const side=index%2?1:-1;
+    svg(base,"circle",{cx:point.x,cy:point.y,r:mini?1.5:3,fill:"#e1c790"});
+    svg(base,"text",{x:point.x+(mini?0:side*10),y:point.y+(mini?-3.5:4),class:mini?"mini-landmark":"map-label plaza-map-label",
+      "text-anchor":mini?"middle":side===1?"start":"end"},point.shortName??point.name);
+  }
+}
+function drawOverview(base){
+  const layer=svg(base,"g",{visibility:"hidden"});
+  const path=[spawn,...corridorWalkSpine,...plazaPaths[0].points,palaceAt(0,-37),palaceAt(0,260)];
+  svg(layer,"polyline",{points:outline(path),fill:"none",stroke:"#f1d18b","stroke-width":9,"stroke-linejoin":"round",
+    "stroke-linecap":"round","stroke-dasharray":"14 9",opacity:.9});
+  for(const [point,name,side] of [[spawn,"덕수궁",-1],[plazaAt(-12,240),"광화문광장",1],[palaceAt(0,245),"경복궁",1]]){
+    const destination=svg(layer,"g",{"data-walk-x":point.x,"data-walk-y":point.y});
+    svg(destination,"circle",{cx:point.x,cy:point.y,r:13,fill:"#f2d59b",stroke:"#40392c","stroke-width":5});
+    svg(destination,"text",{x:point.x+side*34,y:point.y+9,class:"map-label","text-anchor":side<0?"end":"start",
+      style:"font-size:41px;stroke-width:8px"},name);
+  }
+  return layer;
+}
+
+// The detailed views crop the same continuous world around each district.
 function drawGyeongbok(base,mini){
   const box=(west,east,south,north)=>{
     const a=palaceAt(west,north),b=palaceAt(east,south);
     return {x:a.x,y:a.y,width:b.x-a.x,height:b.y-a.y};
   };
-  svg(base,"rect",{...box(-300,300,-176,wallNorth+60),fill:"#23302a"});
-  svg(base,"rect",{...box(-300,300,-89,-59),fill:"#3a4240"});
-  svg(base,"rect",{...box(-92,92,-58,0),fill:"#766c5a"});
+  svg(base,"rect",{...box(-92,92,-52,0),fill:"#766c5a"});
   // Across the road: the Uijeongbu site plaza, the crossings and the bus-stop island.
   svg(base,"rect",{...box(gbUijeongbu.west,gbUijeongbu.east,gbUijeongbu.south,gbUijeongbu.north),fill:"#55704c",stroke:"#929283","stroke-width":1.6,rx:4});
   svg(base,"rect",{...box(gbBusIsland.west,gbBusIsland.east,gbBusIsland.south,gbBusIsland.north),fill:"#766c5a",rx:3});
@@ -1467,8 +1505,9 @@ function drawGyeongbok(base,mini){
   }
 }
 function drawPlaza(base,mini){
-  const {minX,maxX,minY,maxY}=plazaBounds;
-  svg(base,"rect",{x:minX,y:minY,width:maxX-minX,height:maxY-minY,fill:"#333b38"});
+  const northRoad=plazaAt(-310,sajikRoad.north),crosswalk=plazaAt(sajikRoad.crossX-sajikRoad.crossWidth/2,sajikRoad.north);
+  svg(base,"rect",{x:northRoad.x,y:northRoad.y,width:620,height:sajikRoad.north-sajikRoad.south,fill:"#3a4240"});
+  svg(base,"rect",{x:crosswalk.x,y:crosswalk.y,width:sajikRoad.crossWidth,height:sajikRoad.north-sajikRoad.south,fill:"#c7c0aa"});
   const road=plazaRoadProfile.map(([n,e])=>plazaAt(e+eastRoadWidth/2,n));
   svg(base,"polyline",{points:outline(road),fill:"none",stroke:"#4e5351","stroke-width":eastRoadWidth});
   svg(base,"polygon",{points:outline(plazaOutline),fill:"#6a6c56",stroke:"#9f977b","stroke-width":1.5});
@@ -1498,6 +1537,9 @@ function drawPlaza(base,mini){
 }
 const gyeongbokViewBox=[gbBounds.minX+18,gbBounds.minY-24,564,1098].join(" ");
 const plazaViewBox=[plazaBounds.minX,plazaBounds.minY,plazaBounds.maxX-plazaBounds.minX,plazaBounds.maxY-plazaBounds.minY].join(" ");
+const corridorViewBox=[corridorBounds.minX-18,corridorBounds.minY,corridorBounds.maxX-corridorBounds.minX+36,
+  corridorBounds.maxY-corridorBounds.minY].join(" ");
+const fieldViewBox=[38,gbBounds.minY-28,Math.max(gbBounds.maxX,corridorBounds.maxX)-10,450-gbBounds.minY].join(" ");
 function attr(node,key,value){if(node.getAttribute(key)!==String(value))node.setAttribute(key,value);}
 function drawDestinations(world){
   const layer=$("map-landscape");
@@ -1509,8 +1551,10 @@ function drawDestinations(world){
 }
 function updateMaps(self,others){
   const indoors=isInsideMuseum(self.x,self.y),palace=inGyeongbok(self.x,self.y),plaza=inGwanghwamunPlaza(self.x,self.y);
-  const area=outdoorMap(self);
-  attr($("my-avatar"),"transform","translate("+self.x+" "+self.y+")"+(indoors?" scale(.18)":palace?" scale(2.2)":plaza?" scale(1.55)":""));
+  const corridor=outdoorMap(self)==="세종대로",overview=overviewOpen&&!indoors;
+  attr(overviewLayer,"visibility",overview?"visible":"hidden");
+  overviewButton.hidden=indoors;
+  attr($("my-avatar"),"transform","translate("+self.x+" "+self.y+")"+(indoors?" scale(.18)":overview?" scale(2.8)":palace?" scale(2.2)":plaza||corridor?" scale(1.55)":""));
   const coat=hexCoat(self.coat??0xe5b672);
   $("my-avatar").querySelector("circle").style.fill=coat;
   attr($("mini-my"),"fill",coat);
@@ -1518,7 +1562,7 @@ function updateMaps(self,others){
   for(const map of museumMaps)attr(map,"visibility",indoors?"visible":"hidden");
   $("world").classList.toggle("museum-map",indoors);
   $("mini-world").classList.toggle("museum-map",indoors);
-  attr($("world"),"viewBox",indoors?museumViewBox:palace?gyeongbokViewBox:plaza?plazaViewBox:"58 28 520 397");
+  attr($("world"),"viewBox",indoors?museumViewBox:overview?fieldViewBox:palace?gyeongbokViewBox:plaza?plazaViewBox:corridor?corridorViewBox:"58 28 520 397");
   attr($("mini-world"),"viewBox",indoors?museumViewBox:(self.x-42).toFixed(1)+" "+(self.y-35).toFixed(1)+" 84 70");
   for(const actor of others.values()){
     let mark=markers.get(actor.id);
@@ -1530,9 +1574,9 @@ function updateMaps(self,others){
       mark={big,mini};markers.set(actor.id,mark);
     }
     for(const node of [mark.big,mark.mini]){attr(node,"cx",actor.x);attr(node,"cy",actor.y);}
-    attr(mark.big,"r",indoors?1.45:palace?17:plaza?12:8);
+    attr(mark.big,"r",indoors?1.45:overview?20:palace?17:plaza||corridor?12:8);
     attr(mark.mini,"r",indoors?1.1:2.5);
-    const visible=isInsideMuseum(actor.x,actor.y)===indoors&&outdoorMap(actor)===area?"visible":"hidden";
+    const visible=isInsideMuseum(actor.x,actor.y)===indoors?"visible":"hidden";
     attr(mark.big,"visibility",visible);attr(mark.mini,"visibility",visible);
   }
   for(const [id,mark] of markers)if(!others.has(id)){mark.big.remove();mark.mini.remove();markers.delete(id);}
@@ -1546,7 +1590,8 @@ for(const exhibit of Object.values(museumExhibits)){
   link.textContent=exhibit.title+" · "+exhibit.sourceLabel;
   item.append(link);$("exhibit-credits").append(item);
 }
-drawMap($("map-landscape"));drawMap($("mini-landscape"),true);applyNight(ownView);
+drawMap($("map-landscape"));overviewLayer=drawOverview($("map-landscape"));
+drawMap($("mini-landscape"),true);applyNight(ownView);
 const savedCode=sessionStorage.getItem("jeongdong-room-code");
 const savedOpen=sessionStorage.getItem("jeongdong-room-mode")==="open";
 if(nickname.value&&(savedCode&&(!suppliedCode||suppliedCode===savedCode)||savedOpen&&!suppliedCode)){
