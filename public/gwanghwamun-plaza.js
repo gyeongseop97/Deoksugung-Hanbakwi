@@ -1,0 +1,467 @@
+import {addObstacle} from "./layout.js";
+import {makeTreeBuilder} from "./lowpoly-trees.js";
+import {addPlazaCity} from "./plaza-city.js";
+import {addPlazaMonuments,plazaMonumentFootprints} from "./plaza-monuments.js";
+import {plazaAt,plazaOutline,plazaBeds,plazaSites,plazaTransitStops,insidePlazaPolygon,
+  plazaRoadProfile,plazaCrossings,eastCurb,eastRoadWidth,sajikRoad,haechiBasin} from "./plaza-layout.js";
+
+const between=(a,b,t)=>a+(b-a)*t;
+const rect=(left,right,bottom,top)=>[[left,bottom],[right,bottom],[right,top],[left,top]].map(([e,n])=>plazaAt(e,n));
+
+export function buildGwanghwamunPlaza(T,scene,kit,{gatehouse,haetae=[],benches}){
+  const group=new T.Group();group.name="광화문광장";scene.add(group);
+  const {wx,wz,box,cylinder,matte}=kit;
+  let seed=3720957;
+  const random=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};
+  const glow=[];
+  const lamp=(color,emissive,day,strength)=>{
+    const material=new T.MeshStandardMaterial({color,emissive,emissiveIntensity:day,roughness:.65});
+    glow.push({material,day,strength});return material;
+  };
+  const lampGlass=lamp(0xf1e8c8,0xffcb81,.05,1.8),blueSign=lamp(0x20459b,0x3260d4,.07,.8);
+  const water=lamp(0x6cabc2,0x1a5f83,.04,.30);
+  const world=(e,n)=>{const point=plazaAt(e,n);return {x:wx(point.x),z:wz(point.y)};};
+  function block(color,e,n,w,d,h,base=0,rotation=0,collide=false){
+    const {x,z}=world(e,n),mesh=box(color?.isMaterial?0xffffff:color,x,base+h/2,z,w,h,d,group);
+    if(color?.isMaterial)mesh.material=color;
+    mesh.rotation.y=rotation;
+    if(collide){const point=plazaAt(e,n);addObstacle(point.x,point.y,w,d,rotation,base+h);}
+    return mesh;
+  }
+  function collision(e,n,w,d,top=Infinity){
+    const point=plazaAt(e,n);addObstacle(point.x,point.y,w,d,0,top);
+  }
+  function segments(points,visit){
+    for(let i=1;i<points.length;i++)visit(points[i-1],points[i]);
+  }
+  function line(color,a,b,width,height,base=0,solid=false){
+    const dx=b.east-a.east,dn=b.north-a.north;
+    return block(color,(a.east+b.east)/2,(a.north+b.north)/2,Math.hypot(dx,dn)+.015,width,height,base,Math.atan2(dn,dx),solid);
+  }
+
+  function stoneTexture(){
+    const size=128,pixels=new Uint8Array(size*size*4),shades=[155,162,149,169,157,154,166,160];
+    for(let y=0;y<size;y++)for(let x=0;x<size;x++){
+      const row=Math.floor(y/32),shift=row%2*16,col=Math.floor(((x+shift)%128)/32);
+      const joint=y%32===0||(x+shift)%32===0;
+      const tone=(joint?113:shades[(row*3+col*5)%shades.length])+Math.floor(random()*13-6);
+      const i=(y*size+x)*4;
+      pixels.set([tone+3,tone+1,tone-5,255],i);
+    }
+    const texture=new T.DataTexture(pixels,size,size);
+    texture.colorSpace=T.SRGBColorSpace;texture.wrapS=texture.wrapT=T.RepeatWrapping;
+    texture.magFilter=T.LinearFilter;texture.minFilter=T.LinearMipmapLinearFilter;
+    texture.generateMipmaps=true;texture.anisotropy=4;texture.needsUpdate=true;
+    return new T.MeshStandardMaterial({map:texture,roughness:.94});
+  }
+  const stone=stoneTexture(),road=matte(0x42464b),soil=matte(0x59554a);
+  const outlinePath=(outline,Path)=>new Path(outline.map(p=>new T.Vector2(wx(p.x),-wz(p.y))));
+  function surface(outline,material,height=0,holes=[]){
+    const path=outlinePath(outline,T.Shape);
+    path.holes=holes.map(hole=>outlinePath(hole,T.Path));
+    const geometry=new T.ShapeGeometry(path),uv=geometry.attributes.uv,positions=geometry.attributes.position;
+    for(let i=0;i<uv.count;i++)uv.setXY(i,positions.getX(i)/3.6,positions.getY(i)/3.6);
+    geometry.rotateX(-Math.PI/2);
+    const mesh=new T.Mesh(geometry,material);mesh.position.y=height;mesh.receiveShadow=true;group.add(mesh);
+    return mesh;
+  }
+
+  const basin=haechiBasin,basinHole=rect(basin.west,basin.east,basin.south,basin.north);
+  surface(rect(-137,126,-27,635),matte(0x696e60),-.059,[basinHole]);
+  surface(basinHole,matte(0x696e60),-2.24);
+  surface(plazaOutline,stone,.025,[basinHole]);
+  surface(rect(-55,-45,0,430),stone,.021);
+  surface(rect(-61,54,551,620),stone,.018);
+  surface(rect(42,80,490,528),matte(0xaea28a),.018);
+  surface(rect(-116,88,-26,0),road,-.018);
+  surface(rect(-123,99,sajikRoad.south,sajikRoad.north),road,-.012);
+  const roadside=plazaRoadProfile.map(([north,east])=>plazaAt(east,north));
+  const farCurb=plazaRoadProfile.map(([north,east])=>plazaAt(east+eastRoadWidth,north));
+  surface([...roadside,...farCurb.slice().reverse()],road,-.012);
+  surface([...farCurb,...plazaRoadProfile.slice().reverse().map(([n,e])=>plazaAt(Math.max(48,e+eastRoadWidth+8),n))],stone,.016);
+  segments(roadside,(a,b)=>line(0xb2b2a8,a,b,.19,.12,-.03));
+  segments(farCurb,(a,b)=>line(0xb2b2a8,a,b,.19,.12,-.03));
+  for(let n=1;n<524;n+=7.4){
+    for(const lane of [3.6,7.2,10.8,17.4,21,24.6]){
+      if(plazaCrossings.some(cross=>Math.abs(cross-n)<6))continue;
+      block(0xc9c9bb,eastCurb(n)+lane,n,.09,3.5,.012,0);
+    }
+    for(const side of [-.17,.17])block(0xd3a944,eastCurb(n)+14+side,n,.09,7.48,.012,0);
+  }
+  for(const n of plazaCrossings){
+    const curb=eastCurb(n);
+    for(let i=.65;i<eastRoadWidth;i+=1.08)block(0xd7d7cf,curb+i,n,.56,6.75,.014,0);
+    for(const side of [-.8,eastRoadWidth+.8])block(0xd1a84a,curb+side,n,.38,6.9,.021,.028);
+  }
+  for(let n=530;n<551;n+=1.04)block(0xdeddd1,sajikRoad.crossX,n,sajikRoad.crossWidth-.45,.52,.018,0);
+  for(let n=-19;n<0;n+=1.05)block(0xcdcfc5,1,n,8.2,.51,.015,0);
+  for(let e=-116;e<94;e+=7.5){
+    if(Math.abs(e-sajikRoad.crossX)<10)continue;
+    block(0xc9c5b5,e,539.5,3.6,.11,.012,.003);
+  }
+
+  const trees=makeTreeBuilder(T,group,{rand:random,clearance:{meshFits:()=>true,trim:()=>true}});
+  for(const bed of plazaBeds){
+    const lawn=bed.kind==="lawn",pine=bed.kind==="pine";
+    surface(bed.outline,lawn?matte(bed.id==="yukjo-lawn"?0x8c9b53:0x768849):soil,lawn?.039:.22);
+    const closed=[...bed.outline,bed.outline[0]];
+    segments(closed,(a,b)=>line(lawn?0xa5a58e:0x96988e,a,b,lawn?.15:.25,lawn?.07:.22,.02));
+    if(lawn){
+      if(bed.id==="yukjo-lawn")for(let n=454;n<=494;n+=4)block(n%8===2?0x84934d:0x8e9c57,-22.5,n,25.5,3.95,.013,.043);
+      continue;
+    }
+    const east=bed.outline.map(p=>p.east),north=bed.outline.map(p=>p.north),minE=Math.min(...east),minN=Math.min(...north);
+    const width=Math.max(...east)-minE,length=Math.max(...north)-minN,planted=[];
+    const target=Math.max(2,Math.min(17,Math.ceil(width*length/58)));
+    for(let i=0;i<target*9&&planted.length<target;i++){
+      const e=minE+1+random()*(width-2),n=minN+1+random()*(length-2),p=plazaAt(e,n);
+      if(!insidePlazaPolygon(p.x,p.y,bed.outline)||planted.some(a=>Math.hypot(a.east-e,a.north-n)<4.6))continue;
+      const {x,z}=world(e,n),r=random(),style=pine?"cloud":r<.4?"branchy":r<.73?"round":"column";
+      trees.grow(x,z,{height:pine?6+random()*3:3.8+random()*4.9,style,
+        palette:pine?"pine":r<.22?"ginkgo":r<.39?"amber":r<.52?"maple":r<.73?"olive":"deep"});
+      planted.push(p);
+    }
+    for(let i=0;i<target*5;i++){
+      const e=minE+random()*width,n=minN+random()*length,p=plazaAt(e,n);
+      if(!insidePlazaPolygon(p.x,p.y,bed.outline))continue;
+      const {x,z}=world(e,n),shrub=trees.shrub(x,z,.29+random()*.56,random()<.67?"deep":"olive");
+      if(shrub)shrub.position.y+=.18;
+    }
+  }
+
+  function label(text,width,height,{color="#eee9dc",background="#26363c",sub=""}={}){
+    const canvas=document.createElement("canvas");canvas.width=640;canvas.height=160;
+    const ctx=canvas.getContext("2d");ctx.fillStyle=background;ctx.fillRect(0,0,640,160);
+    ctx.fillStyle=color;ctx.textBaseline="middle";ctx.textAlign="center";
+    ctx.font=`700 ${sub?57:66}px "Malgun Gothic",sans-serif`;
+    ctx.fillText(text,320,sub?60:81,605);
+    if(sub){ctx.font='28px "Malgun Gothic",sans-serif';ctx.fillText(sub,320,115,605);}
+    const texture=new T.CanvasTexture(canvas);texture.colorSpace=T.SRGBColorSpace;
+    const mat=new T.MeshStandardMaterial({map:texture,roughness:.86,side:T.DoubleSide});
+    return new T.Mesh(new T.PlaneGeometry(width,height),mat);
+  }
+  function sign(text,e,n,y,angle,width,height,opts){
+    const {x,z}=world(e,n),mesh=label(text,width,height,opts);
+    mesh.position.set(x,y,z);mesh.rotation.y=angle;group.add(mesh);return mesh;
+  }
+  function pole(e,n,height=6.3,side=-1){
+    const {x,z}=world(e,n);
+    cylinder(0x565e5e,x,height/2,z,.087,height,8,group);
+    cylinder(0x535b5a,x,.20,z,.16,.4,8,group);
+    block(0x5b6361,e+side*.48,n,1.03,.082,.083,height-.12);
+    block(lampGlass,e+side*1.03,n,.46,.21,.083,height-.16);
+    collision(e,n,.30,.30);
+  }
+  for(let n=28;n<518;n+=21.5){
+    if(!plazaCrossings.some(cross=>Math.abs(cross-n)<6))pole(eastCurb(n)-.9,n);
+  }
+  for(const n of [33,96,137,174,227,309,369,401,444,493])pole(-49,n,4.1,1);
+  for(let n=18;n<518;n+=3.15){
+    if(plazaCrossings.some(cross=>Math.abs(cross-n)<6)||Math.abs(358-n)<8)continue;
+    const e=eastCurb(n)-.32;
+    block(0x666f6d,e,n,.076,.076,.82,.03);
+    block(0x707876,e,n+1.54,.053,3.10,.052,.74);
+    block(0x707876,e,n+1.54,.045,3.10,.044,.37);
+    collision(e,n+1.54,.12,3.11,.87);
+  }
+
+  function bench(e,n,angle=0){
+    const p=plazaAt(e,n),x=wx(p.x),z=wz(p.y),seat=new T.Group();
+    seat.position.set(x,.025,z);seat.rotation.y=angle;group.add(seat);
+    for(const side of [-1,1])box(0x8d9390,side*.86,.23,0,.17,.46,.54,seat);
+    for(let k=0;k<5;k++)box(k%2===0?0xa17650:0x986f4d,0,.483,(k-2)*.103,2.30,.061,.095,seat);
+    addObstacle(p.x,p.y,2.28,.54,angle,.515);
+    const dx=Math.sin(angle),dy=Math.cos(angle),heading=(Math.atan2(dx,-dy)*180/Math.PI+360)%360;
+    const slots=[-.56,.56].map(offset=>{
+      const x=p.x+dy*offset,y=p.y-dx*offset;
+      return {x,y,heading,approach:{x:x+dx*.86,y:y+dy*.86}};
+    });
+    benches.push({x:p.x,y:p.y,slots,catPerch:{x:p.x,y:p.y,height:.515,heading:angle,
+      approach:{x:p.x+dx*1.12,y:p.y+dy*1.12}}});
+  }
+  for(const [e,n,angle] of [[-24,26,1.57],[-23,43,1.57],[-23,58,1.57],[-44,83,1.57],[-34,93,0],
+    [-39,157,1.57],[-32,188,-1.57],[-37,205,1.57],[-37,254,0],[-20,287,1.57],[-43,300,-1.57],
+    [-32,340,1.57],[-27,398,1.57],[-29,434,1.57],[-7,466,1.57],[-40,479,-1.57],[-32,514,0]])bench(e,n,angle);
+
+  // Southbound exit canopy and the curbside bus shelter both stand outside the walking lane.
+  const [station,bus]=plazaTransitStops;
+  const sx=station.east,sn=station.north;
+  block(0xb7b7ae,sx,sn,8.7,4.1,.15,.02);
+  block(0x596967,sx-1.1,sn,6.3,4.1,2.48,.17);
+  block(0x415455,sx-.70,sn,7.55,4.37,.22,2.65);
+  for(const side of [-1,1]){
+    block(0x738c93,sx+.3,sn+side*1.78,6.3,.08,1.66,.50);
+    block(0x3b494d,sx+3.5,sn+side*1.78,.15,.15,2.60,.06);
+  }
+  block(0x293a3e,sx+2.10,sn,3.22,2.92,.08,.17);
+  for(let i=0;i<8;i++)block(0x657471,sx+1.0+i*.30,sn,.28,2.88,.035,.255);
+  collision(sx-.55,sn,7.8,4.04);
+  sign("광화문역 7",sx+3.73,sn,2.89,Math.PI/2,4.03,.50,{background:"#4e318b",sub:"Gwanghwamun  ·  Line 5"});
+  const bx=bus.east,bn=bus.north;
+  block(0x54666a,bx,bn,2.30,7.6,.14,2.93);
+  block(0x769195,bx+.98,bn,.10,7.34,2.25,.54);
+  block(0x474f4d,bx+.49,bn,1.18,4.30,.14,.42);
+  for(const side of [-1,1])block(0x485753,bx+.80,bn+side*3.50,.14,.16,2.9,.04);
+  block(blueSign,bx+.36,bn-4.1,.17,.77,.91,1.88);
+  sign("세종문화회관",bx-.39,bn,2.92,-Math.PI/2,5.5,.33,{background:"#415458"});
+  collision(bx+.55,bn,1.20,7.4,2.9);
+
+  // The media ramp is set down into the plaza, with a real sloped walking surface.
+  const {west,east,south,north,rampEnd,depth}=basin;
+  surface(rect(west,east,south,rampEnd),stone,-depth);
+  const positions=[];
+  for(const [e,n,y] of [[west,rampEnd,-depth],[east,rampEnd,-depth],[east,north,0],
+    [west,rampEnd,-depth],[east,north,0],[west,north,0]]){
+    const p=world(e,n);positions.push(p.x,y,p.z);
+  }
+  const rampGeometry=new T.BufferGeometry();rampGeometry.setAttribute("position",new T.Float32BufferAttribute(positions,3));
+  rampGeometry.setAttribute("uv",new T.Float32BufferAttribute([0,0,4,0,4,5,0,0,4,5,0,5],2));rampGeometry.computeVertexNormals();
+  const ramp=new T.Mesh(rampGeometry,stone);ramp.receiveShadow=true;group.add(ramp);
+  const basinLength=north-south,centre=(north+south)/2;
+  for(const side of [west,east]){
+    block(0x8b9290,side,centre,.31,basinLength,depth,-depth);
+    block(0x596864,side,centre,.08,basinLength,.07,.90);
+    block(0xa2a7a1,side,centre,.45,basinLength,.21,.02);
+    for(let n=south+.4;n<north;n+=2.2)block(0x697570,side,n,.09,.09,.92,.02);
+    collision(side,centre,.33,basinLength,1.02);
+  }
+  block(0x8d9291,(west+east)/2,south,east-west,.48,depth+.95,-depth);
+  collision((west+east)/2,south,east-west,.48,1.02);
+  for(let i=0;i<4;i++){
+    const e=west+1.05+i*.98;
+    block(0xb2b0a6,e,108,.93,17.2,.20+i*.16,-depth);
+    block(0x8e6a51,e,108,.84,16.9,.055,-depth+.20+i*.16);
+    collision(e,108,.96,17.2,1.02);
+  }
+  const mediaMaterials=[];
+  for(let i=0;i<15;i++){
+    const panel=lamp(0x213d4d,0x4da0b5,.28,.75);
+    mediaMaterials.push(panel);block(panel,east-.18,98.5+i*1.28,.04,1.22,1.55,-1.92);
+  }
+  sign("해치마당",-23,94,1.1,0,2.45,.52,{sub:"HAECHI MADANG"});
+
+  // Historic channel, courtyard shade and the protected archaeological remains.
+  for(const [start,end] of [[155,186],[202,248],[283,306],[345,380],[397,434],[456,513]]){
+    const e=-19.6,n=(start+end)/2;
+    block(0x777e79,e,n,.96,end-start,.045,.03);
+    block(water,e,n,.63,end-start-.18,.04,.074);
+    for(const side of [-1,1])block(0xa3a7a0,e+side*.47,n,.16,end-start,.064,.041);
+  }
+  const ruins=plazaSites.ruins;
+  block(0x6b665a,ruins.east,ruins.north,10.7,13.8,.13,.02);
+  for(const [e,n,w,d] of [[-40,362,1,10],[-35,358,7,1],[-34,366,4,1],[-38,365,2,1],[-33,363,1,7]]){
+    block(0xa3947e,e,n,w,d,.37,.14);
+  }
+  for(const e of [-42.6,-31.4])for(const n of [355,369])block(0x6d4c37,e,n,.26,.26,2.65,.02);
+  for(let i=0;i<11;i++){
+    const distance=Math.abs(i-5)/5;
+    block(0x635e52,ruins.east+(i-5)*1.14,ruins.north,1.17,15.4,.21,2.68+distance*distance*.40,
+      0);
+  }
+  collision(ruins.east,ruins.north,10.9,14.0);
+  sign("사헌부 문터",-36,354.6,.81,0,2.3,.45);
+  block(0x777b74,-34,404,9.2,.48,1.31,.05,0,true);
+  block(water,-34,403.71,8.45,.034,.95,.21);
+  block(0x93948a,-34,402.5,9.3,2.14,.21,.045,0,true);
+  block(water,-34,402.44,8.78,1.74,.027,.264);
+  for(const [e,n,w,d] of [[-33,174,4,1.22],[-35,177,4,1.22],[-38,209,4,1.22]]){
+    block(0x8e7154,e,n,w,d,.10,.73,0,true);
+    for(const dx of [-1.65,1.65])block(0x6a7065,e+dx,n,.15,d-.20,.73);
+  }
+
+  // Exposed foundations across from the northern part of the plaza.
+  surface(rect(52,78,493,525),matte(0xa69780),.049);
+  for(const [e,n,w,d] of [[62,503,13,.6],[59,511,.68,13],[68,512,.57,15],[63,518,13,.72],[65,497,9,.65]]){
+    block(0x8a8372,e,n,w,d,.31,.052);
+    const along=w>d,length=Math.max(w,d);
+    for(let i=.4;i<length-.3;i+=.79){
+      const shift=i-length/2;
+      block(i%2<1?0xa69c85:0xb6aa92,e+(along?shift:0),n+(along?0:shift),along?.70:w+.05,along?d+.04:.70,.14,.34);
+    }
+  }
+  for(const [a,b] of [[plazaAt(51.8,493),plazaAt(51.8,525)],[plazaAt(51.8,493),plazaAt(78,493)]]){
+    line(0x737d77,a,b,.06,.065,.91,true);
+    const length=Math.hypot(b.east-a.east,b.north-a.north);
+    for(let i=0;i<length;i+=1.65)block(0x596963,between(a.east,b.east,i/length),between(a.north,b.north,i/length),.09,.09,.94,.04);
+  }
+  sign("의정부지",51.1,517,.96,-Math.PI/2,2.7,.55);
+
+  // The tiled enclosure on the opposite south-east corner houses the commemorative stele.
+  const stele={east:52,north:12};
+  block(0xa19a89,stele.east,stele.north,6.0,5.2,.45,.018);
+  block(0x777268,stele.east,stele.north,1.13,.55,2.45,.46);
+  for(const ex of [-2.1,2.1])for(const nz of [-1.74,1.74]){
+    block(0x999184,stele.east+ex,stele.north+nz,.66,.66,.28,.46);
+    block(0x803f36,stele.east+ex,stele.north+nz,.31,.31,2.75,.74);
+  }
+  for(const side of [-1,1]){
+    const roof=block(0x424841,stele.east,stele.north+side*1.22,5.66,2.66,.17,3.80);
+    roof.rotation.x=-side*.39;
+    block(0x426c59,stele.east,stele.north+side*2.32,5.47,.21,.30,3.30);
+  }
+  block(0x414840,stele.east,stele.north,5.42,.22,.22,4.34);
+
+  const granite=[0xa3a8a2,0xb6afa0,0x8c9498,0xc3c0b1,0x928984,0xa6a5ae,0x9d9990];
+  for(let i=0;i<23;i++){
+    const n=284+i*2.78,e=-44.8;
+    block(0x747c77,e,n,1.22,1.23,.12,.024);
+    block(granite[i%granite.length],e,n,.78,.80,6.13,.144,0,true);
+    const inset=lamp(0xdfcfac,0xe8aa63,.15,1.54);
+    block(inset,e+.39,n,.04,.29,2.28,2.70);
+  }
+  sign("감사의 정원",-44.8,281.6,.8,0,2.28,.52,{sub:"GARDEN OF GRATITUDE"});
+
+  addPlazaMonuments(T,group,kit,{yi:plazaSites.yi,sejong:plazaSites.sejong});
+  for(const name of ["yi","sejong"]){
+    const site=plazaSites[name],size=plazaMonumentFootprints[name];
+    collision(site.east,site.north,size.width,size.depth);
+  }
+  addPlazaCity(T,group,kit);
+  addNorth({T,group,gatehouse,haetae,world,block,surface,stone});
+  const fountains=addPlazaFountains({T,group,world,block,water,random});
+  return function updatePlaza(now,night,anchor){
+    if(!anchor){fountains(now,night,null);return;}
+    for(const item of glow)item.material.emissiveIntensity=item.day+night*item.strength;
+    for(const [i,material] of mediaMaterials.entries()){
+      material.emissive.setHSL(.51+Math.sin(now*.00036+i*.09)*.095,.48,.43+Math.sin(now*.0012-i*.45)*.17);
+    }
+    fountains(now,night,anchor);
+  };
+}
+
+function addNorth({T,group,gatehouse,haetae,world,block,surface,stone}){
+  const gate=plazaSites.gate,axis=gate.east;
+  surface(rect(-63,49,554,614),stone,.026);
+  if(gatehouse){
+    const roof=gatehouse.clone(true),point=world(axis,gate.north);
+    roof.position.set(point.x,gatehouse.position.y,point.z);group.add(roof);
+  }
+  const stoneColors=[0x9c9a90,0xb0ada1,0xb6b2a6,0xaaa99d,0xa39e90];
+  const blocks=[[-15.6,-10.6],[-6.2,-2.9],[2.9,6.2],[10.6,15.6]];
+  for(const [lo,hi] of blocks){
+    block(0xa8a499,axis+(lo+hi)/2,gate.north,hi-lo,11.45,6.60);
+    for(let row=0;row<11;row++)for(let x=lo+.35;x<hi-.15;x+=.78){
+      const e=x+(row%2)*.22;
+      if(e>=hi-.26)continue;
+      block(stoneColors[Math.abs(row+Math.round(x*14))%5],axis+e,gate.north-5.74,.72,.035,.565,.065+row*.592);
+    }
+  }
+  for(const [lo,hi] of [[-10.6,-6.2],[-2.9,2.9],[6.2,10.6]]){
+    const span=hi-lo,centre=axis+(lo+hi)/2,spring=span>5?3.78:3.50;
+    const panel=new T.Shape();panel.moveTo(-span/2,spring);
+    panel.absarc(0,spring,span/2,Math.PI,0,true);
+    panel.lineTo(span/2,6.60);panel.lineTo(-span/2,6.60);panel.closePath();
+    const geometry=new T.ExtrudeGeometry(panel,{depth:11.42,bevelEnabled:false,curveSegments:18});
+    const material=new T.MeshStandardMaterial({color:0xa29e91,roughness:.94});
+    const mesh=new T.Mesh(geometry,material),point=world(centre,gate.north);
+    mesh.position.set(point.x,0,point.z-5.71);mesh.castShadow=mesh.receiveShadow=true;group.add(mesh);
+    block(0x403a31,centre,gate.north+3.2,span-.19,.24,spring+.52);
+  }
+  block(0xb4afa0,axis,gate.north,32.2,11.7,.52,6.47);
+  for(const side of [-1,1]){
+    const e=axis+side*54;
+    block(0xaaa598,e,gate.north,78,1.05,4.3);
+    block(0x4f5048,e,gate.north,78.2,1.58,.23,4.31);
+    block(0x414841,e,gate.north,78.5,1.18,.15,4.53);
+    for(let i=0;i<6;i++){
+      block(i%2?0xb2aea2:0xa09d90,e,gate.north-.54,77.85,.032,.56,.12+i*.66);
+      for(let x=-37.6;x<38;x+=1.48)block(0x8a887e,e+x+(i%2)*.68,gate.north-.558,.035,.035,.49,.155+i*.66);
+    }
+  }
+  // Walkable treads to the axial ceremonial terrace; stone rails bound both sides.
+  for(const [n,len,h,w] of [[556.3,1.7,.15,28.8],[557.7,1.4,.30,28.6],[559.0,1.3,.45,28.45],[579.9,40.5,.60,28.25]]){
+    block(0xb1ab9c,axis,n,w,len,h,.03,0,true);
+  }
+  for(let n=561;n<=594;n+=1.55){
+    block(Math.round(n)%3?0xb2ad9e:0xaca697,axis,n,22.4,1.52,.013,.635);
+    block(0xa7a393,axis,n,.09,1.5,.014,.65);
+  }
+  for(const side of [-1,1]){
+    const e=axis+side*13.45;
+    block(0x999486,e,578,.63,39.5,.29,.64,0,true);
+    block(0xa39f91,e,578,.33,38.6,.16,1.39);
+    for(let n=558.8;n<598;n+=2.0){
+      block(0x989387,e,n,.47,.48,.73,.65,0,true);
+      block(0xb2ad9d,e,n,.55,.55,.14,1.37);
+    }
+    const animal=axis+side*19.6;
+    block(0xa39f93,animal,556.7,3.1,4.3,.4,.03,0,true);
+    block(0xb1ab9c,animal,556.7,2.6,3.8,.72,.43,0,true);
+    block(0xbab4a5,animal,556.7,2.8,4.0,.14,1.15,0,true);
+    const carved=haetae[side===-1?0:1];
+    if(carved){
+      const statue=carved.clone(true),{x,z}=world(animal,556.7);
+      statue.position.set(x,1.29,z);group.add(statue);
+    }
+  }
+}
+
+function addPlazaFountains({T,group,world,block,water,random}){
+  const sources=[];
+  const jet=(e,n,h,dx=0,dn=0)=>({e,n,h,dx,dn,phase:random()});
+  const myeongnyang=[];
+  for(const radius of [4.4,6.1,8.2,10.3]){
+    for(let i=0;i<11;i++){
+      const angle=(i/10-.5)*2.84;
+      myeongnyang.push(jet(-1+radius*Math.sin(angle),38-radius*Math.cos(angle),1.4+(11-radius)*.16+(5-Math.abs(5-i))*.24));
+    }
+  }
+  sources.push({centre:plazaSites.myeongnyang,jets:myeongnyang});
+  const hangeul=[];
+  const characters=[[[0,0],[0,1],[0,2],[0,3],[1,3],[2,3]],
+    [[0,0],[1,0],[2,0],[1,1],[1,2],[1,3]],[[0,0],[1,0],[2,0],[0,1],[2,1],[0,2],[2,2],[0,3],[1,3],[2,3]]];
+  for(const [i,shape] of characters.entries())for(const [x,y] of shape){
+    hangeul.push(jet(-43.0+i*4.4+x*1.15,77-y*1.22,1.65+(3-y)*.15));
+  }
+  for(let i=0;i<28;i++){
+    const angle=i/28*Math.PI*2;
+    const a=plazaAt(-36.7+6.75*Math.cos(angle),75+6.75*Math.sin(angle));
+    const b=plazaAt(-36.7+6.75*Math.cos(angle+.23),75+6.75*Math.sin(angle+.23));
+    block(0x838986,(a.east+b.east)/2,(a.north+b.north)/2,1.55,.16,.021,.043,Math.atan2(b.north-a.north,b.east-a.east));
+  }
+  sources.push({centre:plazaSites.hangeul,jets:hangeul});
+  const tunnel=[];
+  for(let n=100;n<=134;n+=2.35){
+    tunnel.push(jet(-11.8,n,2.63,2.7,.18),jet(-6.4,n,2.63,-2.7,-.18));
+  }
+  sources.push({centre:plazaSites.tunnel,jets:tunnel});
+  const falls=[];
+  for(let i=0;i<18;i++)falls.push({...jet(-38.1+i*.48,403.68,1.04,0,-.88),fall:true});
+  sources.push({centre:plazaSites.cascade,jets:falls});
+  const droplet=new T.SphereGeometry(1,5,4),dropColor=new T.MeshBasicMaterial({color:0xb7e7f0,transparent:true,opacity:.65,depthWrite:false});
+  const transform=new T.Object3D(),nightColor=new T.Color(0x8bc6ff),dayColor=new T.Color(0xc4eaf4);
+  const droplets=11;
+  for(const source of sources){
+    const mesh=new T.InstancedMesh(droplet,dropColor,source.jets.length*droplets);
+    mesh.instanceMatrix.setUsage(T.DynamicDrawUsage);mesh.frustumCulled=false;mesh.visible=false;
+    group.add(mesh);source.mesh=mesh;
+    for(const value of source.jets){
+      const {x,z}=world(value.e,value.n);value.x=x;value.z=z;
+      if(!value.fall){
+        block(0x6f7775,value.e,value.n,.21,.21,.026,.039);
+        block(water,value.e,value.n,.072,.071,.022,.065);
+      }
+    }
+  }
+  return (now,night,anchor)=>{
+    dropColor.color.copy(dayColor).lerp(nightColor,night);
+    for(const {centre,jets,mesh} of sources){
+      mesh.visible=Boolean(anchor&&Math.hypot(centre.x-anchor.x,centre.y-anchor.y)<85);
+      if(!mesh.visible)continue;
+      let index=0;
+      for(const {x,z,h,dx,dn,phase,fall} of jets){
+        const pulse=fall?1:.72+Math.sin(now*.0021+phase*6.3)*.18;
+        for(let i=0;i<droplets;i++){
+          const time=(now*.00145+phase+i/droplets)%1;
+          const drift=fall?time:time*time;
+          const y=fall?between(1.19,.18,time):.08+4*h*pulse*time*(1-time);
+          transform.position.set(x+dx*drift,y,z-dn*drift);
+          transform.scale.set(.026+time*.025,fall?.098:.045+Math.abs(.5-time)*.13,.026+time*.025);
+          transform.rotation.z=fall?0:-dx*(.10+time*.12);
+          transform.updateMatrix();mesh.setMatrixAt(index++,transform.matrix);
+        }
+      }
+      mesh.instanceMatrix.needsUpdate=true;
+    }
+  };
+}
