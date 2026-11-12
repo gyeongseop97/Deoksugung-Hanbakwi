@@ -17,7 +17,7 @@ import {cityHallStation,gbSites,gbBounds,gbLake,gbPond,gbPaths,gbCourts,gbLawns,
 import {inGwanghwamunPlaza,plazaAt,plazaBounds,plazaSites,plazaOutline,plazaPaths,plazaShortcuts,plazaBeds,plazaRoadProfile,eastRoadWidth,sajikRoad} from "./plaza-layout.js";
 import {corridorBounds,corridorLandmarks,corridorSidewalks,corridorCrossings,corridorWalkSpine,corridorMainRoad,inSejongCorridor} from "./sejong-corridor-layout.js";
 import {transitRoutes,transitStops} from "./transit-routes.js";
-import {BUS_SEATS,busAt,busSeatPose,busStopById,busStops,busStopTimes,nearBus} from "./sejong-bus.js";
+import {BUS_COUNT,BUS_SEATS,busAt,busSeatPose,busStopById,busStops,busStopTimes,nearBus} from "./sejong-bus.js";
 import {bikeDocks,bikeMountReach,bikeParkDuration,isCycling,nearBikeDock} from "./sejong-bike.js";
 
 const $=id=>document.getElementById(id);
@@ -132,24 +132,55 @@ function applyNight(view){
 function myLink(){return session&&links.find(link=>link.leader===session.id||link.follower===session.id);}
 function amFollowingHands(){const link=myLink();return Boolean(link?.active&&link.follower===session.id);}
 $("perspective").setAttribute("aria-pressed",String(firstPerson));
-// Sound: footsteps follow the walker's stride; birds, crickets and the guard drum fill the air.
 const sound=makeSound();
-let strideLeft=0,nextAmbient=0,nextDrum=0,ceremonyAnnounced=-1;
+let strideLeft=1.2,nextStep=0,nextBird=0,nextCat=0,nextCricket=0,nextBusSound=0,nextDrum=0,ceremonyAnnounced=-1;
 $("sound").setAttribute("aria-pressed",String(sound.enabled));
 $("sound").addEventListener("click",()=>{$("sound").setAttribute("aria-pressed",String(sound.toggle()));focusGame();});
-for(const kind of ["pointerdown","keydown"])window.addEventListener(kind,()=>sound.wake(),{passive:true});
-function soundscape(time,travelled,wading){
+window.addEventListener("pointerdown",event=>{if(event.pointerType==="mouse")sound.wake();},{passive:true});
+window.addEventListener("pointerup",event=>{if(event.pointerType!=="mouse")sound.wake();},{passive:true});
+window.addEventListener("keydown",()=>sound.wake(),{passive:true});
+function updateBusSound(time,indoors){
+  if(indoors){sound.bus(null);return;}
+  const bus=me.bus&&busAt(me.bus.index,time);
+  let source=bus,distance=bus?0:43;
+  if(!bus)for(let index=0;index<BUS_COUNT;index++){
+    const other=busAt(index,time),gap=near(other,me.x,me.y);
+    if(gap<distance){source=other;distance=gap;}
+  }
+  if(!source){sound.bus(null);return;}
+  const ahead=source.traveling&&busAt(source.index,time+150);
+  const speed=ahead?near(ahead,source.x,source.y)/.15:0;
+  sound.bus({distance,moving:source.traveling,inside:Boolean(bus),speed});
+}
+function soundscape(time,travelled,wading,running=false){
   if(!session||!world||riding)return;
-  if(travelled>0){
+  const indoors=isInsideMuseum(me.x,me.y);
+  if(time-me.jump<JUMP_MS)strideLeft=Math.max(.9,strideLeft);
+  else if(travelled>0&&sound.enabled){
     strideLeft-=travelled;
-    if(strideLeft<=0){
-      strideLeft=wading?.55:me.running?1.0:.64;
+    if(strideLeft<=0&&time>=nextStep){
+      strideLeft=wading?1.15:running?3.25:1.55;
+      nextStep=time+440;
       sound.step(wading?"water":me.up||loftStair(me.x,me.y)!=null?"wood":"stone");
     }
   }
-  if(time>=nextAmbient&&!isInsideMuseum(me.x,me.y)){
-    nextAmbient=time+2600+Math.random()*7000;
-    if(ownView.night)sound.cricket();else sound.chirp();
+  if(sound.enabled&&!document.hidden){
+    if(time>=nextBusSound){nextBusSound=time+125;updateBusSound(time,indoors);}
+    if(!indoors&&!me.bus){
+      if(time>=nextBird){
+        const bird=world.birds.soundSource(me,22);
+        nextBird=time+(bird?4800+Math.random()*4300:900);
+        if(bird)sound.chirp((1-bird.distance/24)*(ownView.night?.55:.95));
+      }
+      if(time>=nextCat){
+        const cat=world.parkLife.soundSource(me,10);
+        nextCat=time+(cat?8800+Math.random()*6000:1100);
+        if(cat)sound.meow((1-cat.distance/11)*.7);
+      }
+      if(ownView.night&&time>=nextCricket){
+        nextCricket=time+13500+Math.random()*10000;sound.cricket();
+      }
+    }
   }
   // Changing of the guard at Gwanghwamun: announce it once and beat the drum while it lasts.
   const gate=palaceAt(0,-10),ceremony=ceremonyAt(time);
@@ -604,6 +635,7 @@ function returnToLobby(message=""){
   queuedSignal=queuedHand=queuedFeed=queuedChat=null;people.clear();changeLinks([]);resetLocationGuides();
   queuedBus=queuedBike=lastBusHeading=selectedBus=null;
   parkedBikes=[];
+  sound.bus(null);
   busStatus.hidden=true;
   chatInput.value="";composingChat=false;lastChatAt=0;updateChatSend();
   $("invite").disabled=$("look").disabled=$("look-target").disabled=true;
@@ -705,9 +737,9 @@ $("copy").addEventListener("click",()=>copyInvite(false));
 $("copy-link").addEventListener("click",()=>copyInvite(true));
 document.querySelectorAll("dialog .close").forEach(button=>button.addEventListener("click",()=>button.closest("dialog").close()));
 $("model-credits").addEventListener("click",()=>$("credits-dialog").showModal());
-window.addEventListener("pagehide",()=>{active=false;clearSyncTimer();leaveBeacon();});
+window.addEventListener("pagehide",()=>{active=false;clearSyncTimer();sound.bus(null);leaveBeacon();});
 document.addEventListener("visibilitychange",()=>{
-  if(document.hidden)clearManualInput();
+  if(document.hidden){clearManualInput();sound.bus(null);}
   clearSyncTimer();scheduleSync(document.hidden?1150:0);
 });
 window.addEventListener("online",()=>{if(!document.hidden)scheduleSync(0);});
@@ -1217,7 +1249,7 @@ function rideTransit(stop,{target,area,line}){
   if(riding||myLink()?.active||feedingLocked(gameTime())||nearbyTransit()!==stop||!walkable(target.arrive.x,target.arrive.y))return;
   const linkId=myLink()?.id??(queuedHand?.action==="offer"?queuedHand.id:null);
   if(linkId){queuedHand={action:"release",id:linkId};changeLinks(links);}
-  transitDialog.close();setMap(false);riding=true;resetInput();
+  transitDialog.close();setMap(false);riding=true;resetInput();sound.bus(null);
   Object.assign(me,{vx:0,vy:0,blocked:false,running:false});dirty=true;wakeSync();
   $("transit-title").textContent=area;
   $("transit-line").textContent=line;
@@ -1283,7 +1315,7 @@ $("pet-cat").addEventListener("click",()=>{
   if(!cat||time-(me.pet?.at??0)<PET_MS||feedingLocked(time))return;
   resetInput();
   me.heading=normalize(Math.atan2(cat.x-me.x,me.y-cat.y)*180/Math.PI);
-  me.pet={id:cat.id,at:time};dirty=true;sound.meow();focusGame();
+  me.pet={id:cat.id,at:time};dirty=true;nextCat=time+9000;sound.meow();focusGame();
 });
 $("take-item").addEventListener("click",()=>{
   if(!session||me.seat!=null)return;
@@ -1308,7 +1340,7 @@ $("use-item").addEventListener("click",()=>{
     return;
   }
   me.item={...me.item,remaining:me.item.remaining-1,started:time};
-  if(me.item.kind==="beer"){
+  if(ITEMS[me.item.kind].alcohol){
     const previous=time<me.blushUntil?me.blushLevel||1:0;
     me.blushLevel=Math.min(3,previous+1);
     me.blushUntil=time+120000;
@@ -1448,7 +1480,7 @@ function motion(now,elapsed){
     }else walkCourse(speed);
   }
   const moved=oldX!==me.x||oldY!==me.y;
-  soundscape(gameTime(now),moved&&!isCycling(me)&&me.seat==null?Math.min(1.2,Math.hypot(me.x-oldX,me.y-oldY)):0,wading);
+  soundscape(gameTime(now),moved&&!isCycling(me)&&me.seat==null?Math.min(1.2,Math.hypot(me.x-oldX,me.y-oldY)):0,wading,pace);
   if(moved){
     const location=placeName(me);
     if($("location").textContent!==location)$("location").textContent=location;
@@ -1676,8 +1708,10 @@ function drawGyeongbok(base,mini){
       fill:building.kind==="museum"?"#6f7468":"#827659",stroke:"#aa9774","stroke-width":1,rx:2,
       transform:"rotate("+(-(building.angle||0)*180/Math.PI)+" "+building.x+" "+building.y+")"});
   }
-  const labels=mini?["광화문","흥례문","근정전","사정전","강녕전","교태전","경회루","수정전","자경전","향원정","건청궁","집옥재","국립고궁박물관"]:
-    ["광화문","흥례문","근정전","강녕전","교태전","경회루","자경전","향원정","건청궁","국립고궁박물관","국립민속박물관"];
+  const labels=mini?["광화문","흥례문","근정전","사정전","강녕전","교태전","경회루","수정전","자경전","향원정","건청궁","집옥재","국립고궁박물관",
+    "계조당","소주방","흥복전","함화당","태원전","장고"]:
+    ["광화문","흥례문","근정전","강녕전","교태전","경회루","자경전","향원정","건청궁","집옥재","국립고궁박물관","국립민속박물관",
+      "계조당","소주방","흥복전","함화당","태원전","장고"];
   for(const building of gbSites.filter(spec=>labels.includes(spec.name))){
     svg(base,"text",{x:building.x,y:building.y+(mini?building.d/2+6:building.d/2+22),class:mini?"mini-landmark":"map-label gyeongbok-label",
       "text-anchor":"middle"},building.name);
@@ -1744,9 +1778,15 @@ function showMapRegion(box){
 function drawDestinations(world){
   const layer=$("map-landscape");
   const doors=[...world.stations,{...world.museum.outsideDoor,name:"전시관 입구"}];
+  let palaceShop=0;
   for(const point of doors){
-    svg(layer,"circle",{cx:point.x,cy:point.y,r:2.6,fill:"#f1d8a6",stroke:"#513e32","stroke-width":.9});
-    svg(layer,"text",{x:point.x,y:point.y-4.6,class:"map-label","text-anchor":"middle",style:"font-size:8.5px;stroke-width:2.2px"},point.name);
+    const mark=svg(layer,"g",{"data-walk-x":point.x,"data-walk-y":point.y});
+    const regional=point.area==="gyeongbokgung"||point.area==="gwanghwamun";
+    const labelY=point.y-(point.area==="gyeongbokgung"?10+palaceShop++*15:regional?7:4.6);
+    if(point.area==="gyeongbokgung")svg(mark,"line",{x1:point.x,y1:point.y,x2:point.x,y2:labelY+3,stroke:"#c6aa7a"});
+    svg(mark,"circle",{cx:point.x,cy:point.y,r:regional?4:2.6,fill:"#f1d8a6",stroke:"#513e32","stroke-width":.9});
+    svg(mark,"text",{x:point.x,y:labelY,class:"map-label","text-anchor":"middle",
+      style:regional?"font-size:11px;stroke-width:2.8px":"font-size:8.5px;stroke-width:2.2px"},point.name);
   }
 }
 function updateMaps(self,others){
