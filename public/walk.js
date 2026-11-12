@@ -1581,9 +1581,8 @@ function drawOverview(base){
     "stroke-linecap":"round","stroke-dasharray":"14 9",opacity:.9});
   for(const [point,name,side] of [[spawn,"덕수궁",-1],[plazaAt(-12,240),"광화문광장",1],[palaceAt(0,245),"경복궁",1]]){
     const destination=svg(layer,"g",{"data-walk-x":point.x,"data-walk-y":point.y});
-    svg(destination,"circle",{cx:point.x,cy:point.y,r:13,fill:"#f2d59b",stroke:"#40392c","stroke-width":5});
-    svg(destination,"text",{x:point.x+side*34,y:point.y+9,class:"map-label","text-anchor":side<0?"end":"start",
-      style:"font-size:41px;stroke-width:8px"},name);
+    svg(destination,"circle",{cx:point.x,cy:point.y,r:16,fill:"#f2d59b",stroke:"#40392c","stroke-width":5});
+    svg(destination,"text",{x:point.x+side*47,y:point.y+20,class:"map-label overview-label","text-anchor":side<0?"end":"start"},name);
   }
   return layer;
 }
@@ -1702,6 +1701,7 @@ function updateMaps(self,others){
   const corridor=outdoorMap(self)==="세종대로",overview=overviewOpen&&!indoors;
   const mapArea=palace?"경복궁":plaza||corridor&&self.y<-58?"광화문광장":"덕수궁";
   setText($("map-panel").querySelector("h2"),indoors?"전시관 지도":overview?"전체 지도":mapArea+" 지도");
+  $("world").classList.toggle("overview-map",overview);
   attr(overviewLayer,"visibility",overview?"visible":"hidden");
   overviewButton.hidden=indoors;
   attr($("my-avatar"),"transform","translate("+self.x+" "+self.y+")"+(indoors?" scale(.18)":overview?" scale(2.8)":palace?" scale(2.2)":plaza||corridor?" scale(1.55)":""));
