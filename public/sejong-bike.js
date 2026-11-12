@@ -16,9 +16,28 @@ export const bikeDocks=[
 export const bikeDockReach=3.2;
 export const bikeMountReach=2.7;
 export const bikeParkDuration=10*60_000;
+export const bikeRackSize={width:4.12,depth:1.8};
 export const isCycling=position=>Boolean(position.bike&&!position.bike.parked);
 
-export function nearBikeDock(point){
+function rackApproach(dock,point){
+  const angle=(180-dock.heading)*Math.PI/180,c=Math.cos(angle),s=Math.sin(angle);
+  const dx=point.x-dock.x,dy=point.y-dock.y;
+  const localX=dx*c-dy*s,localY=dx*s+dy*c;
+  // The rack collider adds a pedestrian margin. Aim just outside its nearest edge.
+  const halfWidth=bikeRackSize.width/2+.30,halfDepth=bikeRackSize.depth/2+.30;
+  let x=Math.max(-halfWidth,Math.min(halfWidth,localX));
+  let y=Math.max(-halfDepth,Math.min(halfDepth,localY));
+  if(x===localX&&y===localY){
+    if(halfWidth-Math.abs(x)<halfDepth-Math.abs(y))x=(Math.sign(x)||1)*halfWidth;
+    else y=(Math.sign(y)||1)*halfDepth;
+  }
+  return {x:dock.x+x*c+y*s,y:dock.y-x*s+y*c};
+}
+
+export function nearBikeDock(point,canReach=()=>true){
   if(!point)return null;
-  return bikeDocks.find(({access})=>Math.hypot(point.x-access.x,point.y-access.y)<=bikeDockReach)??null;
+  const within=target=>Math.hypot(point.x-target.x,point.y-target.y)<=bikeDockReach;
+  return bikeDocks.find(dock=>
+    within(dock.access)&&canReach(dock.access)||
+    within(dock)&&canReach(rackApproach(dock,point)))??null;
 }

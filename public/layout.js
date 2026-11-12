@@ -399,8 +399,9 @@ export function wadeSegment(from,to,step=.36,feet=0){
   }
   return !count||!crossesObstacle(from,to,feetLevel(feet));
 }
+const deoksugungNorthEdge=30;
 export function walkable(x,y,feet=0){
-  const inDeoksugung=x>=45&&x<=560&&y>=30&&y<=420;
+  const inDeoksugung=x>=45&&x<=560&&y>=deoksugungNorthEdge&&y<=420;
   if(solidAt(x,y,feetLevel(feet))||(inDeoksugung&&inPolygon(x,y,palacePond.outline)))return false;
   let open=false;
   for(const zone of zones){
@@ -426,14 +427,34 @@ const spacing=2;
 const around=[[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,1],[1,-1],[-1,-1]];
 const gridPoint=(i,{ox,oy,cols})=>({x:ox+i%cols*spacing,y:oy+Math.floor(i/cols)*spacing});
 const walkingBounds={minX:0,maxX:810,minY:-1820,maxY:450};
+const gateLink=[gate,...entranceWalk,...stationWalk];
+const gridDown=value=>Math.floor(value/spacing)*spacing,gridUp=value=>Math.ceil(value/spacing)*spacing;
+const gateClearance=6*spacing;
+const gateLinkBounds={
+  left:gridDown(Math.min(...gateLink.map(point=>point.x)))-gateClearance,
+  right:gridUp(Math.max(...gateLink.map(point=>point.x)))+gateClearance,
+  bottom:gridUp(Math.max(...gateLink.map(point=>point.y)))+gateClearance
+};
+const onDeoksugungSide=({x,y})=>x<=gate.x&&y>=deoksugungNorthEdge;
 function walkingField(from,target){
   const padding=Math.round(Math.min(168,68+distance(from,target.x,target.y)*.24)/spacing)*spacing;
   const {minX,maxX,minY,maxY}=walkingBounds;
-  const ox=Math.max(minX,Math.floor(Math.min(from.x,target.x)/spacing)*spacing-padding);
-  const oy=Math.max(minY,Math.floor(Math.min(from.y,target.y)/spacing)*spacing-padding);
-  const right=Math.min(maxX,Math.ceil(Math.max(from.x,target.x)/spacing)*spacing+padding);
-  const bottom=Math.min(maxY,Math.ceil(Math.max(from.y,target.y)/spacing)*spacing+padding);
-  return {ox,oy,cols:(right-ox)/spacing+1,rows:(bottom-oy)/spacing+1};
+  let left=gridDown(Math.min(from.x,target.x))-padding;
+  let right=gridUp(Math.max(from.x,target.x))+padding;
+  let bottom=gridUp(Math.max(from.y,target.y))+padding;
+  // The palace meets the avenue through Daehanmun. An endpoint near its northern wall still
+  // needs the southern turn around the wall, even when both destinations are far west.
+  const viaGate=onDeoksugungSide(from)!==onDeoksugungSide(target)&&
+    (left>gateLinkBounds.left||right<gateLinkBounds.right||bottom<gateLinkBounds.bottom);
+  if(viaGate){
+    left=Math.min(left,gateLinkBounds.left);
+    right=Math.max(right,gateLinkBounds.right);
+    bottom=Math.max(bottom,gateLinkBounds.bottom);
+  }
+  const ox=Math.max(minX,left),oy=Math.max(minY,gridDown(Math.min(from.y,target.y))-padding);
+  right=Math.min(maxX,right);
+  bottom=Math.min(maxY,bottom);
+  return {ox,oy,cols:(right-ox)/spacing+1,rows:(bottom-oy)/spacing+1,viaGate};
 }
 function inWalkingBounds(point){
   const {minX,maxX,minY,maxY}=walkingBounds;
@@ -496,6 +517,15 @@ export function planWalk(from,target,feet=0,wade=false){
   const exact=open(target.x,target.y);
   if(exact&&clear(from,target,.36,feet))return [target];
   const field=walkingField(from,target),{ox,oy,cols,rows}=field;
+  // Two smaller searches around the known gate avoid scanning the length of the palace wall.
+  if(field.viaGate&&distance(spawn,from.x,from.y)>0&&distance(spawn,target.x,target.y)>0){
+    const approach=planWalk(from,spawn,feet,wade);
+    const end=approach.at(-1);
+    if(end?.x===spawn.x&&end.y===spawn.y){
+      const onward=planWalk(spawn,target,0,wade),destination=onward.at(-1);
+      if(destination&&(!exact||destination.x===target.x&&destination.y===target.y))return [...approach,...onward];
+    }
+  }
   const start=snap(from,3,true,feet,field,open,clear);
   let goal=snap(target,7,exact,0,field,open,clear);
   if(start<0||goal<0)return [];

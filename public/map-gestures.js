@@ -3,12 +3,18 @@ const midpoint=(a,b)=>({x:(a.x+b.x)/2,y:(a.y+b.y)/2});
 const gap=(a,b)=>Math.max(12,Math.hypot(a.x-b.x,a.y-b.y));
 
 export function bindMapGestures(surface,{getView,setView,onTap}){
-  const contacts=new Map();
-  let touchEnded=-Infinity;
+  const contacts=new Map(),mouseEvents=surface.ownerDocument??surface;
+  let touchEnded=-Infinity,blockedMouse=null;
   const point=event=>({x:event.clientX,y:event.clientY});
+  const moved=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y)>=slop;
+  function updateCursor(){
+    surface.classList?.toggle("map-panning",contacts.size>1||[...contacts.values()].some(contact=>contact.drag));
+  }
   function projected({x,y}){
     const matrix=surface.getScreenCTM();
-    return matrix?new DOMPoint(x,y).matrixTransform(matrix.inverse()):null;
+    if(!matrix)return null;
+    const result=new DOMPoint(x,y).matrixTransform(matrix.inverse());
+    return Number.isFinite(result.x)&&Number.isFinite(result.y)?result:null;
   }
   function zoom({view,base},scale,start,end=start){
     const ratio=Math.max(base.w*.23/view.w,Math.min(base.w*1.30/view.w,scale));
@@ -24,18 +30,33 @@ export function bindMapGestures(surface,{getView,setView,onTap}){
     const amount=Math.max(-.65,Math.min(.65,delta*unit*.0025));
     zoom(state,Math.exp(amount),anchor);
   },{passive:false});
+  surface.addEventListener("dragstart",event=>event.preventDefault());
   surface.addEventListener("pointerdown",event=>{
-    if(event.pointerType!=="touch"||event.button!==0)return;
-    event.preventDefault();
-    if(contacts.size>=2)return;
+    const {pointerType,pointerId}=event;
+    if(event.button!==0||(pointerType!=="mouse"&&pointerType!=="touch"))return;
+    if(pointerType==="mouse"){
+      blockedMouse=pointerId;
+      if(contacts.size)return;
+    }else{
+      event.preventDefault();
+      if(contacts.size>=2||[...contacts.values()].some(contact=>contact.type==="mouse"))return;
+    }
     const start=point(event);
-    contacts.set(event.pointerId,{start,current:start,at:event.timeStamp,target:event.target,drag:false,pinch:false});
+    contacts.set(pointerId,{type:pointerType,start,current:start,at:event.timeStamp,target:event.target,drag:false,pinch:false});
     if(contacts.size===2)for(const contact of contacts.values())contact.pinch=true;
-    surface.setPointerCapture(event.pointerId);
+    if(pointerType==="touch")surface.setPointerCapture(pointerId);
+    if(contacts.size===2)updateCursor();
   });
-  surface.addEventListener("pointermove",event=>{
-    const contact=contacts.get(event.pointerId),state=getView();
-    if(!contact||!state)return;
+  function move(event){
+    const contact=contacts.get(event.pointerId);
+    if(!contact)return;
+    if(contact.type==="mouse"&&event.buttons!==undefined&&!(event.buttons&1)){
+      finish(event,false);
+      if(surface.hasPointerCapture(event.pointerId))surface.releasePointerCapture(event.pointerId);
+      return;
+    }
+    const state=getView();
+    if(!state)return;
     const before=contact.current,after=point(event);
     contact.current=after;
     const {view}=state;
@@ -46,31 +67,51 @@ export function bindMapGestures(surface,{getView,setView,onTap}){
       zoom(state,gap(before,other)/gap(after,other),start,end);
       return;
     }
-    if(contact.pinch)return;
-    if(!contact.drag&&Math.hypot(after.x-contact.start.x,after.y-contact.start.y)<slop)return;
+    if(!contact.drag&&!moved(after,contact.start))return;
     const start=projected(contact.drag?before:contact.start),end=projected(after);
-    contact.drag=true;
+    if(!contact.drag){
+      contact.drag=true;
+      // A press under the drag threshold keeps the browser's original landmark click.
+      if(contact.type==="mouse")surface.setPointerCapture(event.pointerId);
+      updateCursor();
+    }
     if(start&&end)setView({...view,x:view.x+start.x-end.x,y:view.y+start.y-end.y});
-  });
-  function finish(event,activate){
-    const contact=contacts.get(event.pointerId);
-    if(contact||event.pointerType==="touch")touchEnded=event.timeStamp;
-    if(!contact)return;
-    contacts.delete(event.pointerId);
-    if(activate&&!contact.drag&&!contact.pinch&&event.timeStamp-contact.at<tapMs&&
-      Math.hypot(event.clientX-contact.start.x,event.clientY-contact.start.y)<slop)onTap(event,contact.target);
   }
-  surface.addEventListener("pointerup",event=>finish(event,true));
+  surface.addEventListener("pointermove",event=>{if(event.pointerType==="touch")move(event);});
+  mouseEvents.addEventListener("pointermove",event=>{if(event.pointerType==="mouse")move(event);},true);
+  function finish(event,activate){
+    const {pointerId,timeStamp}=event,contact=contacts.get(pointerId);
+    if(contact?.type==="touch"||event.pointerType==="touch")touchEnded=timeStamp;
+    if(!contact)return;
+    contacts.delete(pointerId);
+    // A finger still on the map can pan immediately after the other finger lifts.
+    if(contact.pinch)for(const remaining of contacts.values())remaining.drag=true;
+    updateCursor();
+    const tapped=activate&&!contact.drag&&!contact.pinch&&!moved(point(event),contact.start);
+    if(contact.type==="mouse"){
+      if(tapped)blockedMouse=null;
+    }else if(tapped&&timeStamp-contact.at<tapMs)onTap(event,contact.target);
+  }
+  surface.addEventListener("pointerup",event=>{if(event.pointerType==="touch")finish(event,true);});
+  mouseEvents.addEventListener("pointerup",event=>{if(event.pointerType==="mouse")finish(event,event.button===0);},true);
   for(const name of ["pointercancel","lostpointercapture"])surface.addEventListener(name,event=>finish(event,false));
   surface.addEventListener("click",event=>{
+    if(!event.isTrusted)return;
     const touch=event.pointerType==="touch"||event.sourceCapabilities?.firesTouchEvents;
-    const legacyTouch=!event.pointerType&&event.sourceCapabilities?.firesTouchEvents!==false&&event.detail>0&&
-      (contacts.size>0||event.timeStamp-touchEnded<700);
-    if(event.isTrusted&&(touch||legacyTouch)){event.preventDefault();event.stopImmediatePropagation();}
+    const mouse=event.detail>0&&blockedMouse!==null&&!touch&&(!event.pointerType||event.pointerType==="mouse")&&
+      (event.pointerId===undefined||event.pointerId<0||event.pointerId===blockedMouse);
+    const legacyTouch=event.detail>0&&!event.pointerType&&event.sourceCapabilities?.firesTouchEvents!==false&&
+      ([...contacts.values()].some(contact=>contact.type==="touch")||event.timeStamp-touchEnded<700);
+    if(!touch&&!legacyTouch&&!mouse)return;
+    event.preventDefault();event.stopImmediatePropagation();
+    if(mouse)blockedMouse=null;
   },true);
-  return function clearMapGestures(){
+  function clearMapGestures(){
     if(!contacts.size)return;
-    const ids=[...contacts.keys()];contacts.clear();touchEnded=performance.now();
+    if([...contacts.values()].some(contact=>contact.type==="touch"))touchEnded=performance.now();
+    const ids=[...contacts.keys()];contacts.clear();updateCursor();
     for(const id of ids)if(surface.hasPointerCapture(id))surface.releasePointerCapture(id);
-  };
+  }
+  surface.ownerDocument?.defaultView?.addEventListener("blur",clearMapGestures);
+  return clearMapGestures;
 }

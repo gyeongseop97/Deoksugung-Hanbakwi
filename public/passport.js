@@ -10,13 +10,29 @@ export const passportMarkup=`
       <button class="quiet passport-close" type="button" aria-label="산책 여권 닫기" data-passport-close>×</button>
     </header>
     <nav class="passport-tabs" aria-label="산책 여권">
-      <button class="quiet" type="button" data-passport-tab="stamps" aria-controls="passport-stamps" aria-pressed="true">도장</button>
+      <button class="quiet" type="button" data-passport-tab="stamps" aria-controls="passport-stamps passport-paper" aria-pressed="true">도장</button>
       <button class="quiet" type="button" data-passport-tab="rewards" aria-controls="passport-rewards" aria-pressed="false">장신구</button>
       <button class="quiet" type="button" data-passport-tab="cats" aria-controls="passport-cats" aria-pressed="false">친해진 고양이</button>
       <button class="quiet" id="passport-album" type="button" data-open-photo-album>사진첩</button>
     </nav>
     <div class="passport-pages">
-      <div id="passport-stamps" data-passport-page="stamps"></div>
+      <div id="passport-stamps" data-passport-page="stamps">
+        <div class="passport-stamp-toolbar">
+          <button class="quiet" id="passport-paper-open" type="button" aria-controls="passport-paper">도장 종이 보기</button>
+        </div>
+        <div id="passport-stamp-list"></div>
+      </div>
+      <div id="passport-paper" data-passport-page="paper" hidden>
+        <div class="passport-stamp-toolbar passport-paper-toolbar">
+          <button class="quiet" id="passport-paper-back" type="button" aria-controls="passport-stamps">목록으로</button>
+          <label for="passport-paper-region">지역</label>
+          <select id="passport-paper-region">
+            <option value="all">전체</option>
+            ${passportRegions.map(region=>`<option value="${region.id}">${region.name}</option>`).join("")}
+          </select>
+        </div>
+        <div class="passport-paper" id="passport-paper-regions" role="group" aria-label="도장 종이"></div>
+      </div>
       <div id="passport-rewards" data-passport-page="rewards" hidden></div>
       <div id="passport-cats" data-passport-page="cats" hidden></div>
     </div>
@@ -57,7 +73,7 @@ const stampCount=passportStamps.length;
 const formatDate=new Intl.DateTimeFormat("ko-KR",{year:"numeric",month:"short",day:"numeric"});
 const gotAll=(data,region)=>region.stamps.every(stamp=>Boolean(data.stamps[stamp.id]));
 
-export function bindPassport({getLook,applyLook,getProfile,applyProfile,listPhotos,importPhotos,focusGame,onNotice=()=>{}}){
+export function bindPassport({getLook,applyLook,getProfile,applyProfile,listPhotos,importPhotos,focusGame,onNotice=()=>{},onShowStamp}){
   const mount=document.getElementById("passport-mount");
   mount.innerHTML=passportMarkup;
   const $=id=>document.getElementById(id);
@@ -66,7 +82,7 @@ export function bindPassport({getLook,applyLook,getProfile,applyProfile,listPhot
   let storage;
   try{storage=localStorage;}catch{}
   const progress=makePassportProgress(storage);
-  let room=null,tab="stamps",busy=false;
+  let room=null,tab="stamps",busy=false,mapHandoff=false;
   const element=(tag,className,text)=>{
     const node=document.createElement(tag);
     if(className)node.className=className;
@@ -78,29 +94,42 @@ export function bindPassport({getLook,applyLook,getProfile,applyProfile,listPhot
   function picture(motif,ink){const canvas=element("canvas","passport-mark");canvas.setAttribute("aria-hidden","true");drawPassportStamp(canvas,motif,ink);return canvas;}
   function selectTab(next){
     tab=next;
-    for(const option of journal.querySelectorAll("[data-passport-tab]"))option.setAttribute("aria-pressed",String(option.dataset.passportTab===tab));
+    const section=tab==="paper"?"stamps":tab;
+    for(const option of journal.querySelectorAll("[data-passport-tab]"))option.setAttribute("aria-pressed",String(option.dataset.passportTab===section));
     for(const page of journal.querySelectorAll("[data-passport-page]"))page.hidden=page.dataset.passportPage!==tab;
     render();
+    journal.scrollTop=0;
+  }
+  function stampGroups(data,regions,paper){
+    return regions.map(region=>{
+      const group=element("section","passport-region");
+      const head=element("div","passport-region-heading");
+      const count=region.stamps.filter(stamp=>data.stamps[stamp.id]).length;
+      head.append(element("h3",null,region.name),element("span",null,`${count} / ${region.stamps.length}`));
+      const grid=element("ul","passport-stamp-grid");
+      for(const stamp of region.stamps){
+        const at=data.stamps[stamp.id],entry=element("li",at?"passport-site stamped":"passport-site");
+        const status=at?"도장 획득":"미방문";
+        const location=button(stamp.name,"passport-site-link");
+        location.dataset.passportLocation=stamp.id;
+        location.title="지도에서 위치와 도보 경로 보기";
+        location.setAttribute("aria-label",`${stamp.name}, ${status}. 지도에서 위치와 도보 경로 보기`);
+        entry.append(picture(stamp.motif,region.ink),location,
+          element("small",null,at&&!paper?`${status} · ${formatDate.format(at)}`:status));
+        grid.append(entry);
+      }
+      group.append(head,grid);return group;
+    });
   }
   function render(){
     const data=progress.data();
     $("passport-count").textContent=`도장 ${Object.keys(data.stamps).length} / ${stampCount}`;
     if(tab==="stamps"){
-      const groups=passportRegions.map(region=>{
-        const group=element("section","passport-region");
-        const head=element("div","passport-region-heading");
-        const count=region.stamps.filter(stamp=>data.stamps[stamp.id]).length;
-        head.append(element("h3",null,region.name),element("span",null,`${count} / ${region.stamps.length}`));
-        const grid=element("ul","passport-stamp-grid");
-        for(const stamp of region.stamps){
-          const at=data.stamps[stamp.id],entry=element("li",at?"passport-site stamped":"passport-site");
-          entry.append(picture(stamp.motif,region.ink),element("strong",null,stamp.name),
-            element("small",null,at?formatDate.format(at):"미방문"));
-          grid.append(entry);
-        }
-        group.append(head,grid);return group;
-      });
-      $("passport-stamps").replaceChildren(...groups);
+      $("passport-stamp-list").replaceChildren(...stampGroups(data,passportRegions,false));
+    }else if(tab==="paper"){
+      const selected=$("passport-paper-region").value;
+      const regions=selected==="all"?passportRegions:passportRegions.filter(region=>region.id===selected);
+      $("passport-paper-regions").replaceChildren(...stampGroups(data,regions,true));
     }else if(tab==="rewards"){
       const look=getLook();
       const rewards=passportRegions.map(region=>{
@@ -155,10 +184,22 @@ export function bindPassport({getLook,applyLook,getProfile,applyProfile,listPhot
   function openTransfer(){if(journal.open)journal.close();show(transfer);}
   for(const dialog of [journal,rental,transfer]){
     dialog.querySelector("[data-passport-close]").addEventListener("click",()=>dialog.close());
-    dialog.addEventListener("close",()=>{if(!document.querySelector("dialog[open]"))focusGame?.();});
+    dialog.addEventListener("close",()=>{
+      if(dialog===journal&&mapHandoff){mapHandoff=false;return;}
+      if(!document.querySelector("dialog[open]"))focusGame?.();
+    });
   }
   journal.querySelector(".passport-tabs").addEventListener("click",event=>{
     const tabButton=event.target.closest("[data-passport-tab]");if(tabButton)selectTab(tabButton.dataset.passportTab);
+  });
+  $("passport-paper-open").addEventListener("click",()=>{selectTab("paper");$("passport-paper-back").focus();});
+  $("passport-paper-back").addEventListener("click",()=>{selectTab("stamps");$("passport-paper-open").focus();});
+  $("passport-paper-region").addEventListener("change",render);
+  journal.querySelector(".passport-pages").addEventListener("click",event=>{
+    const target=event.target.closest("[data-passport-location]");
+    const stamp=stampById.get(target?.dataset.passportLocation);
+    if(!stamp||!onShowStamp)return;
+    mapHandoff=true;journal.close();onShowStamp(stamp);
   });
   $("passport-album").addEventListener("click",()=>journal.close());
   $("passport-transfer").addEventListener("click",openTransfer);

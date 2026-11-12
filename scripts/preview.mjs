@@ -59,4 +59,4 @@ createServer(async (incoming, outgoing) => {
   } catch {
     outgoing.writeHead(500).end();
   }
-}).listen(port, host, () => console.log("덕수궁 한바퀴 · http://" + host + ":" + port));
+}).listen(port, host, () => console.log("서울 궁 한바퀴 · http://" + host + ":" + port));

@@ -1,5 +1,5 @@
 import {addObstacle,platformAt} from "./layout.js";
-import {bikeDocks} from "./sejong-bike.js";
+import {bikeDocks,bikeRackSize} from "./sejong-bike.js";
 
 const tau=Math.PI*2;
 const sides=[-1,1];
@@ -190,7 +190,7 @@ export function registerBikeDocks(docks=bikeDocks){
     // Capture the sidewalk before the rack itself appears in platform queries.
     const level=dockLevel(dock);
     dockSurfaces.set(dock,level);
-    addObstacle(dock.x,dock.y,4.12,1.80,Math.PI-dock.heading*Math.PI/180,level+1.49);
+    addObstacle(dock.x,dock.y,bikeRackSize.width,bikeRackSize.depth,Math.PI-dock.heading*Math.PI/180,level+1.49);
   }
 }
 

@@ -348,17 +348,19 @@ function bikeStatement(db,room,id,key,action,now,active){
         (json_extract(avatar,'$.y')-json_extract(avatar,'$.bike.parked.y'))
       ) <= ?
   `).bind(room,id,key,active,now-FEED_MS,now-bikeParkDuration,bikeMountReach**2);
-  const dock=docksById.get(action.dock),position=accessArguments(dock.access,bikeDockReach);
+  const dock=docksById.get(action.dock);
+  const nearDock=`(${nearVehicleAccess} OR ${nearVehicleAccess})`;
+  const position=[...accessArguments(dock.access,bikeDockReach),...accessArguments(dock,bikeDockReach)];
   if(action.action==="take")return db.prepare(`
     UPDATE walkers SET avatar=json_set(avatar,'$.bike',json(?))
     WHERE room=? AND id=? AND player_key=? AND updated>=?
       AND ${availableRider} AND (json_extract(avatar,'$.bike') IS NULL OR ${parkedBikeTime}<=?)
-      AND ${nearVehicleAccess}
+      AND ${nearDock}
   `).bind(JSON.stringify({dock:action.dock}),room,id,key,active,now-FEED_MS,now-bikeParkDuration,...position);
   return db.prepare(`
     UPDATE walkers SET avatar=json_remove(avatar,'$.bike')
     WHERE room=? AND id=? AND player_key=? AND updated>=?
-      AND ${mountedBike()} AND ${nearVehicleAccess}
+      AND ${mountedBike()} AND ${nearDock}
   `).bind(room,id,key,active,...position);
 }
 

@@ -47,7 +47,7 @@ export async function makePhotoCard(picture,{place,date,nickname,mode}){
   ctx.fillText(place,border,height+border+footer*.17,width);
   ctx.fillStyle="#425445";
   ctx.font=`${Math.max(11,Math.round(width*.016))}px "Malgun Gothic",sans-serif`;
-  ctx.fillText(`${photoDate.format(date)} · ${nickname} · 덕수궁 한바퀴`,border,height+border+footer*.59,width);
+  ctx.fillText(`${photoDate.format(date)} · ${nickname} · 서울 궁 한바퀴`,border,height+border+footer*.59,width);
   const blob=await new Promise(resolve=>canvas.toBlob(resolve,"image/jpeg",.87));
   if(!blob)throw Error("공유용 사진을 만들지 못했어요.");
   return {id:crypto.randomUUID(),date,place,mode,blob};
@@ -55,7 +55,7 @@ export async function makePhotoCard(picture,{place,date,nickname,mode}){
 
 export function downloadPhoto(photo){
   const url=URL.createObjectURL(photo.blob),link=document.createElement("a");
-  link.href=url;link.download=`덕수궁-한바퀴-${new Date(photo.date).toISOString().slice(0,10)}.jpg`;link.click();
+  link.href=url;link.download=`서울-궁-한바퀴-${new Date(photo.date).toISOString().slice(0,10)}.jpg`;link.click();
   setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 

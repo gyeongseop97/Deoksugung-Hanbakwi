@@ -1,15 +1,19 @@
 import {addLandmarks,addObstacle} from "./layout.js";
-import {at as palaceAt} from "./gyeongbok-layout.js";
+import {at as palaceAt,gbSite} from "./gyeongbok-layout.js";
 import {plazaAt} from "./plaza-layout.js";
 import {makeRegionalItemProps} from "./regional-item-props.js";
 
-// Fictional shops in the museum visitor forecourt and the gap between the east-side
-// office buildings. The royal precincts and their ceremonial paths stay open.
+// Fictional counters beside palace visitor paths and between the east-side office buildings.
+// The Sojubang counter uses its existing courtyard, clear of the heritage hall and gates.
+const kitchen=gbSite.sojubang,archive=gbSite.sujeongjeon;
 const palaceShops=[
-  {kind:"coffee",name:"기와 아래 커피",subtitle:"COFFEE",east:-181,north:25,paint:0x426052,sign:"#315046",ink:"#f8e7c4"},
-  {kind:"yakgwa",name:"꽃담 한과",subtitle:"YAKGWA",east:-157,north:25,paint:0x9e624b,sign:"#7f483a",ink:"#fff0ce"},
-  {kind:"makgeolli",name:"달항아리 주막",subtitle:"MAKGEOLLI",east:-133,north:25,paint:0x56716b,sign:"#405d58",ink:"#f0e7d1"}
-].map(shop=>({...shop,...palaceAt(shop.east,shop.north,shop.name),area:"gyeongbokgung",angle:Math.PI,w:7.1,d:4.4,h:3.81}));
+  {kind:"coffee",name:"기와 아래 커피",subtitle:"COFFEE",east:archive.east-26,north:archive.north-6,angle:Math.PI,
+    paint:0x426052,sign:"#315046",ink:"#f8e7c4"},
+  {kind:"yakgwa",name:"꽃담 한과",subtitle:"YAKGWA",east:79,north:651,angle:-Math.PI/2,
+    paint:0x9e624b,sign:"#7f483a",ink:"#fff0ce"},
+  {kind:"makgeolli",name:"소주방 막걸리",subtitle:"MAKGEOLLI",east:kitchen.east-5,north:kitchen.north-14,angle:0,
+    paint:0x56716b,sign:"#405d58",ink:"#f0e7d1"}
+].map(shop=>({...shop,...palaceAt(shop.east,shop.north,shop.name),area:"gyeongbokgung",w:7.1,d:4.4,h:3.81}));
 const avenueShops=[
   {kind:"coffee",name:"세종로 로스터리",subtitle:"COFFEE ROASTERS",north:103,wall:0x9c9686,paint:0x3d564a,
     counter:0xa17b56,glass:0xc5d1a4,sign:"#344c42",ink:"#fff2d0"},
@@ -103,22 +107,8 @@ function addBoothRoof(T,group,{matte},w,d){
 
 export function addRegionalStands(T,root,kit,area){
   const {wx,wz,box,cylinder}=kit;
-  const group=new T.Group();group.name=area==="gyeongbokgung"?"고궁박물관 앞 좌판":"세종대로 동편 상가";root.add(group);
+  const group=new T.Group();group.name=area==="gyeongbokgung"?"경복궁 산책길 좌판":"세종대로 동편 상가";root.add(group);
   const batch=standBatcher(T),props=makeRegionalItemProps(T,kit);
-  if(area==="gyeongbokgung"){
-    const court=new T.Group(),middle=palaceAt(-155,28.5);court.position.set(wx(middle.x),0,wz(middle.y));group.add(court);
-    box(0xb6af9d,0,.024,0,72,.043,17,court);
-    box(0xaea593,0,.047,7.8,72,.019,.42,court);
-    box(0xaea593,0,.047,-7.8,72,.019,.42,court);
-    for(let i=0;i<17;i++){
-      const x=(i-8)*4.2;
-      box(0x9d9586,x,.047,0,.031,.007,15.5,court);
-    }
-    for(const z of [-4.3,-.5,3.3])box(0x9d9586,0,.047,z,71,.007,.031,court);
-    const connector=palaceAt(-110,34.6);
-    box(0xb3a894,wx(connector.x),.024,wz(connector.y),18.2,.040,4.8,group);
-    batch(court);
-  }
   for(const shop of shops){
     if(shop.area!==area)continue;
     const building=new T.Group();building.name=shop.name;
@@ -144,6 +134,9 @@ export function addRegionalStands(T,root,kit,area){
   }
   function booth(shop,parent){
     const {w,d,paint}=shop,front=d/2,wood=0x6a4936,lightWood=0xab7f53;
+    box(0xb6af9d,0,-.020,1.28,w+.68,.055,d+3.15,parent);
+    for(const x of [-2.24,0,2.24])box(0xa79e8b,x,.008,front+1.16,.024,.006,2.56,parent);
+    box(0xa79e8b,0,.008,front+1.45,w+.46,.006,.028,parent);
     box(0xb8ac94,0,.076,0,w,.15,d,parent);
     box(0x6a4a3b,0,.164,0,w-.32,.10,d-.31,parent);
     box(0xd6ba8d,0,1.48,-front+.24,w-.67,2.56,.19,parent);

@@ -58,7 +58,9 @@ export function bindSceneTouch(scene,shell,{canTap,onBegin,onTap,onDrag,onPinch}
 
   shell.addEventListener("pointerdown",event=>{
     const button=event.target.closest("button:not([data-key])");
-    if(event.pointerType!=="touch"||event.button!==0||!button||button.disabled)return;
+    // Native gestures can keep their own capture, including a map close that reveals
+    // the minimap at the same position and a minigame charge that lasts until release.
+    if(event.pointerType!=="touch"||event.button!==0||!button||button.disabled||button.closest("[data-native-touch]"))return;
     for(const pointer of pointers.values())pointer.tap=false;
     buttons.set(event.pointerId,{button,x:event.clientX,y:event.clientY,moved:false});
     // Let a swipe beginning on an action row scroll the panel.

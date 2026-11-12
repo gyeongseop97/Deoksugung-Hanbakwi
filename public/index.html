@@ -3,8 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
-  <meta name="description" content="멀리 있어도 함께 걷는 덕수궁 돌담길.">
-  <title>덕수궁 한바퀴</title>
+  <meta name="description" content="덕수궁에서 광화문광장을 지나 경복궁까지 친구와 함께 걷는 3D 서울 산책.">
+  <meta name="application-name" content="Seoul Palace Walk">
+  <title>서울 궁 한바퀴 | Seoul Palace Walk</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Crect width='48' height='48' rx='10' fill='%231b271f'/%3E%3Cpath d='M24 8 28 20 40 24 28 28 24 40 20 28 8 24 20 20Z' fill='%23e1c687'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="./style.css">
   <link rel="stylesheet" href="./passport.css">
@@ -16,7 +17,7 @@
 <body>
   <main id="entry-flow" class="entry-flow" aria-label="산책 시작">
     <div class="entry-frame">
-      <div class="entry-brand"><span class="brandmark" aria-hidden="true">✦</span><span>덕수궁 한바퀴</span></div>
+      <div class="entry-brand"><span class="brandmark" aria-hidden="true">✦</span><span>서울 궁 한바퀴</span><span class="entry-brand-english" lang="en">Seoul Palace Walk</span></div>
       <section id="profile-step" class="entry-profile" aria-labelledby="profile-title">
         <figure class="entry-cover">
           <img src="./deoksugung-cover.webp" alt="가을빛이 물든 덕수궁 대한문" width="1200" height="800" fetchpriority="high">
@@ -79,7 +80,7 @@
   </main>
   <div id="game-shell" hidden>
   <header class="top">
-    <h1 class="brand"><span class="brandmark" aria-hidden="true">✦</span><span>덕수궁 한바퀴</span></h1>
+    <h1 class="brand"><span class="brandmark" aria-hidden="true">✦</span><span>서울 궁 한바퀴</span></h1>
     <div class="top-game-actions">
       <div id="mobile-view-controls"></div>
       <div class="top-actions" id="game-room-controls">
@@ -133,7 +134,7 @@
               <p role="status">고양이에게 뛰어가면 놀라서 도망가요!</p>
               <button id="cat-run-tip-dismiss" class="quiet" type="button">다시 보지 않기</button>
             </div>
-            <button id="map-toggle" class="minimap" type="button" aria-label="미니맵, 큰 지도 열기" aria-controls="map-panel" aria-expanded="false">
+            <button id="map-toggle" class="minimap" type="button" data-native-touch aria-label="미니맵, 큰 지도 열기" aria-controls="map-panel" aria-expanded="false">
               <svg id="mini-world" viewBox="404 241.5 126 105" aria-hidden="true">
                 <g id="mini-landscape"></g><g id="mini-people"></g>
                 <g id="mini-look-pins"></g>
@@ -247,20 +248,30 @@
           </form>
         </div>
       </article>
-      <article class="panel map-panel" id="map-panel">
+      <article class="panel map-panel" id="map-panel" data-native-touch>
         <div class="panel-head">
           <h2>산책 지도</h2>
-          <div class="top-actions"><button id="overview-map" class="quiet" type="button" aria-pressed="false" aria-controls="world">전체 지도</button><button class="pill" id="presence" type="button" aria-label="접속자 목록 열기" aria-haspopup="dialog" aria-controls="roster-dialog"><i aria-hidden="true"></i><span>접속자</span></button><button id="close-map" class="quiet" type="button" aria-label="지도 닫기">×</button></div>
+          <div class="top-actions"><button id="overview-map" class="quiet" type="button" aria-pressed="false" aria-controls="world">전체 지도</button><button id="map-games-open" class="quiet" type="button" aria-haspopup="dialog" aria-controls="map-games-dialog">전통놀이</button><button class="pill" id="presence" type="button" aria-label="접속자 목록 열기" aria-haspopup="dialog" aria-controls="roster-dialog"><i aria-hidden="true"></i><span>접속자</span></button><button id="close-map" class="quiet" type="button" aria-label="지도 닫기">×</button></div>
+        </div>
+        <div id="map-route" class="map-route" hidden>
+          <div role="status"><strong id="map-route-name"></strong><span id="map-route-distance"></span></div>
+          <button id="map-route-walk" class="quiet" type="button">이 길로 걷기</button>
+          <button id="map-route-clear" class="quiet" type="button" aria-label="도보 경로 지우기">×</button>
         </div>
         <div class="map-wrap">
-          <svg id="world" viewBox="58 28 520 397" role="group" tabindex="0" aria-label="덕수궁에서 경복궁까지 이어지는 산책 지도. 방향키 또는 WASD로 이동, 마우스 휠이나 두 손가락으로 확대 및 축소">
+          <svg id="world" viewBox="58 28 520 397" role="group" tabindex="0" aria-label="산책 지도. 휠이나 두 손가락으로 확대·축소하고, 마우스나 손가락으로 끌어서 둘러보세요.">
             <defs>
               <pattern id="grid" width="28" height="28" patternUnits="userSpaceOnUse"><path d="M28 0H0V28" fill="none" stroke="#c7c59a" stroke-opacity=".10"/></pattern>
               <pattern id="stone" width="20" height="12" patternUnits="userSpaceOnUse"><path d="M0 1h20M0 7h20M5 1v6m10 0v5" stroke="#b59865" stroke-opacity=".5" fill="none"/></pattern>
               <g id="tree"><circle cx="2" cy="4" r="14" fill="#101c18"/><circle r="14" fill="#31493a" stroke="#6c8060" stroke-width="1"/><circle r="6" fill="#435a45"/><circle cx="-3" cy="-4" r="2" fill="#76825b"/></g>
             </defs>
             <g id="map-landscape" aria-hidden="true"></g>
+            <g id="map-route-path" aria-hidden="true" visibility="hidden">
+              <polyline/><polyline/>
+              <circle id="map-route-end" r="8"/>
+            </g>
             <g id="stamp-pins" aria-hidden="true"></g>
+            <g id="map-games" aria-hidden="true"></g>
             <g id="map-people" aria-hidden="true"></g>
             <circle id="parked-bike-pin" r="5.8" fill="#8ed7a2" stroke="#f8e5ac" stroke-width="1.8" visibility="hidden" aria-hidden="true"><title>내가 세워둔 따릉이</title></circle>
             <g id="look-pins" aria-hidden="true"></g>
@@ -275,13 +286,17 @@
             <button type="button" data-key="ArrowRight" aria-label="오른쪽으로">→</button>
           </div>
         </div>
-        <div class="map-footer"><span class="map-key"><span><i class="dot mine"></i>나</span><span><i class="dot theirs"></i>동행</span><span><i class="dot bus-dot"></i>버스</span><span><i class="dot bike-dot"></i>따릉이</span><span><i class="dot stamp-dot"></i>도장</span></span><div class="map-links"><button id="model-credits" class="quiet" type="button" aria-haspopup="dialog">자료 출처</button><button id="entrance-target" class="quiet" type="button" aria-label="매표소로 순간이동">매표소</button><button id="fountain-target" class="quiet" type="button" aria-label="정동 분수대로 순간이동">분수대</button><button id="palace-target" class="quiet" type="button" aria-label="중화전으로 순간이동">중화전</button><button id="stop-target" class="quiet" type="button" hidden>정류장</button><button id="plaza-bus-target" class="quiet" type="button" hidden>정류장</button></div></div>
+        <div class="map-footer"><span class="map-key"><span><i class="dot mine"></i>나</span><span><i class="dot theirs"></i>동행</span><span><i class="dot bus-dot"></i>버스</span><span><i class="dot bike-dot"></i>따릉이</span><span><i class="dot stamp-dot"></i>찍은 도장</span><span><i class="dot stamp-dot unvisited"></i>미방문 도장</span></span><div class="map-links"><button id="model-credits" class="quiet" type="button" aria-haspopup="dialog">자료 출처</button><button id="entrance-target" class="quiet" type="button" aria-label="매표소로 순간이동">매표소</button><button id="fountain-target" class="quiet" type="button" aria-label="정동 분수대로 순간이동">분수대</button><button id="palace-target" class="quiet" type="button" aria-label="중화전으로 순간이동">중화전</button><button id="stop-target" class="quiet" type="button" hidden>정류장</button><button id="plaza-bus-target" class="quiet" type="button" hidden>정류장</button></div></div>
       </article>
     </section>
-    <footer><span>✦ &nbsp; 덕수궁 한바퀴</span><span>덕수궁 · 광화문광장 · 경복궁을 걷는 3D 산책 공간</span></footer>
+    <footer><span>✦ &nbsp; 서울 궁 한바퀴</span><span>덕수궁 · 광화문광장 · 경복궁을 걷는 3D 산책 공간</span></footer>
   </main>
   </div>
   <div id="passport-mount"></div>
+  <dialog id="map-games-dialog" aria-labelledby="map-games-title">
+    <div class="dialog-top"><h2 id="map-games-title">전통놀이 장소</h2><button type="button" class="quiet close" aria-label="닫기">×</button></div>
+    <div id="map-game-destinations"></div>
+  </dialog>
   <dialog id="environment-dialog" aria-labelledby="environment-title">
     <div class="dialog-top"><h2 id="environment-title">시간과 날씨</h2><button type="button" class="quiet close" aria-label="닫기">×</button></div>
     <p id="environment-status" role="status">서울 날씨를 확인하고 있어요.</p>
@@ -387,7 +402,7 @@
     </div>
   </dialog>
   <dialog id="credits-dialog" aria-labelledby="credits-title">
-    <div class="dialog-top"><span class="tag">DEOKSUGUNG</span><button type="button" class="quiet close" aria-label="닫기">×</button></div>
+    <div class="dialog-top"><span class="tag" lang="en">Seoul Palace Walk</span><button type="button" class="quiet close" aria-label="닫기">×</button></div>
     <h2 id="credits-title">자료 출처</h2>
     <p>국가유산청이 제공한 3D 실측 자료를 웹에서 볼 수 있도록 경량화했습니다.</p>
     <ul class="credits">
@@ -410,7 +425,7 @@
   </dialog>
   <dialog id="visitor-guide-dialog" aria-labelledby="visitor-guide-title">
     <div class="dialog-top">
-      <h2 id="visitor-guide-title">덕수궁 한바퀴 관람 안내</h2>
+      <h2 id="visitor-guide-title">서울 궁 한바퀴 관람 안내</h2>
       <button type="button" class="quiet close" aria-label="닫기">×</button>
     </div>
     <p class="guide-intro">대한문 매표소에서 출발해 세종대로와 광화문광장을 거쳐 경복궁까지 걸어갈 수 있어요. 대한문 앞 횡단보도를 건너 <strong>서울광장 쪽 인도</strong>를 따라 광화문으로 갈 수도 있어요. <strong>전체 지도</strong>에서 장소 이름을 누르면 그곳으로 걸어갑니다.</p>

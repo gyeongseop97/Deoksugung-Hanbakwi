@@ -13,6 +13,8 @@ import { addHanbokRental } from "./wearables-models.js";
 import { assembleMuseum, registerMuseumNavigation, isInsideMuseum, museumOutsideDoor, museumInsideDoor, museumInsideSpawn, stairHeight } from "./museum.js";
 import { PET_MS, FEED_MS, jumpLift } from "./activities.js";
 import { makeWalkerModels } from "./walker-model.js";
+import { addMinigameMarkers, registerMinigameProps } from "./minigame-markers.js";
+import { makeMinigameWorld } from "./minigame-world.js";
 import { makeFirstPersonView } from "./first-person.js";
 import { plazaShowSpot } from "./plaza-show.js";
 import { gbSurveyModels, gbNightGlow } from "./gyeongbok.js";
@@ -155,6 +157,8 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
   const drawWater=addWater(T,deoksRoot,fountains,makeKit(deoksRoot));
   registerRegionalStands();
   registerHanbokRental();
+  const minigameProps=registerMinigameProps(floorHeight);
+  const minigameWorld=makeMinigameWorld(T,outdoors,kit,floorHeight);
   const stations=[...addStands(T,transportRoot,makeKit(transportRoot)),...regionalStations];
   outdoors.add(deoksRoot,corridorRoot,transportRoot);
   const createItemProp=makeItemProps(T,kit);
@@ -317,6 +321,7 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     updatePlaza=yield* assembleGwanghwamunPlaza(T,plazaRoot,makeKit(plazaRoot),{birdPerches});
     addRegionalStands(T,plazaRoot,makeKit(plazaRoot),"gwanghwamun");
     addDocks(plazaRoot,dock=>dock.y<=-280&&dock.y>-790);
+    addMinigameMarkers(T,plazaRoot,kit,["kite"],floorHeight);
     const chunks=yield* consolidate(plazaRoot,new Set(),foliage.register);
     plazaWildlife=birds.loadPlaza(birdPerches);
     return chunks;
@@ -326,6 +331,7 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     addRegionalStands(T,palaceRoot,makeKit(palaceRoot),"gyeongbokgung");
     addHanbokRental(T,palaceRoot,makeKit(palaceRoot));
     addDocks(palaceRoot,dock=>dock.y<=-790);
+    addMinigameMarkers(T,palaceRoot,kit,["tuho","jegi"],floorHeight,minigameProps);
     const surveyed=gbSurveyModels.filter(id=>groups.has(id));
     const chunks=yield* consolidate(palaceRoot,new Set(surveyed.map(id=>groups.get(id))),foliage.register);
     for(const id of surveyed)addSurvey(palaceRoot,id,gbSite[id],[groups.get(id)],gbSite[id].angle);
@@ -685,6 +691,7 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     if(palaceRoot.parent===outdoors)for(const {material,rest,strength} of gbNightGlow)material.emissiveIntensity=rest+night*strength;
     if(plazaRoot.parent===outdoors)updatePlaza(now,night,indoors?null:anchor,fountainShow?.startedAt??0,clock);
     const roster=[me,...peers],present=new Set(roster.map(player=>player.id));
+    minigameWorld.begin(clock,indoors?null:anchor,state.minigames,state.minigameAction,state.minigameFree);
     if(!indoors){
       if(deoksRoot.parent===outdoors&&distanceToDistrict(anchor,deoksBounds)<120){drawWater(now*.001,night);drawPond(now*.001,night);}
       nightSky(night*(1-cloud*.91)*(1-fog*.89));
@@ -708,6 +715,7 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     streetPeople.update(clock,now,delta,indoors?null:anchor,Boolean(quality.sparse));
     for(const [id,model] of models){
       if(present.has(id))continue;
+      minigameWorld.remove(model);
       walkerModels.dispose(model);
       models.delete(id);
       for(const ring of ripples.get(id)??[]){ring.removeFromParent();ring.material.dispose();}
@@ -721,8 +729,10 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
       drawRipples(player.id,player,now,waterDepth(player.x,player.y)>0&&jumpLift(player,clock)<.3);
       walkerModels.update(model,player,{now,clock,delta,seat:seatAt(player,clock),floor:footing(player),jump:jumpLift(player,clock),emojiTexture,chatTexture,
         turnEase:player===me?1-Math.exp(-delta*22):1});
+      minigameWorld.pose(player,model,state.photoCapture);
       if(model.label)model.label.visible=!state.photoCapture;
     });
+    minigameWorld.live(models,indoors||state.photoCapture?null:state.minigameAimPreview);
     const seat=seatAt(anchor,clock),bus=anchor.bus&&busAt(anchor.bus.index,clock);
     const outsideBus=bus&&!firstPerson;
     const eyeHeight=outsideBus?2.1:seat?(firstPerson?1.30:1.22)+(seat.base??0):

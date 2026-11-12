@@ -44,7 +44,8 @@ h2{font-size:19px;line-height:1.2;margin:4px 0 0;font-weight:700;letter-spacing:
 }
 #chat-input::placeholder{color:#aab39f}
 #chat-send{flex:none;min-width:64px;min-height:42px}
-#world{width:100%;height:100%;display:block;background:#202c26;touch-action:none;cursor:crosshair}
+#world{width:100%;height:100%;display:block;background:#202c26;touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+#world.map-panning,#world.map-panning *{cursor:grabbing}
 .map-faint{font-size:11px;fill:#b2ad84}
 .map-palace{font-family:"Batang",serif;font-weight:600;fill:#c6c8a5;font-size:22px;letter-spacing:4px;text-anchor:middle}
 .map-label{font-size:15px;fill:#ebe0b8;paint-order:stroke;stroke:#243027;stroke-width:4px;stroke-linejoin:round}
@@ -235,6 +236,7 @@ dialog input,dialog code{display:block;width:100%;padding:9px;border-radius:7px;
   .mobile-settings-actions{
     position:absolute;top:calc(100% + 4px);right:max(9px,env(safe-area-inset-right,0px));
     display:grid;gap:5px;width:133px;padding:6px;border:1px solid #879679;
+    max-height:calc(100dvh - 62px - env(safe-area-inset-bottom,0px));overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y;
     border-radius:11px;background:#17271f;box-shadow:0 7px 20px #07110ac0;
   }
   .mobile-settings-actions button{text-align:left}
@@ -279,9 +281,10 @@ dialog input,dialog code{display:block;width:100%;padding:9px;border-radius:7px;
     transform:translate(var(--jx,0px),var(--jy,0px));
   }
   #close-map{min-height:44px}
-  .map-panel{display:none;position:fixed;z-index:5;left:8px;right:8px;bottom:max(8px,env(safe-area-inset-bottom,0px));box-shadow:0 -15px 65px #0b1312aa}
-  .map-panel.expanded{display:flex}
-  .map-panel .map-wrap{height:min(42dvh,340px)}
+  .map-panel{display:none;position:fixed;z-index:5;left:8px;right:8px;bottom:max(8px,env(safe-area-inset-bottom,0px));max-height:calc(100dvh - 8px - max(8px,env(safe-area-inset-bottom,0px)));overflow-y:auto;overscroll-behavior:contain;box-shadow:0 -15px 65px #0b1312aa}
+  .map-panel.expanded{display:flex;z-index:8}
+  .map-panel .map-wrap{height:min(42dvh,340px);min-height:78px}
+  .map-panel :is(.panel-head,.map-route,.map-footer){flex:none}
   .map-footer{min-height:54px}
   footer{display:none}
   #toast{bottom:max(63px,calc(env(safe-area-inset-bottom,0px) + 54px));pointer-events:none}
@@ -309,6 +312,35 @@ dialog input,dialog code{display:block;width:100%;padding:9px;border-radius:7px;
 .map-key span{white-space:nowrap}
 .map-key .bus-dot{background:#91c9f2}
 .map-key .bike-dot{background:#8ed7a2}
+.map-key .stamp-dot{background:#ffd07e;box-shadow:0 0 0 1px #5c4231}
+.map-key .stamp-dot.unvisited{background:#ffd07e28;box-shadow:0 0 0 1px #dfc8959c}
+#stamp-pins circle{fill:#ffe1a339;stroke:#ead3a5ad;stroke-width:1.35;vector-effect:non-scaling-stroke;cursor:pointer}
+#stamp-pins circle.collected{fill:#ffd07e;stroke:#543629}
+#stamp-pins circle:hover,#stamp-pins circle.selected{fill:#fff0bf;stroke:#392d23}
+.game-map-pin{cursor:pointer}
+.game-map-pin path{fill:#9de2cc;stroke:#29473e;stroke-width:1.4;vector-effect:non-scaling-stroke}
+.game-map-pin text{fill:#d1f5e6;stroke:#24382e;stroke-width:3;paint-order:stroke;stroke-linejoin:round;font-size:12px;font-weight:750}
+.game-map-pin:hover path,.game-map-pin.selected path{fill:#fff0bf}
+.game-map-pin:hover text,.game-map-pin.selected text{fill:#fff0bf}
+#map-game-destinations{display:grid;gap:8px}
+#map-game-destinations button{display:grid;gap:2px;justify-items:start;text-align:left;white-space:normal}
+#map-game-destinations span{color:var(--muted);font-size:12px;font-weight:500}
+#map-route-path{pointer-events:none}
+#map-route-path polyline,#map-route-end{vector-effect:non-scaling-stroke}
+#map-route-path polyline{fill:none;stroke-linecap:round;stroke-linejoin:round}
+#map-route-path polyline:first-child{stroke:#202823;stroke-width:6}
+#map-route-path polyline:nth-child(2){stroke:#ffda83;stroke-width:3.5}
+#map-route-end{fill:none;stroke:#fff0bf;stroke-width:5}
+.map-route{display:flex;align-items:center;gap:7px;padding:7px 12px;background:#27382c;border-top:1px solid #536352}
+.map-route[hidden]{display:none}
+.map-route [role=status]{display:grid;gap:2px;min-width:0;flex:1;font-size:13px;line-height:1.25}
+.map-route strong{color:#fff0c4}
+.map-route span{color:#dbdec9;font-size:12px}
+.map-route button{min-height:36px;white-space:nowrap}
+#map-route-clear{width:36px;padding-inline:0;font-size:20px}
+@media (max-width:810px), (orientation:landscape) and (max-height:560px){
+  .map-panel:has(.map-route:not([hidden])) .map-wrap{height:min(40dvh,340px)}
+}
 .overview-map #map-landscape .map-label:not(.overview-label){visibility:hidden}
 .overview-map .overview-label{font-size:76px;stroke-width:13px}
 @media (max-width:810px), (orientation:landscape) and (max-height:560px){
@@ -397,6 +429,7 @@ dialog input,dialog code{display:block;width:100%;padding:9px;border-radius:7px;
   font-size:16px;font-weight:700;letter-spacing:-.025em;
 }
 .entry-brand .brandmark{flex:none;width:37px;height:37px}
+.entry-brand-english{font-size:12px;font-weight:500;color:var(--muted)}
 .entry-profile,.entry-server{
   border:1px solid #505c49;border-radius:24px;background:#1d2a21;
   box-shadow:0 26px 64px #090f0b75;

@@ -32,8 +32,6 @@
 .tutorial-card div{display:flex;justify-content:end;gap:5px}
 .tutorial-highlight{outline:2px solid #f2d090;outline-offset:2px}
 #tutorial-replay{min-height:44px;margin-bottom:10px}
-.map-key .stamp-dot{background:#ffd07e;box-shadow:0 0 0 1px #5c4231}
-#stamp-pins circle{fill:#ffd07e;stroke:#543629;stroke-width:1.25;vector-effect:non-scaling-stroke}
 @media(orientation:landscape) and (max-height:560px){
   .tutorial-card{top:8px;bottom:auto}
 }
