@@ -1,5 +1,9 @@
 import {addObstacle,route,stoneFountain} from "./layout.js";
 import {sparklerStall} from "./gyeongbok-layout.js";
+import {standBatcher,standSign} from "./regional-stands.js";
+import {makeRegionalItemProps} from "./regional-item-props.js";
+
+export {addRegionalStands,regionalStations,registerRegionalStands} from "./regional-stands.js";
 
 export const SPARKLER_SECONDS=8;
 
@@ -59,41 +63,7 @@ function makeCrepeModel(T){
 
 export function addStands(T,scene,{wx,wz,box,cylinder}){
   const stations=[];
-  const finishMaterial=new T.MeshStandardMaterial({roughness:.88});
-  function batchDetails(group){
-    const batches=new Map();
-    for(const part of group.children){
-      if(!part.material?.isMeshStandardMaterial)continue;
-      if(!batches.has(part.geometry))batches.set(part.geometry,[]);
-      batches.get(part.geometry).push(part);
-    }
-    for(const [geometry,parts] of batches){
-      if(parts.length<3)continue;
-      const batch=new T.InstancedMesh(geometry,finishMaterial,parts.length);
-      parts.forEach((part,i)=>{
-        part.updateMatrix();batch.setMatrixAt(i,part.matrix);
-        batch.setColorAt(i,part.material.color);
-      });
-      batch.computeBoundingSphere();
-      group.remove(...parts);group.add(batch);
-    }
-  }
-  function sign(parent,text,subtitle,width,x,y,z,background,ink){
-    const canvas=document.createElement("canvas");
-    canvas.width=512;canvas.height=160;
-    const ctx=canvas.getContext("2d");
-    ctx.fillStyle=background;ctx.fillRect(0,0,512,160);
-    ctx.strokeStyle=ink;ctx.lineWidth=3;ctx.strokeRect(8,8,496,144);
-    ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillStyle=ink;
-    ctx.font='bold 67px "Malgun Gothic", sans-serif';ctx.fillText(text,256,subtitle?65:80,472);
-    if(subtitle){
-      ctx.font='bold 19px "Segoe UI", sans-serif';ctx.fillText(subtitle,256,124,462);
-    }
-    const map=new T.CanvasTexture(canvas);map.colorSpace=T.SRGBColorSpace;
-    const panel=new T.Mesh(new T.PlaneGeometry(width,width*160/512),
-      new T.MeshBasicMaterial({map}));
-    panel.position.set(x,y,z);parent.add(panel);
-  }
+  const batchDetails=standBatcher(T);
   function glass(parent,shop,x,y,z,width,height){
     box(shop.frame,x,y,z,width+.16,height+.16,.10,parent);
     box(shop.glass,x,y,z+.058,width,height,.025,parent);
@@ -119,8 +89,8 @@ export function addStands(T,scene,{wx,wz,box,cylinder}){
     box(teal,0,2.93,z+.16,w+.04,.68,.30,group);
     box(0xf4bf54,0,3.26,z+.318,w+.08,.075,.05,group);
     box(0x77c2a8,0,2.62,z+.315,w+.08,.079,.05,group);
-    sign(group,shop.name,null,2.12,-.12,2.94,z+.325,"#146761","#fff4d9");
-    sign(group,"24시",null,1.27,w*.371,2.94,z+.326,"#f4c35f","#215c53");
+    standSign(T,group,shop.name,null,2.12,-.12,2.94,z+.325,"#146761","#fff4d9");
+    standSign(T,group,"24시",null,1.27,w*.371,2.94,z+.326,"#f4c35f","#215c53");
 
     const panes=new T.MeshBasicMaterial({color:glassTint,transparent:true,opacity:.21,depthWrite:false});
     function pane(x,y,width,height,depth=z+.045){
@@ -153,7 +123,7 @@ export function addStands(T,scene,{wx,wz,box,cylinder}){
     pane(0,1.30,1.81,2.33,z+.101);
     box(0x9baca5,0,1.04,z+.128,1.81,.105,.027,group);
     for(const x of [-.153,.153])box(0xe2e5db,x,1.20,z+.154,.040,.20,.042,group);
-    sign(group,"츄르",null,.75,2.85,1.98,z+.094,"#f4c35f","#3d4c47");
+    standSign(T,group,"츄르",null,.75,2.85,1.98,z+.094,"#f4c35f","#3d4c47");
   }
   function shopModel(shop,group){
     const {width:w,depth:d,height:h,base,walls,frame,roof,shade,stripe}=shop,z=d/2;
@@ -177,7 +147,7 @@ export function addStands(T,scene,{wx,wz,box,cylinder}){
       box(base,side*w*.442,1.51,z+.09,.19,2.9,.24,group);
       planter(group,side*w*.411,z+.61);
     }
-    sign(group,shop.name,shop.subtitle,4.05,0,3.39,z+.17,shop.sign,shop.ink);
+    standSign(T,group,shop.name,shop.subtitle,4.05,0,3.39,z+.17,shop.sign,shop.ink);
     const canopyWidth=w*.79,strips=12;
     for(let i=0;i<strips;i++){
       const x=(i+.5)*canopyWidth/strips-canopyWidth/2,color=i%2===0?shade:stripe;
@@ -243,7 +213,7 @@ export function addStands(T,scene,{wx,wz,box,cylinder}){
     box(color,(i-4.5)*.35,2.54,.016,.353,.09,1.83,stand).rotation.x=.12;
     box(color,(i-4.5)*.35,2.37,.91,.353,.18,.075,stand);
   }
-  sign(stand,title,"SPARKLER",2.46,0,1.92,.735,"#415b44","#ffe6b0");
+  standSign(T,stand,title,"SPARKLER",2.46,0,1.92,.735,"#415b44","#ffe6b0");
   for(let i=0;i<3;i++){
     const bundleX=(i-1)*.75;
     cylinder(0x85654f,bundleX,1.17,0,.16,.23,8,stand,.85);
@@ -371,7 +341,7 @@ export function makeItemProps(T,{box,cylinder,shape}){
     }
     return {update,dispose:()=>geometry.dispose()};
   }
-  const models={coffee,crepe,parfait:crepe,beer,sparkler,churu};
+  const models={coffee,crepe,parfait:crepe,beer,sparkler,churu,...makeRegionalItemProps(T,{box,cylinder,shape})};
   return parent=>{
     const instances=new Map();
     let previous=null;
