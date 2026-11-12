@@ -43,7 +43,7 @@ h2{font-size:19px;line-height:1.2;margin:4px 0 0;font-weight:700;letter-spacing:
 }
 #chat-input::placeholder{color:#aab39f}
 #chat-send{flex:none;min-width:64px;min-height:42px}
-#world{width:100%;height:100%;display:block;background:#202c26;touch-action:pan-y;cursor:crosshair}
+#world{width:100%;height:100%;display:block;background:#202c26;touch-action:none;cursor:crosshair}
 .map-faint{font-size:11px;fill:#b2ad84}
 .map-palace{font-family:"Batang",serif;font-weight:600;fill:#c6c8a5;font-size:22px;letter-spacing:4px;text-anchor:middle}
 .map-label{font-size:15px;fill:#ebe0b8;paint-order:stroke;stroke:#243027;stroke-width:4px;stroke-linejoin:round}
@@ -243,6 +243,15 @@ dialog input,dialog code{display:block;width:100%;padding:9px;border-radius:7px;
 #night{padding-inline:10px}
 #perspective{min-width:44px}
 .game-place small{max-width:100%}
+#travel-status{color:#f8d794;margin-top:4px}
+.bus-seating{width:min(100%,310px);margin:0 auto;display:grid;gap:7px;text-align:center;color:#d9d7ba}
+#bus-seats{display:grid;grid-template-columns:1fr 1fr;column-gap:clamp(18px,10vw,60px);row-gap:7px;padding:12px;border:1px solid #788270;border-radius:22px;background:#16251e}
+#bus-seats button{min-height:44px;white-space:nowrap}
+#bus-seats button:disabled{opacity:.54}
+.map-key{display:flex;flex-wrap:wrap;gap:2px 8px}
+.map-key span{white-space:nowrap}
+.map-key .bus-dot{background:#91c9f2}
+.map-key .bike-dot{background:#8ed7a2}
 @media (max-width:810px), (orientation:landscape) and (max-height:560px){
   #run kbd{display:none}
   #run,#sit,.map-links button{min-height:44px}
@@ -655,23 +664,13 @@ dialog input,dialog code{display:block;width:100%;padding:9px;border-radius:7px;
 .ride-tunnel{animation:ride-tunnel .5s linear infinite}
 .ride-door-left{animation:ride-door-left 4.4s ease both}
 .ride-door-right{animation:ride-door-right 4.4s ease both}
-.ride-bus{animation:ride-bus 4.4s ease-in-out both}
-.ride-wheel{animation:ride-wheel .5s linear infinite}
-.ride-lane{animation:ride-lane .45s linear infinite}
-.ride-skyline{animation:ride-skyline 4.4s linear both}
-.ride-gate{animation:ride-gate 4.4s ease-in both}
 @keyframes transit-fade{0%{opacity:0}8%{opacity:1}90%{opacity:1}100%{opacity:0}}
 @keyframes transit-run{from{transform:scaleX(0)}to{transform:scaleX(1)}}
 @keyframes ride-train{0%{transform:translateX(-340px)}22%{transform:translateX(0)}52%{transform:translateX(0)}100%{transform:translateX(360px)}}
 @keyframes ride-tunnel{from{transform:translateX(0)}to{transform:translateX(-60px)}}
 @keyframes ride-door-left{0%,24%{transform:translateX(0)}32%,44%{transform:translateX(-18px)}52%,100%{transform:translateX(0)}}
 @keyframes ride-door-right{0%,24%{transform:translateX(0)}32%,44%{transform:translateX(18px)}52%,100%{transform:translateX(0)}}
-@keyframes ride-bus{0%{transform:translate(-300px,0)}18%{transform:translate(-20px,0)}30%{transform:translate(-20px,-1.5px)}45%{transform:translate(0,0)}60%{transform:translate(0,-1.5px)}82%{transform:translate(20px,0)}100%{transform:translate(20px,0)}}
-@keyframes ride-wheel{from{transform:rotate(0)}to{transform:rotate(360deg)}}
-@keyframes ride-lane{from{transform:translateX(0)}to{transform:translateX(-56px)}}
-@keyframes ride-skyline{from{transform:translateX(0)}to{transform:translateX(-300px)}}
-@keyframes ride-gate{0%,58%{transform:translateX(330px)}100%{transform:translateX(190px)}}
-@media (prefers-reduced-motion:reduce){.transit,.transit-track i,.ride-train,.ride-tunnel,.ride-door-left,.ride-door-right,.ride-bus,.ride-wheel,.ride-lane,.ride-skyline,.ride-gate{animation:none}}
+@media (prefers-reduced-motion:reduce){.transit,.transit-track i,.ride-train,.ride-tunnel,.ride-door-left,.ride-door-right{animation:none}}
 
 .gyeongbok-label{font-size:21px;stroke-width:5px}
 .plaza-map-label{font-size:17px;stroke-width:4px}
