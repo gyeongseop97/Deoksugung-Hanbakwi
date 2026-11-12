@@ -7,6 +7,14 @@ const axleY=.29,wheelbase=.54;
 const silver=0xdadfd6,green=0x39ad66,deepGreen=0x1e6f4b,rubber=0x232c29;
 const steel=0x74837e,black=0x25332f;
 const modelCache=new WeakMap();
+const dockSurfaces=new WeakMap();
+// Finished paving levels under each rack, including the flush street and garden paths.
+const dockPaving={
+  "city-hall":.039,"cheonggye":.061,"gwanghwamun":.025,"gyeongbokgung":.020,
+  "jeongdong-fountain":.044,"seoul-plaza":.039,"city-council":.039,"culture-shelter":.025,
+  "plaza-east":.016,"palace-museum":.008,"folk-museum":.017
+};
+const dockLevel=dock=>Math.max(dockPaving[dock.id]??.024,platformAt(dock.x,dock.y));
 
 // Positions in metres in the rider group's coordinates. Positive Z points forward.
 export const bikeFit={saddleY:.59,gripX:.255,gripY:.89,gripZ:.40,crankY:.41,crankZ:.13,pedalX:.17,pedalRadius:.103};
@@ -177,7 +185,13 @@ function dockSign(T){
 }
 
 export function registerBikeDocks(docks=bikeDocks){
-  for(const dock of docks)addObstacle(dock.x,dock.y,4.12,1.80,Math.PI-dock.heading*Math.PI/180,1.49);
+  for(const dock of docks){
+    if(dockSurfaces.has(dock))continue;
+    // Capture the sidewalk before the rack itself appears in platform queries.
+    const level=dockLevel(dock);
+    dockSurfaces.set(dock,level);
+    addObstacle(dock.x,dock.y,4.12,1.80,Math.PI-dock.heading*Math.PI/180,level+1.49);
+  }
 }
 
 export function buildBikeDocks(T,scene,{wx,wz,box,cylinder},{docks=bikeDocks,register=true}={}){
@@ -186,7 +200,8 @@ export function buildBikeDocks(T,scene,{wx,wz,box,cylinder},{docks=bikeDocks,reg
   for(const dock of docks){
     const group=new T.Group(),angle=Math.PI-dock.heading*Math.PI/180;
     group.name=dock.name;
-    group.position.set(wx(dock.x),platformAt(dock.x,dock.y)+.051,wz(dock.y));group.rotation.y=angle;
+    const level=dockSurfaces.get(dock)??dockLevel(dock);
+    group.position.set(wx(dock.x),level,wz(dock.y));group.rotation.y=angle;
     scene.add(group);
     group.add(paintedMesh(T,parts.rack,parts.material));
     for(const x of [-1.40,-.47,1.40]){

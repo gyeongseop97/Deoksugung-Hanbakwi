@@ -19,7 +19,9 @@
 
 ## 경복궁 맵
 
-경복궁의 전각 위치와 크기는 공개 지도 좌표와 궁능유적본부 관람 안내도를 참고해 실제 축척으로 배치했습니다. 건물은 이 게임을 위해 직접 모델링했으며 높이와 세부는 추정치입니다. 실측 3D 자료는 포함하지 않았습니다.
+경복궁의 전각과 마당, 관람로는 [궁능유적본부 관람 배치도](https://royal.khs.go.kr/ROYAL/contents/R701000000.do), [경복궁 이야기](https://royal.khs.go.kr/ROYAL/contents/R101020000.do?bdProgramCode=storyCtg3&menuId=03_01_02&pageType=story&schBdcode=gbg), 공개 지도 좌표를 참고해 배치했습니다. 마당과 지붕, 포장과 조경은 [네이버 흥복전 거리뷰](https://map.naver.com/p?c=15.00,0,0,0,adh&p=fo9fXEBDHz2AwLODi19oYg,151,10,80,Float), [태원전 건숙문 거리뷰](https://map.naver.com/p?c=17.00,0,0,0,adh&p=QPAdtv5fwjjHj2Hwj_1w9Q,-137.1,10,80,Float), [함화당·향원지 사이 거리뷰](https://map.naver.com/p?c=17.00,0,0,0,adh&p=5Cl3_VPzbBJzhTmGtLbozQ,-137.1,10,80,Float)를 참고했습니다. 건물과 조경은 직접 제작한 게임용 재현이며, 높이와 세부 치수는 추정했습니다.
+
+경복궁 박물관 쪽 방문객 구역과 광화문광장 대로변의 상점은 게임을 위해 만든 가상의 공간입니다.
 
 ## 세종대로 연결 구간
 

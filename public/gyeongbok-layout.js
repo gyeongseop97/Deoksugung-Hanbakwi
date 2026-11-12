@@ -36,15 +36,49 @@ export const gbSites=[
   site("bihyeongak","비현각","丕顯閣",126,322,14.2,9.2,3.6,5,{kind:"hall"}),
   site("jagyeongjeon","자경전","慈慶殿",108,472,31.4,12.2,4.2,10,{kind:"hall"}),
   site("hyangwonjeong","향원정","香遠亭",12,706,8.4,8.4,6.4,6,{kind:"hexagon"}),
-  site("geoncheonggung","건청궁","乾淸宮",22,782,26.4,11.6,3.9,8,{kind:"hall"}),
-  site("jibokjae","집옥재","集玉齋",-72,806,18.6,13.2,5.2,5,{kind:"hall",brick:true}),
+  site("geoncheonggung","건청궁","乾淸宮",33,776,48,10,3.2,8,{kind:"compound"}),
+  site("jibokjae","집옥재","集玉齋",-56,824,18.6,13.2,5.2,5,{kind:"inner",finish:"library"}),
   site("geonchunmun","건춘문","建春門",wallHalf,330,13.4,8.4,3.8,3,{kind:"sideGate",angle:Math.PI/2}),
   site("yeongchumun","영추문","迎秋門",-wallHalf,330,13.4,8.4,3.8,3,{kind:"sideGate",angle:Math.PI/2}),
   site("sinmumun","신무문","神武門",0,wallNorth,13.4,8.4,3.8,3,{kind:"sideGate"}),
   site("palace-museum","국립고궁박물관","國立古宮博物館",-164,64,96,44,11.5,12,{kind:"museum"}),
-  site("folk-museum","국립민속박물관","",168,566,74,46,13,10,{kind:"museum"})
+  site("folk-museum","국립민속박물관","",168,566,74,46,13,10,{kind:"folkMuseum"}),
+  // Existing-map metres are fitted to the 2025 visitor map and geographic footprints.
+  site("gyejodang","계조당","繼照堂",91,221,15.7,8.5,3.4,5,{kind:"inner",finish:"dancheong"}),
+  site("sojubang","소주방","燒廚房",117,393,17.8,7.5,3.0,5,{kind:"inner",finish:"service"}),
+  site("saenggwabang","생과방","生果房",143,416,17.2,7.4,3.1,5,{kind:"inner",finish:"service"}),
+  site("heungbokjeon","흥복전","興福殿",14,547,25.4,11.8,3.6,7,{kind:"inner",finish:"restored"}),
+  site("amisan","아미산 굴뚝","",7,489,38,13,2.7,4,{kind:"garden"}),
+  site("heumgyeonggak","흠경각","欽敬閣",-41,466,13.7,8.2,3.5,3,{kind:"inner",finish:"dancheong"}),
+  site("hamwonjeon","함원전","含元殿",-42,486,15.6,8.1,3.3,5,{kind:"inner",finish:"dancheong"}),
+  site("jagyeong-chimney","자경전 십장생 굴뚝","",108,495,6.9,1.5,3.0,3,{kind:"garden"}),
+  site("hamhwadang","함화당","咸和堂",12,627,17.4,8.4,3.4,5,{kind:"inner",finish:"natural"}),
+  site("jipgyeongdang","집경당","集慶堂",44,627,18.5,8.6,3.5,5,{kind:"inner",finish:"natural"}),
+  site("janggo","장고","",-83,614,27,19,1.5,3,{kind:"garden"}),
+  site("taewonjeon","태원전","泰元殿",-199,750,20.7,9.9,3.9,5,{kind:"inner",finish:"dancheong",angle:.24}),
+  site("yeongsajae","영사재","永思齋",-204,726,15.3,7.4,3.0,5,{kind:"inner",finish:"natural",angle:.24}),
+  site("gyeongsahap","경사합","景思閤",-164,746,16.4,7.8,3.2,5,{kind:"inner",finish:"natural",angle:.24}),
+  site("sungmundang","숭문당","崇文堂",-153,776,15.8,7.3,3.2,5,{kind:"inner",finish:"natural",angle:.24}),
+  site("parujeong","팔우정","八隅亭",-73.4,824.3,7.6,7.6,5.1,3,{kind:"octagon",finish:"library"}),
+  site("hyeopgildang","협길당","協吉堂",-37.5,824,13.4,9.2,3.4,5,{kind:"inner",finish:"library"}),
+  site("jangandang","장안당","長安堂",21,798,19.4,8.4,3.5,5,{kind:"inner",finish:"natural"}),
+  site("gonnyeonghap","곤녕합","坤寧閤",51,798,17.2,8.2,3.6,5,{kind:"inner",finish:"natural"}),
+  site("okhoru","옥호루","玉壺樓",62,792,7.6,7.7,4.25,3,{kind:"inner",finish:"natural"})
 ];
 export const gbSite=Object.fromEntries(gbSites.map(spec=>[spec.id,spec]));
+
+// Each edge is given in metres as [east, north]; the named gaps line up with
+// the neighbouring visitor paths and the open doorway models in the scene.
+export const gbInnerCompounds=[
+  {id:"gyejodang",bounds:[71,112,197,236],south:[87,95],west:[203,211],style:"low"},
+  {id:"donggung",bounds:[76,148,281,346],south:[106,116],north:[106,116],west:[324,334],east:[300,309],style:"covered",split:[113,288,342,304,311]},
+  {id:"sojubang",bounds:[96,163,358,432],south:[121,130],north:[127,135],west:[373,382],east:[397,405],style:"covered",split:[130,380,431,388,396]},
+  {id:"jagyeongjeon",bounds:[85,135,447,495],south:[102,114],west:[456,464],east:[457,465],style:"covered"},
+  {id:"heungbokjeon",bounds:[-15,49,519,568],south:[11,19],west:[536,544],east:[531,538],style:"covered"},
+  {id:"hamhwadang",bounds:[-3,64,604,648],south:[25,33],north:[18,26],west:[613,620],east:[612,620],style:"covered",split:[29,624,646,627,633]},
+  {id:"taewonjeon",bounds:[-236,-137,695,801],south:[-209,-199],east:[721,733],style:"covered",turn:.24,split:[-181,716,794,748,755]},
+  {id:"geoncheonggung",bounds:[5,76,775,820],south:[31,41],west:[789,797],east:[787,796],style:"covered",split:[37,793,819,802,808]}
+];
 
 // Covered corridors (haenggak) that frame the two outer courts. Gaps are gateways.
 const frame=(west,east,south,north)=>({west,east,south,north});
@@ -109,10 +143,23 @@ export const gbPaths=[
   {name:"사정전에서 교태전까지",width:4.6,surface:"stone",points:[at(0,318),at(0,350),at(0,404),at(0,446)]},
   {name:"경복궁역에서 흥례문 앞까지",width:6.0,surface:"gravel",points:[at(-96,36),at(-70,60),at(-36,96),at(0,112)]},
   {name:"경회루 가는 길",width:4.8,surface:"gravel",points:[at(-56,246),at(-58,300),at(-56,356),at(-58,400),at(-60,428)]},
-  {name:"동궁 가는 길",width:4.4,surface:"gravel",points:[at(58,246),at(62,300),at(66,350),at(78,420),at(88,452)]},
-  {name:"향원정 가는 길",width:5.0,surface:"gravel",points:[at(0,476),at(-6,540),at(-10,610),at(-30,650),at(-44,706),at(-30,756),at(12,762)]},
-  {name:"향원지 동쪽 길",width:4.0,surface:"gravel",points:[at(-10,610),at(40,650),at(60,706),at(46,752),at(12,762)]},
-  {name:"건청궁에서 신무문까지",width:4.4,surface:"gravel",points:[at(12,762),at(-14,790),at(-30,830),at(0,858),at(0,868)]}
+  {name:"계조당 앞길",width:4.2,surface:"gravel",points:[at(66,192),at(91,191),at(91,204)]},
+  {name:"동궁 가는 길",width:4.4,surface:"gravel",points:[at(58,246),at(64,290),at(64,333),at(66,350),at(78,420),at(79,448),at(79,460)]},
+  {name:"동궁과 소주방 사이",width:4.8,surface:"gravel",points:[at(66,350),at(111,352),at(155,349),at(174,373),at(176,429),at(151,457),at(143,497),at(122,529)]},
+  {name:"동궁 남쪽 마당",width:4.0,surface:"gravel",points:[at(64,267),at(111,270),at(111,285)]},
+  {name:"흥복전 앞에서 후원까지",width:5.4,surface:"gravel",points:[at(12,507),at(-20,510),at(-25,548),at(-24,579),at(-23,612),at(-30,650),at(-44,706),at(-30,756),at(12,762)]},
+  {name:"흥복전 남쪽 출입길",width:3.8,surface:"gravel",points:[at(12,507),at(15,515),at(15,525)]},
+  {name:"향원지 동쪽 길",width:4.0,surface:"gravel",points:[at(54,579),at(73,604),at(74,645),at(60,670),at(58,706),at(50,745),at(31,765),at(12,762)]},
+  {name:"취향교 북쪽 진입로",width:3.5,surface:"gravel",points:[at(12,746),at(12,753),at(12,762)]},
+  {name:"함화당·집경당 앞길",width:4.3,surface:"gravel",points:[at(-24,579),at(3,589),at(29,590),at(54,579),at(83,545),at(122,529)]},
+  {name:"함화당·집경당 출입길",width:3.6,surface:"gravel",points:[at(29,590),at(29,606),at(28,613)]},
+  {name:"건청궁에서 신무문까지",width:4.4,surface:"gravel",points:[at(12,762),at(-10,775),at(-14,797),at(-18,836),at(0,858),at(0,868)]},
+  {name:"건청궁 앞마당",width:4.4,surface:"gravel",points:[at(12,762),at(31,765),at(36,775),at(36,785)]},
+  {name:"집옥재 앞마당",width:4.3,surface:"gravel",points:[at(-18,811),at(-42,806),at(-62,806),at(-91,811),at(-116,800),at(-125,753)]},
+  {name:"장고와 태원전 숲길",width:5.1,surface:"gravel",points:[at(-56,470),at(-51,500),at(-61,529),at(-74,555),at(-100,593),at(-116,620),at(-146,649),at(-168,671),at(-194,689),at(-191,695)]},
+  {name:"장고 앞길",width:3.5,surface:"gravel",points:[at(-100,593),at(-86,596),at(-75,604)]},
+  {name:"경회루 서쪽 숲길",width:5.4,surface:"gravel",points:[at(-60,337),at(-111,340),at(-181,345),at(-207,380),at(-205,461),at(-195,500),at(-161,523),at(-118,550),at(-74,555)]},
+  {name:"자경전 서쪽 연결길",width:4.5,surface:"gravel",points:[at(88,460),at(79,460),at(73,498),at(63,532),at(54,579)]}
 ];
 
 export const gbLawns=[
@@ -122,11 +169,12 @@ export const gbLawns=[
   {name:"서쪽 담장 숲",kind:"grove",west:-240,east:-200,south:230,north:480},
   {name:"동궁 남쪽 잔디",kind:"lawn",west:70,east:150,south:246,north:300},
   {name:"동쪽 숲",kind:"grove",west:150,east:238,south:120,north:300},
-  {name:"자경전 북쪽 숲",kind:"grove",west:60,east:120,south:500,north:640},
+  {name:"자경전 북쪽 숲",kind:"grove",west:85,east:120,south:518,north:637},
   {name:"향원지 둘레 숲",kind:"grove",west:-110,east:110,south:660,north:756},
-  {name:"북쪽 숲",kind:"grove",west:-236,east:-110,south:680,north:860},
+  {name:"태원전 남쪽 숲",kind:"grove",west:-233,east:-125,south:652,north:680},
+  {name:"태원전 뒤편 숲",kind:"grove",west:-236,east:-110,south:811,north:860},
   {name:"동북쪽 숲",kind:"grove",west:70,east:236,south:660,north:860},
-  {name:"아미산",kind:"parterre",west:-22,east:22,south:470,north:486}
+  {name:"함화당 뒤편 초지",kind:"lawn",west:-17,east:49,south:652,north:670}
 ];
 
 function inLake(east,north){
@@ -159,11 +207,11 @@ export const gbCatTrails=[
   [[-56,246],[-56,356],[-58,362],[-58,430],[-26,430]],
   [[-58,430],[-58,488],[-128,488],[-198,488],[-198,430],[-198,362],[-128,362],[-58,362]],
   [[-58,362],[-86,352],[-120,350],[-150,300],[-120,240]],
-  [[26,430],[40,470],[30,492],[0,500],[-6,540],[-10,610],[-30,650],[-50,706],[-30,756],[12,762],[46,752],[62,706],[40,650],[-10,610]],
+  [[26,430],[40,470],[34,493],[12,507],[-20,510],[-25,548],[-24,579],[-23,612],[-30,650],[-50,706],[-30,756],[12,762],[46,752],[62,706],[74,645],[73,604],[54,579],[29,590],[-24,579]],
   [[12,762],[12,735]],
-  [[12,762],[-14,790],[-30,830],[0,858]],
-  [[46,752],[110,760],[150,700],[140,640],[100,610],[40,650]],
-  [[-50,706],[-120,700],[-170,760],[-120,830],[-30,830]],
+  [[12,762],[-10,775],[-14,797],[-18,836],[0,858]],
+  [[46,752],[110,760],[150,700],[140,640],[100,610],[74,645]],
+  [[-50,706],[-112,695],[-121,753],[-123,817],[-105,838],[-18,836]],
   [[-58,488],[-60,560],[-120,640],[-120,700]]
 ].map(trail);
 // The square outside the gate has its own few cats; the terrace steps keep them out of the palace.
@@ -187,7 +235,8 @@ export const gbPhotoZone={...at(0,263,"근정전 포토존"),heading:180,reach:3
 export const gbLightSpots=[
   [0,-12,5,620,60],[0,128,4.5,520,55],[0,226,4.5,520,55],[0,281,5.5,900,75],[0,360,4,420,50],[0,404,4,420,50],
   [0,446,4,420,50],[-64,428,5,900,80],[-86,330,4,420,50],[104,330,4,380,48],[108,464,4,420,50],
-  [12,722,4.5,700,70],[22,774,4,420,50],[-72,797,4,380,48]
+  [12,722,4.5,700,70],[36,784,4,420,50],[-56,816,4,380,48],
+  [15,534,4,370,52],[30,613,4,340,52],[-195,737,4,420,56],[92,212,4,320,43],[120,383,4,320,50]
 ].map(([east,north,height,power,range])=>({...at(east,north),height,power,range}));
 export const sparklerStall={...at(-50,402,"경회루 스파클 좌판")};
 export const wishPond={...at(gbPond.east,gbPond.north,"향원정"),reach:gbPond.radius+12};

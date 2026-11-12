@@ -1,6 +1,7 @@
 import {clearSegment,court,fountain,palacePond,pavilions,route,solidAt,stoneFountain,ticketApproach,walkable} from "./layout.js";
 import {isInsideMuseum} from "./visit-layout.js";
 import {gbBirdGrounds,gbBounds,inGyeongbok} from "./gyeongbok-layout.js";
+import {insidePlazaPolygon,plazaAt,plazaBounds,plazaGroundHeight,plazaOrigin,plazaOutline} from "./plaza-layout.js";
 
 const species={
   pigeon:{body:0x9296a4,belly:0xadb0bb,head:0x626b7a,neck:0x528076,throat:0x776481,
@@ -31,9 +32,15 @@ function outOfBounds(x,y){
   const {minX,maxX,minY,maxY}=palace?gbBounds:deoksugungBounds;
   return x<minX+margin||x>maxX-margin||y<minY+margin||y>maxY-margin;
 }
-const spots=flocks.flatMap(([anchor,members])=>members.map(([dx,dy,kind="pigeon"],index)=>({
+const flockSpots=groups=>groups.flatMap(([anchor,members])=>members.map(([dx,dy,kind="pigeon"],index)=>({
   anchor,dx,dy,kind,cruises:index===0&&members.length>=4||index===4&&members.length>=7
 })));
+const spots=flockSpots(flocks);
+const plazaAnchors=[[-21,10],[-18,42],[-21,74],[-8,121],[-32,151],[-15,183],[-18,215],[-12,246],
+  [-19,284],[-26,319],[-17,353],[-12,387],[-18,424],[-21,459],[-18,492],[-23,522]];
+const plazaSpots=flockSpots(plazaAnchors.map(([e,n],i)=>[plazaAt(e,n),flockShape.slice(0,4+i%3)]));
+const plazaPerchFixtures=[[-33,174,.855],[-35,177,.855],[-38,209,.855],[-44.8,289.56,6.29],
+  [-44.8,309.02,6.29],[-44.8,328.48,6.29],[-34,404,1.385],[-29,105,1.045],[-14,130,1.045]];
 const drawRange=130,drawRangeSquared=drawRange**2;
 const nearFlocks=(viewer,{minX,maxX,minY,maxY})=>!viewer||
   viewer.x>=minX-drawRange&&viewer.x<=maxX+drawRange&&viewer.y>=minY-drawRange&&viewer.y<=maxY+drawRange;
@@ -46,6 +53,10 @@ const mix=(a,b,t)=>a+(b-a)*t;
 const heading=(from,to)=>Math.atan2(to.x-from.x,to.y-from.y);
 const modulo=(value,n)=>((value%n)+n)%n;
 const ground=(x,y)=>walkable(x,y)&&!isInsideMuseum(x,y);
+const plazaLand=(x,y)=>insidePlazaPolygon(x,y,plazaOutline)&&plazaGroundHeight({x,y})===null&&ground(x,y);
+const plazaOutside=(x,y)=>x<plazaOrigin.x-66||x>plazaOrigin.x+29||y<plazaOrigin.y-536||y>plazaOrigin.y+4;
+const palaceArea={land:ground,outside:outOfBounds};
+const plazaArea={land:plazaLand,outside:plazaOutside};
 
 function rng(seed){
   let state=2166136261;
@@ -71,32 +82,32 @@ function flightPoint(leg,t){
     height:mix(from.height,to.height,t)+arch*Math.sin(Math.PI*t),turn:heading(from,to)};
 }
 
-function flightClear(leg,length){
+function flightClear(leg,length,outside){
   const steps=Math.max(12,Math.ceil(length/.4));
   for(let i=1;i<steps;i++){
     const {x,y,height}=flightPoint(leg,i/steps);
-    if(outOfBounds(x,y)||solidAt(x,y,height-.09))return false;
+    if(outside(x,y)||solidAt(x,y,height-.09))return false;
   }
   return true;
 }
 
-function flight(from,to,speed,escaping=false,journey=false){
+function flight(from,to,speed,escaping=false,journey=false,outside=outOfBounds){
   const length=distance(from,to);
   const time=Math.max(escaping?3250:1050,length/speed*1000+520);
   for(const arch of escaping?escapeArches:journey?journeyArches:ordinaryArches){
     const leg={from,to,arch,time,mode:"flight"};
-    if(flightClear(leg,length))return leg;
+    if(flightClear(leg,length,outside))return leg;
   }
   return null;
 }
 
-function cruise(home,random){
+function cruise(home,random,outside){
   const initial=random()*Math.PI*2;
   for(const [width,length,arch] of [[7,15,7.2],[5,12,6.5],[3.5,9.5,5.8]])for(let i=0;i<10;i++){
     const angle=initial+i*Math.PI/5,span=Math.PI*(width+length);
     const leg={from:home,to:home,arch,time:span/5.1*1000,mode:"flight",
       loop:{width,length,sine:Math.sin(angle),cosine:Math.cos(angle)}};
-    if(flightClear(leg,span))return leg;
+    if(flightClear(leg,span,outside))return leg;
   }
   return null;
 }
@@ -172,9 +183,19 @@ function feedingGrounds(random){
   return grounds;
 }
 
+function plazaFeedingGrounds(random){
+  const grounds=[];
+  for(let n=11;n<529;n+=17)for(const e of [-39,-26,-14,-5]){
+    const point=plazaAt(e+(random()-.5)*5,n+(random()-.5)*8);
+    if(![[0,0],[1.2,0],[-1.2,0],[0,1.2],[0,-1.2]].every(([dx,dy])=>plazaLand(point.x+dx,point.y+dy)))continue;
+    grounds.push(point);
+  }
+  return grounds;
+}
+
 // Each bird keeps a home, but its day is a tour: it feeds there, flies on to other
 // grounds across the map, rests on a tree or wall along the way and finally returns.
-function makePatrol(home,random,sites,used,kind,floor,cruises,grounds=[]){
+function makePatrol(home,random,sites,used,kind,floor,cruises,grounds,area){
   const legs=[];
   let time=0;
   function add(leg){legs.push({...leg,start:time});time+=leg.time;}
@@ -184,7 +205,7 @@ function makePatrol(home,random,sites,used,kind,floor,cruises,grounds=[]){
       const angle=random()*Math.PI*2,radius=1.25+random()*4.2;
       const x=spot.x+Math.sin(angle)*radius,y=spot.y+Math.cos(angle)*radius;
       const point={x,y,height:floor({x,y})},previous=points.at(-1);
-      if(distance(previous,point)<.75||!ground(x,y)||!clearSegment(previous,point,.24)||!clearSegment(point,spot,.24))continue;
+      if(distance(previous,point)<.75||!area.land(x,y)||!clearSegment(previous,point,.24)||!clearSegment(point,spot,.24))continue;
       points.push(point);break;
     }
     points.push(spot);
@@ -199,7 +220,7 @@ function makePatrol(home,random,sites,used,kind,floor,cruises,grounds=[]){
     candidates.sort((a,b)=>distance(from,a)-distance(from,b)+(a.kind===b.kind?0:
       a.kind===(kind==="magpie"?"tree":"wall")?-5:5));
     for(const site of candidates.slice(0,6)){
-      const outbound=flight(from,site,4.2);
+      const outbound=flight(from,site,4.2,false,false,area.outside);
       if(!outbound)continue;
       used.add(site);add(outbound);
       add({from:site,to:site,time:4300+random()*7200,mode:"perch",turn:heading(site,back)});
@@ -211,7 +232,7 @@ function makePatrol(home,random,sites,used,kind,floor,cruises,grounds=[]){
   forage(home,3);
   let rested=perch(home,home);
   if(cruises){
-    const circuit=cruise(home,random);
+    const circuit=cruise(home,random,area.outside);
     if(circuit)add(circuit);
   }
   let here=home;
@@ -221,10 +242,10 @@ function makePatrol(home,random,sites,used,kind,floor,cruises,grounds=[]){
     for(let attempt=0;attempt<5&&options.length;attempt++){
       const base=options.splice(Math.floor(random()*options.length),1)[0];
       const x=base.x+(random()-.5)*5,y=base.y+(random()-.5)*5;
-      if(!ground(x,y))continue;
+      if(!area.land(x,y))continue;
       const spot={x,y,height:floor({x,y})};
       // Only fly somewhere the bird can also leave again toward home.
-      const outbound=flight(here,spot,speed,false,true),homeward=flight(spot,home,speed,false,true);
+      const outbound=flight(here,spot,speed,false,true,area.outside),homeward=flight(spot,home,speed,false,true,area.outside);
       if(!outbound||!homeward)continue;
       seen.add(base);add(outbound);
       forage(spot,1+Math.floor(random()*3));
@@ -233,7 +254,7 @@ function makePatrol(home,random,sites,used,kind,floor,cruises,grounds=[]){
     }
   }
   if(here!==home){
-    const homeward=flight(here,home,speed,false,true);
+    const homeward=flight(here,home,speed,false,true,area.outside);
     if(homeward)add(homeward);
     add({from:home,to:home,time:1500+random()*2500,mode:"peck",turn:heading(here,home)});
   }
@@ -251,49 +272,65 @@ function wingGeometry(T,side){
 }
 
 export function addPalaceBirds(T,parent,kit,{trees=[],walls=[],seed,deferNorth=false}={}){
-  const perches=perchSites(T,parent,kit,trees,walls),birds=[],birdsById=new Map();
+  const perches=perchSites(T,parent,kit,trees,walls),birdsById=new Map();
   const treeCount=trees.length,wallCount=walls.length;
   const floor=point=>kit.floorHeight?.(point)??0;
   const group=new T.Group();group.name="궁의 까치와 비둘기";parent.add(group);
   const material=new T.MeshStandardMaterial({roughness:.8,flatShading:true});
+  const feather=new T.MeshStandardMaterial({roughness:.92,flatShading:true,side:T.DoubleSide});
+  const bodyGeometry=new T.IcosahedronGeometry(1,1),billGeometry=new T.ConeGeometry(1,1,5);
+  const wingGeometries=[wingGeometry(T,-1),wingGeometry(T,1)];
   function batch(geometry,capacity,name,surface=material){
     const mesh=new T.InstancedMesh(geometry,surface,capacity);mesh.name=name;
     mesh.instanceMatrix.setUsage(T.DynamicDrawUsage);mesh.frustumCulled=false;mesh.count=0;
     group.add(mesh);return mesh;
   }
-  const body=batch(new T.IcosahedronGeometry(1,1),spots.length*22,"Bird bodies");
-  const bill=batch(new T.ConeGeometry(1,1,5),spots.length,"Bird beaks");
-  const feather=new T.MeshStandardMaterial({roughness:.92,flatShading:true,side:T.DoubleSide});
-  const wings=[batch(wingGeometry(T,-1),spots.length,"Bird left wings",feather),
-    batch(wingGeometry(T,1),spots.length,"Bird right wings",feather)];
-  const batches=[body,bill,...wings],part=new T.Object3D(),root=new T.Object3D(),joint=new T.Object3D();
+  function flockMeshes(capacity,label){
+    const body=batch(bodyGeometry,capacity*22,label+" bodies");
+    const bill=batch(billGeometry,capacity,label+" beaks");
+    const wings=[batch(wingGeometries[0],capacity,label+" left wings",feather),
+      batch(wingGeometries[1],capacity,label+" right wings",feather)];
+    return {body,bill,wings,batches:[body,bill,...wings]};
+  }
+  const palaces={members:[],spots,perches,area:palaceArea,meshes:flockMeshes(spots.length,"Bird")};
+  const plaza={members:[],spots:plazaSpots,perches:[],area:plazaArea,meshes:null};
+  const part=new T.Object3D(),root=new T.Object3D(),joint=new T.Object3D();
   const matrix=new T.Matrix4(),attached=new T.Matrix4(),color=new T.Color();
-  let roomSeed,population,checkAt=0,walkers=[],groundAt=-Infinity,groundSnapshot,sparse=false;
-  let northPerchesReady=!deferNorth,northLoaded=!deferNorth;
+  let roomSeed,checkAt=0,walkers=[],groundAt=-Infinity,groundSnapshot,sparse=false;
+  let northPerchesReady=!deferNorth,northLoaded=!deferNorth,plazaLoaded=false;
 
-  function buildBirds(limit){
-    const {random,used,grounds}=population;
+  function buildBirds(flock,limit){
+    const {population,members,area}=flock,{random,used,grounds}=population;
     while(population.index<limit){
-      const index=population.index++,{anchor,dx,dy,kind,cruises}=spots[index];
+      const index=population.index++,{anchor,dx,dy,kind,cruises}=flock.spots[index];
       for(let attempt=0;attempt<20;attempt++){
         const radius=attempt?1+attempt*.24:0,angle=random()*Math.PI*2;
         const x=anchor.x+dx+Math.cos(angle)*radius,y=anchor.y+dy+Math.sin(angle)*radius;
-        if(!ground(x,y)||birds.some(bird=>distance(bird.home,{x,y})<.9))continue;
-        const home={x,y,height:floor({x,y})},patrol=makePatrol(home,random,perches,used,kind,floor,cruises,grounds);
-        const bird={id:`bird-${index}`,kind,home,patrol,palace:index>=deoksugungSpots,offset:random()*patrol.time,
+        if(!area.land(x,y)||members.some(bird=>distance(bird.home,{x,y})<.9))continue;
+        const home={x,y,height:floor({x,y})},patrol=makePatrol(home,random,flock.perches,used,kind,floor,cruises,grounds,area);
+        const district=flock===plaza?"plaza":index>=deoksugungSpots?"gyeongbokgung":"deoksugung";
+        const bird={id:`${flock===plaza?"plaza-bird":"bird"}-${index}`,kind,home,patrol,district,offset:random()*patrol.time,
           size:species[kind].size*(.89+random()*.18),angle:null};
-        birds.push(bird);birdsById.set(bird.id,bird);
+        members.push(bird);birdsById.set(bird.id,bird);
         break;
       }
     }
   }
+  function resetPlaza(seed){
+    plaza.members.length=0;
+    plaza.population={random:rng(seed+":plaza birds"),used:new Set(),grounds:plazaFeedingGrounds(rng(seed+":plaza feeding grounds")),index:0};
+  }
   function setSeed(value){
     const next=String(value??"preview");
     if(next===roomSeed)return;
-    roomSeed=next;birds.length=0;birdsById.clear();checkAt=0;walkers=[];
+    roomSeed=next;palaces.members.length=0;birdsById.clear();checkAt=0;walkers=[];
     groundAt=-Infinity;groundSnapshot=undefined;
-    population={random:rng(next+":palace birds"),used:new Set(),grounds:feedingGrounds(rng(next+":feeding grounds")),index:0};
-    buildBirds(northLoaded?spots.length:deoksugungSpots);
+    palaces.population={random:rng(next+":palace birds"),used:new Set(),grounds:feedingGrounds(rng(next+":feeding grounds")),index:0};
+    buildBirds(palaces,northLoaded?spots.length:deoksugungSpots);
+    if(plaza.meshes){
+      resetPlaza(next);
+      if(plazaLoaded)buildBirds(plaza,plazaSpots.length);
+    }
   }
   function* loadNorth(){
     if(!northPerchesReady){
@@ -301,11 +338,24 @@ export function addPalaceBirds(T,parent,kit,{trees=[],walls=[],seed,deferNorth=f
       northPerchesReady=true;
     }
     // Keep the seeded random stream, flock indices, and existing birds intact.
-    while(population.index<spots.length){
-      buildBirds(Math.min(spots.length,population.index+6));
-      if(population.index<spots.length)yield;
+    while(palaces.population.index<spots.length){
+      buildBirds(palaces,Math.min(spots.length,palaces.population.index+6));
+      if(palaces.population.index<spots.length)yield;
     }
     northLoaded=true;
+  }
+  function* loadPlaza(treeTops=[]){
+    if(!plaza.meshes){
+      const fixtures=plazaPerchFixtures.map(([east,north,height])=>({...plazaAt(east,north),height,kind:"wall"}));
+      plaza.perches=[...fixtures,...treeTops].filter(({x,y,height})=>Number.isFinite(height)&&!plazaOutside(x,y)&&!solidAt(x,y,height));
+      plaza.meshes=flockMeshes(plazaSpots.length,"Plaza bird");
+      resetPlaza(roomSeed);
+    }
+    while(plaza.population.index<plazaSpots.length){
+      buildBirds(plaza,Math.min(plazaSpots.length,plaza.population.index+4));
+      if(plaza.population.index<plazaSpots.length)yield;
+    }
+    plazaLoaded=true;
   }
   setSeed(seed);
 
@@ -321,20 +371,24 @@ export function addPalaceBirds(T,parent,kit,{trees=[],walls=[],seed,deferNorth=f
     return threat;
   }
   function startEscape(bird,position,threat,clock,phase){
+    const flock=bird.district==="plaza"?plaza:palaces;
     const away=distance(position,threat)<.12?position.turn:heading(threat,position);
-    const candidates=perches.filter(site=>distance(position,site)>=14&&distance(position,site)<=45);
-    for(const turn of [0,-.36,.36,-.72,.72,-1.08,1.08,-1.39,1.39])for(const length of [42,34,27,21,16,13]){
+    const candidates=flock.perches.filter(site=>distance(position,site)>=14&&distance(position,site)<=45);
+    const turns=[0,-.36,.36,-.72,.72,-1.08,1.08,-1.39,1.39];
+    if(flock===plaza)turns.push(-1.62,1.62,-1.91,1.91);
+    for(const turn of turns)for(const length of [42,34,27,21,16,13]){
       const x=position.x+Math.sin(away+turn)*length,y=position.y+Math.cos(away+turn)*length;
-      if(ground(x,y))candidates.push({x,y,height:floor({x,y}),kind:"ground"});
+      if(flock.area.land(x,y))candidates.push({x,y,height:floor({x,y}),kind:"ground"});
     }
     const sine=Math.sin(away),cosine=Math.cos(away);
     const ranked=candidates.map(site=>({site,length:distance(position,site),
       forward:sine*(site.x-position.x)+cosine*(site.y-position.y)})).filter(({site,length,forward})=>
-      forward>length*.24&&distance(site,threat)>=14);
+      forward>length*(flock===plaza?-.35:.24)&&distance(site,threat)>=14);
     const score=({site,length,forward})=>forward*.68+length*.32+(site.kind==="ground"?0:4);
-    ranked.sort((a,b)=>Number(b.length>=20)-Number(a.length>=20)||score(b)-score(a));
+    ranked.sort((a,b)=>Number(b.forward>b.length*.24)-Number(a.forward>a.length*.24)||
+      Number(b.length>=20)-Number(a.length>=20)||score(b)-score(a));
     for(const {site} of ranked){
-      const outbound=flight(position,site,bird.kind==="magpie"?6.7:7.6,true);
+      const outbound=flight(position,site,bird.kind==="magpie"?6.7:7.6,true,false,flock.area.outside);
       if(!outbound)continue;
       bird.escape={outbound,site,clock,phase,returnAt:clock+outbound.time+(site.kind==="ground"?6200:8600)};
       return true;
@@ -345,11 +399,27 @@ export function addPalaceBirds(T,parent,kit,{trees=[],walls=[],seed,deferNorth=f
   function recentGround(clock){return parent.visible&&Math.abs(clock-groundAt)<=250;}
   function groundTargets(clock=groundAt){
     if(!recentGround(clock))return emptyGround;
-    if(!groundSnapshot)groundSnapshot=Object.freeze(birds.filter(bird=>bird.onGround).map(bird=>{
-      const {x,y}=bird.onGround;
-      return Object.freeze({id:bird.id,x,y,kind:bird.kind});
-    }));
+    if(!groundSnapshot){
+      const targets=[];
+      for(const flock of [palaces,plaza])for(const bird of flock.members){
+        if(!bird.onGround)continue;
+        const {x,y}=bird.onGround;
+        targets.push(Object.freeze({id:bird.id,x,y,kind:bird.kind}));
+      }
+      groundSnapshot=Object.freeze(targets);
+    }
     return groundSnapshot;
+  }
+  function soundSource(point,maxDistance){
+    if(!parent.visible||!point||!Number.isFinite(maxDistance)||maxDistance<=0||isInsideMuseum(point.x,point.y))return null;
+    const ear=point.height??(floor(point)+1.28);
+    let nearest=null,best=maxDistance**2;
+    for(const flock of [palaces,plaza])for(const {soundPose:pose} of flock.members){
+      if(!pose)continue;
+      const gap=(pose.x-point.x)**2+(pose.y-point.y)**2+(pose.height-ear)**2;
+      if(gap<best){nearest=pose;best=gap;}
+    }
+    return nearest&&{x:nearest.x,y:nearest.y,height:nearest.height,distance:Math.sqrt(best)};
   }
   function scare(id,clock,threat){
     const bird=birdsById.get(id),pose=bird?.onGround;
@@ -385,7 +455,7 @@ export function addPalaceBirds(T,parent,kit,{trees=[],walls=[],seed,deferNorth=f
     joint.position.set(x,y,z);joint.rotation.set(pitch,yaw,roll);joint.updateMatrix();
     return attached.multiplyMatrices(root.matrix,joint.matrix);
   }
-  function paint(bird,pose,clock,seconds){
+  function paint(bird,pose,clock,seconds,{body,bill,wings}){
     const coat=species[bird.kind],magpie=bird.kind==="magpie",walk=pose.mode==="walk",air=pose.mode==="flight";
     const stride=clock*.012+bird.home.x,peck=pose.mode==="peck"?Math.max(0,Math.sin(clock*.008+bird.home.y))**8:0;
     const step=walk?Math.sin(stride):0,flap=air?Math.sin(clock*(magpie?.036:.048)+bird.home.y)*pose.spread:0;
@@ -424,21 +494,12 @@ export function addPalaceBirds(T,parent,kit,{trees=[],walls=[],seed,deferNorth=f
     }
   }
 
-  function update(clock,seconds,actors=[]){
-    if(!parent.visible)return;
-    groundAt=clock;groundSnapshot=undefined;
-    const viewer=actors[0],check=clock>=checkAt;
-    if(check){
-      checkAt=clock+135;
-      walkers=actors.filter(player=>!isInsideMuseum(player.x,player.y))
-        .map(player=>({x:player.x,y:player.y,height:floor(player),running:player.running}));
-    }
-    for(const mesh of batches)mesh.count=0;
-    // Keep the nearby palace active from the path approaching it as well as inside its walls.
-    const deoksugungNearby=nearFlocks(viewer,deoksugungBounds),gyeongbokgungNearby=nearFlocks(viewer,gbBounds);
-    for(const [index,bird] of birds.entries()){
-      bird.onGround=null;
-      if(!(bird.palace?gyeongbokgungNearby:deoksugungNearby)||sparse&&index%2)continue;
+  function updateFlock(flock,viewer,clock,seconds,check,nearby){
+    const {members,meshes}=flock;
+    for(const mesh of meshes.batches)mesh.count=0;
+    for(const [index,bird] of members.entries()){
+      bird.onGround=bird.soundPose=null;
+      if(!nearby[bird.district]||sparse&&index%2)continue;
       let pose=bird.escape?escapePose(bird,clock):null;
       if(!pose){
         const phase=modulo(clock+bird.offset,bird.patrol.time);
@@ -452,12 +513,31 @@ export function addPalaceBirds(T,parent,kit,{trees=[],walls=[],seed,deferNorth=f
           bird.onGround=pose;bird.groundPhase=phase;
         }
       }
-      if(!viewer||(pose.x-viewer.x)**2+(pose.y-viewer.y)**2<drawRangeSquared)paint(bird,pose,clock,seconds);
+      bird.soundPose=pose;
+      if(!viewer||(pose.x-viewer.x)**2+(pose.y-viewer.y)**2<drawRangeSquared)paint(bird,pose,clock,seconds,meshes);
     }
-    for(const mesh of batches){mesh.instanceMatrix.needsUpdate=true;if(mesh.instanceColor)mesh.instanceColor.needsUpdate=true;}
+    for(const mesh of meshes.batches)if(mesh.count){
+      mesh.instanceMatrix.needsUpdate=true;if(mesh.instanceColor)mesh.instanceColor.needsUpdate=true;
+    }
   }
-  const census=()=>({deoksugung:birds.filter(bird=>!bird.palace).length,gyeongbokgung:birds.filter(bird=>bird.palace).length,
-    touring:birds.filter(bird=>bird.patrol.legs.some(leg=>leg.mode==="flight"&&distance(leg.from,leg.to)>20)).length});
+  function update(clock,seconds,actors=[]){
+    if(!parent.visible)return;
+    groundAt=clock;groundSnapshot=undefined;
+    const viewer=actors[0],check=clock>=checkAt;
+    if(check){
+      checkAt=clock+135;
+      walkers=actors.filter(player=>!isInsideMuseum(player.x,player.y))
+        .map(player=>({x:player.x,y:player.y,height:floor(player),running:player.running}));
+    }
+    // Begin displaying nearby flocks while the walker approaches their district.
+    const nearby={deoksugung:nearFlocks(viewer,deoksugungBounds),gyeongbokgung:nearFlocks(viewer,gbBounds),
+      plaza:plaza.meshes&&nearFlocks(viewer,plazaBounds)};
+    updateFlock(palaces,viewer,clock,seconds,check,nearby);
+    if(plaza.meshes)updateFlock(plaza,viewer,clock,seconds,check,nearby);
+  }
+  const census=()=>({deoksugung:palaces.members.filter(bird=>bird.district==="deoksugung").length,
+    gyeongbokgung:palaces.members.filter(bird=>bird.district==="gyeongbokgung").length,plaza:plaza.members.length,
+    touring:palaces.members.filter(bird=>bird.patrol.legs.some(leg=>leg.mode==="flight"&&distance(leg.from,leg.to)>20)).length});
   const setSparse=value=>{sparse=Boolean(value);};
-  return {update,setSeed,groundTargets,scare,census,setSparse,loadNorth};
+  return {update,setSeed,groundTargets,soundSource,scare,census,setSparse,loadNorth,loadPlaza};
 }

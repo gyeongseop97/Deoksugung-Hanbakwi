@@ -3,6 +3,7 @@ import {
   gbWoldae,gbHaetae,gbPhotoZone,gbRoyalPavilion,gbUijeongbu,gbBusIsland,gbCrossings,wallHalf,wallNorth,at
 } from "./gyeongbok-layout.js";
 import {solidAt} from "./layout.js";
+import {buildGyeongbokCompounds,inGyeongbokCompound} from "./gyeongbok-compounds.js";
 
 // Survey models can replace these hand-built halls later: drop "<id>.glb" into public/ and
 // add the id here. world3d loads each file and hides the modeled group when it arrives.
@@ -678,12 +679,18 @@ export function* buildGyeongbok(T,scene,kit,tools){
   buildSubwayExit(T,scene,kit,tools,gbStation,"경복궁 Gyeongbokgung",0xef7c1c);
   yield;
 
+  yield* buildGyeongbokCompounds(T,scene,kit,tools,groups);
+
   // ---- Planting --------------------------------------------------------------------------
-  for(const group of groups.values())treeClearance.addModel(group);
+  let surveyed=0;
+  for(const group of groups.values()){
+    treeClearance.addModel(group);
+    if(++surveyed%7===0)yield;
+  }
   const awayFromRoads=(x,y)=>gbPaths.every(({points,width})=>pathClear(points,x,y,width/2+1.6));
   function plant(east,north,height,choice){
     const point=at(east,north),x=wx(point.x),z=wz(point.y);
-    if(solidAt(point.x,point.y)||!awayFromRoads(point.x,point.y)||!treeFits(x,z,height))return false;
+    if(inGyeongbokCompound(east,north)||solidAt(point.x,point.y)||!awayFromRoads(point.x,point.y)||!treeFits(x,z,height))return false;
     return Boolean(tree(x,z,height,choice));
   }
   for(const {kind,west,east,south,north} of gbLawns){
@@ -697,6 +704,7 @@ export function* buildGyeongbok(T,scene,kit,tools){
       const wanted=Math.min(22,Math.round(area/(kind==="grove"?330:900)));
       for(let attempt=0,planted=0;attempt<wanted*5&&planted<wanted;attempt++){
         if(plant(west+rand()*(east-west),south+rand()*(north-south),6+rand()*6.5,treeMix.garden()))planted++;
+        if((attempt+1)%7===0&&planted<wanted)yield;
       }
     }
     yield;

@@ -4,6 +4,7 @@ import {addPlazaCity} from "./plaza-city.js";
 import {addPlazaMonuments,plazaMonumentFootprints} from "./plaza-monuments.js";
 import {plazaAt,plazaOutline,plazaBeds,plazaSites,plazaTransitStops,insidePlazaPolygon,
   plazaRoadProfile,plazaCrossings,eastCurb,eastRoadWidth,sajikRoad,haechiBasin} from "./plaza-layout.js";
+import {PLAZA_SHOW_VIEW_METRES,plazaShowFrame,plazaShowJet} from "./plaza-show.js";
 
 const between=(a,b,t)=>a+(b-a)*t;
 const rect=(left,right,bottom,top)=>[[left,bottom],[right,bottom],[right,top],[left,top]].map(([e,n])=>plazaAt(e,n));
@@ -59,7 +60,7 @@ export function buildGwanghwamunPlaza(T,scene,kit,{benches}){
   while(!step.done)step=build.next();
   return step.value;
 }
-export function* assembleGwanghwamunPlaza(T,scene,kit){
+export function* assembleGwanghwamunPlaza(T,scene,kit,{birdPerches}={}){
   const group=new T.Group();group.name="광화문광장";scene.add(group);
   const {wx,wz,box,cylinder,matte}=kit;
   let seed=3720957;
@@ -161,8 +162,9 @@ export function* assembleGwanghwamunPlaza(T,scene,kit){
       const e=minE+1+random()*(width-2),n=minN+1+random()*(length-2),p=plazaAt(e,n);
       if(!insidePlazaPolygon(p.x,p.y,bed.outline)||planted.some(a=>Math.hypot(a.east-e,a.north-n)<4.6))continue;
       const {x,z}=world(e,n),r=random(),style=pine?"cloud":r<.4?"branchy":r<.73?"round":"column";
-      trees.grow(x,z,{height:pine?6+random()*3:3.8+random()*4.9,style,
+      const tree=trees.grow(x,z,{height:pine?6+random()*3:3.8+random()*4.9,style,
         palette:pine?"pine":r<.22?"ginkgo":r<.39?"amber":r<.52?"maple":r<.73?"olive":"deep"});
+      if(birdPerches&&tree?.top)birdPerches.push({x:tree.top.x-wx(0),y:tree.top.z-wz(0),height:tree.top.y+.015,kind:"tree"});
       planted.push(p);
     }
     for(let i=0;i<target*5;i++){
@@ -316,13 +318,13 @@ export function* assembleGwanghwamunPlaza(T,scene,kit){
   addPlazaCity(T,group,kit);
   yield;
   const fountains=addPlazaFountains({T,group,world,block,water,random});
-  return function updatePlaza(now,night,anchor){
+  return function updatePlaza(now,night,anchor,showStart=0,clock=now){
     if(!anchor){fountains(now,night,null);return;}
     for(const item of glow)item.material.emissiveIntensity=item.day+night*item.strength;
     for(const [i,material] of mediaMaterials.entries()){
       material.emissive.setHSL(.51+Math.sin(now*.00036+i*.09)*.095,.48,.43+Math.sin(now*.0012-i*.45)*.17);
     }
-    fountains(now,night,anchor);
+    fountains(now,night,anchor,showStart,clock);
   };
 }
 
@@ -331,13 +333,14 @@ function addPlazaFountains({T,group,world,block,water,random}){
   const sources=[];
   const jet=(e,n,h,dx=0,dn=0)=>({e,n,h,dx,dn,phase:random()});
   const myeongnyang=[];
-  for(const radius of [4.4,6.1,8.2,10.3]){
+  for(const [row,radius] of [4.4,6.1,8.2,10.3].entries()){
     for(let i=0;i<11;i++){
       const angle=(i/10-.5)*2.84;
-      myeongnyang.push(jet(-1+radius*Math.sin(angle),38-radius*Math.cos(angle),1.4+(11-radius)*.16+(5-Math.abs(5-i))*.24));
+      myeongnyang.push({...jet(-1+radius*Math.sin(angle),38-radius*Math.cos(angle),1.4+(11-radius)*.16+(5-Math.abs(5-i))*.24),row,arc:i/10});
     }
   }
-  sources.push({centre:plazaSites.myeongnyang,jets:myeongnyang});
+  const showFountain={centre:plazaSites.myeongnyang,jets:myeongnyang};
+  sources.push(showFountain);
   const hangeul=[];
   const characters=[[[0,0],[0,1],[0,2],[0,3],[1,3],[2,3]],
     [[0,0],[1,0],[2,0],[1,1],[1,2],[1,3]],[[0,0],[1,0],[2,0],[0,1],[2,1],[0,2],[2,2],[0,3],[1,3],[2,3]]];
@@ -360,11 +363,16 @@ function addPlazaFountains({T,group,world,block,water,random}){
   for(let i=0;i<18;i++)falls.push({...jet(-38.1+i*.48,403.68,1.04,0,-.88),fall:true});
   sources.push({centre:plazaSites.cascade,jets:falls});
   const droplet=new T.SphereGeometry(1,5,4),dropColor=new T.MeshBasicMaterial({color:0xb7e7f0,transparent:true,opacity:.65,depthWrite:false});
-  const transform=new T.Object3D(),nightColor=new T.Color(0x8bc6ff),dayColor=new T.Color(0xc4eaf4);
+  const transform=new T.Object3D(),nightColor=new T.Color(0x8bc6ff),dayColor=new T.Color(0xc4eaf4),white=new T.Color(0xffffff);
   const droplets=11;
   for(const source of sources){
     const mesh=new T.InstancedMesh(droplet,dropColor,source.jets.length*droplets);
     mesh.instanceMatrix.setUsage(T.DynamicDrawUsage);mesh.frustumCulled=false;mesh.visible=false;
+    mesh.name=source.centre.name+" 물줄기";
+    if(source===showFountain){
+      for(let i=0;i<mesh.count;i++)mesh.setColorAt(i,white);
+      mesh.instanceColor.setUsage(T.DynamicDrawUsage);
+    }
     group.add(mesh);source.mesh=mesh;
     for(const value of source.jets){
       const {x,z}=world(value.e,value.n);value.x=x;value.z=z;
@@ -374,25 +382,86 @@ function addPlazaFountains({T,group,world,block,water,random}){
       }
     }
   }
-  return (now,night,anchor)=>{
+  const lights=addMyeongnyangShowLights(T,group,myeongnyang,world);
+  const palette=[[0x47dcff,0xa8e0ff],[0x77b6ff,0xffbd64],[0x9cf5e4,0xff9ed1],[0xffc879,0xb3ebff]]
+    .map(row=>row.map(color=>new T.Color(color)));
+  const color=new T.Color();
+  let showed=false;
+
+  return (now,night,anchor,showStart=0,clock=now)=>{
+    const closeToShow=anchor&&Math.hypot(showFountain.centre.x-anchor.x,showFountain.centre.y-anchor.y)<PLAZA_SHOW_VIEW_METRES;
+    const frame=closeToShow?plazaShowFrame(showStart,clock):null;
+    lights.visible=Boolean(frame);
+    if(!anchor){
+      for(const {mesh} of sources)mesh.visible=false;
+      return;
+    }
     dropColor.color.copy(dayColor).lerp(nightColor,night);
-    for(const {centre,jets,mesh} of sources){
+    for(const source of sources){
+      const {centre,jets,mesh}=source,isShow=source===showFountain;
       mesh.visible=Boolean(anchor&&Math.hypot(centre.x-anchor.x,centre.y-anchor.y)<85);
       if(!mesh.visible)continue;
       let index=0;
-      for(const {x,z,h,dx,dn,phase,fall} of jets){
-        const pulse=fall?1:.72+Math.sin(now*.0021+phase*6.3)*.18;
+      const performance=isShow?frame:null;
+      const flowTime=performance?.elapsed??now;
+      for(let jetIndex=0;jetIndex<jets.length;jetIndex++){
+        const {x,z,h,dx,dn,phase,fall,row,arc}=jets[jetIndex];
+        let pulse=fall?1:.72+Math.sin(flowTime*.0021+phase*6.3)*.18;
+        if(performance){
+          const level=plazaShowJet(performance,row,arc);
+          pulse=between(pulse,.13+1.72*level,performance.envelope);
+          const [a,b]=palette[performance.section],variation=.50+Math.sin(performance.beat*.48+arc*3.14+row*.84)*.46;
+          color.copy(a).lerp(b,variation);
+          lights.setColorAt(jetIndex,color);
+          const energy=(.31+level*.66)*performance.envelope;
+          const glowSize=.63+energy*.62;
+          transform.position.set(x,.096,z);transform.scale.set(glowSize,1,glowSize);transform.rotation.set(0,0,0);
+          transform.updateMatrix();lights.setMatrixAt(jetIndex,transform.matrix);
+          color.lerp(white,.16+(1-performance.envelope)*.72);
+        }
         for(let i=0;i<droplets;i++){
-          const time=(now*.00145+phase+i/droplets)%1;
+          const time=(flowTime*.00145+phase+i/droplets)%1;
           const drift=fall?time:time*time;
           const y=fall?between(1.19,.18,time):.08+4*h*pulse*time*(1-time);
           transform.position.set(x+dx*drift,y,z-dn*drift);
-          transform.scale.set(.026+time*.025,fall?.098:.045+Math.abs(.5-time)*.13,.026+time*.025);
+          const thickness=.026+time*.025+(performance?.envelope??0)*.019;
+          transform.scale.set(thickness,fall?.098:.045+Math.abs(.5-time)*.13,thickness);
           transform.rotation.z=fall?0:-dx*(.10+time*.12);
-          transform.updateMatrix();mesh.setMatrixAt(index++,transform.matrix);
+          transform.updateMatrix();mesh.setMatrixAt(index,transform.matrix);
+          if(performance)mesh.setColorAt(index,color);else if(isShow&&showed)mesh.setColorAt(index,white);
+          index++;
         }
       }
       mesh.instanceMatrix.needsUpdate=true;
+      if(isShow&&(performance||showed))mesh.instanceColor.needsUpdate=true;
+      if(isShow)showed=Boolean(performance);
+      if(performance){
+        lights.instanceMatrix.needsUpdate=true;lights.instanceColor.needsUpdate=true;
+        lights.material.opacity=(.73+night*.22)*performance.envelope;
+      }
     }
   };
+}
+
+function addMyeongnyangShowLights(T,group,jets,world){
+  const size=32,pixels=new Uint8Array(size*size*4);
+  for(let y=0;y<size;y++)for(let x=0;x<size;x++){
+    const radius=Math.hypot((x+.5-size/2)/(size/2),(y+.5-size/2)/(size/2));
+    const ring=Math.exp(-(((radius-.40)/.083)**2)),halo=Math.max(0,1-radius)*.43;
+    pixels.set([255,255,255,Math.round(Math.min(1,ring+halo)*255)],(y*size+x)*4);
+  }
+  const texture=new T.DataTexture(pixels,size,size);
+  texture.magFilter=T.LinearFilter;texture.needsUpdate=true;
+  const material=new T.MeshBasicMaterial({map:texture,transparent:true,depthWrite:false,toneMapped:false});
+  const geometry=new T.PlaneGeometry(1.29,1.29).rotateX(-Math.PI/2);
+  const lights=new T.InstancedMesh(geometry,material,jets.length),transform=new T.Object3D(),white=new T.Color(0xffffff);
+  lights.name="명량분수 공연 조명";lights.visible=false;lights.frustumCulled=false;
+  for(const [i,jet] of jets.entries()){
+    const {x,z}=world(jet.e,jet.n);
+    transform.position.set(x,.096,z);transform.updateMatrix();
+    lights.setMatrixAt(i,transform.matrix);lights.setColorAt(i,white);
+  }
+  lights.instanceMatrix.setUsage(T.DynamicDrawUsage);lights.instanceColor.setUsage(T.DynamicDrawUsage);
+  group.add(lights);
+  return lights;
 }

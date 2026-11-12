@@ -34,7 +34,7 @@ export const plazaTransitStops=[
 ];
 export const plazaShortcuts={
   station:{...plazaTransitStops[0].arrive,name:plazaTransitStops[0].name},
-  yi:{...plazaAt(-8.5,20,"이순신장군 동상 앞"),heading:11,tilt:-13},
+  yi:{...plazaAt(-16.5,27,"이순신장군 동상 앞"),heading:65,tilt:-3},
   sejong:{...plazaAt(-5,245,"세종대왕 동상 앞"),heading:0,tilt:-10},
   north:{...plazaAt(-13,554,"광화문 월대 앞"),heading:0,tilt:-8},
   bus:{...plazaTransitStops[1].arrive,name:plazaTransitStops[1].name}

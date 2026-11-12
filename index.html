@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>덕수궁 한바퀴</title>
+  <script>
+    const game=new URL(location.href);
+    game.pathname=game.pathname.replace(/\/index\.html$/, "/").replace(/\/?$/, "/")+"public/";
+    location.replace(game.href);
+  </script>
+</head>
+<body>
+  <p><a href="./public/">덕수궁 한바퀴 열기</a></p>
+</body>
+</html>

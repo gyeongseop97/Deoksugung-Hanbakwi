@@ -6,9 +6,9 @@
   <meta name="description" content="멀리 있어도 함께 걷는 덕수궁 돌담길.">
   <title>덕수궁 한바퀴</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Crect width='48' height='48' rx='10' fill='%231b271f'/%3E%3Cpath d='M24 8 28 20 40 24 28 28 24 40 20 28 8 24 20 20Z' fill='%23e1c687'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="./style.css">
   <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js"}}</script>
-  <script type="module" src="/walk.js"></script>
+  <script type="module" src="./walk.js"></script>
 </head>
 <body>
   <main id="entry-flow" class="entry-flow" aria-label="산책 시작">
@@ -16,7 +16,7 @@
       <div class="entry-brand"><span class="brandmark" aria-hidden="true">✦</span><span>덕수궁 한바퀴</span></div>
       <section id="profile-step" class="entry-profile" aria-labelledby="profile-title">
         <figure class="entry-cover">
-          <img src="/deoksugung-cover.webp" alt="가을빛이 물든 덕수궁 대한문" width="1200" height="800" fetchpriority="high">
+          <img src="./deoksugung-cover.webp" alt="가을빛이 물든 덕수궁 대한문" width="1200" height="800" fetchpriority="high">
           <figcaption>서울 정동 · 대한문</figcaption>
         </figure>
         <form id="profile-form" class="entry-profile-form">
@@ -146,6 +146,8 @@
                 <button id="pet-cat" type="button" class="quiet activity-button" hidden>쓰다듬기</button>
                 <button id="take-item" type="button" class="quiet activity-button" hidden>받기</button>
                 <button id="use-item" type="button" class="quiet activity-button" hidden>사용하기</button>
+                <button id="clink" type="button" class="quiet activity-button" hidden>건배하기</button>
+                <button id="fountain-show" type="button" class="quiet activity-button" hidden>분수쇼 시작</button>
                 <button id="photo" type="button" class="quiet activity-button" hidden>사진 찍기</button>
                 <button id="subway" type="button" class="quiet activity-button" aria-haspopup="dialog" aria-controls="transit-dialog" hidden>지하철 타기</button>
                 <button id="bus-action" type="button" class="quiet activity-button" hidden>버스 타기</button>
@@ -182,6 +184,10 @@
           <div id="hand-offer" class="hand-offer" role="group" aria-label="손잡기 요청" hidden>
             <p id="hand-message" role="status"></p>
             <div><button id="hand-decline" type="button" class="quiet">거절</button><button id="hand-accept" type="button" class="primary">수락</button></div>
+          </div>
+          <div id="clink-offer" class="hand-offer" role="group" aria-label="건배 요청" hidden>
+            <p id="clink-message" role="status"></p>
+            <div><button id="clink-decline" type="button" class="quiet">거절</button><button id="clink-accept" type="button" class="primary">건배하기</button></div>
           </div>
           <div class="location-guides">
             <div class="look-direction" id="look-direction" hidden>
@@ -352,6 +358,7 @@
     <p class="guide-intro">길을 터치하거나 조이스틱으로 걸어 보세요. 컴퓨터에서는 방향키나 WASD를 쓸 수 있고, 화면을 드래그하면 주변을 둘러볼 수 있어요.</p>
     <div class="visitor-guide-list">
       <section><h3>돌담길 가게</h3><p>돌담 커피에서 커피를, 단풍 크레페에서 크레페를, 정동 양조에서 맥주를 받아요. 돌담 편의점에서는 고양이에게 줄 츄르를 살 수 있어요.</p></section>
+      <section><h3>광화문과 경복궁 가게</h3><p>광화문광장 동쪽 인도에서는 커피, 조각 케이크, 와인을 받을 수 있어요. 경복궁 국립고궁박물관 앞 한옥 상점에서는 커피, 약과, 막걸리를 받아요. 지도에서 가게 이름을 누르면 입구로 걸어갑니다.</p></section>
       <section><h3>정동 분수 광장의 소원등</h3><p>돌담길 끝 정동 분수 가까이에서 <strong>소원등</strong>을 누르세요. 네 면에 그림을 그려 지금 서 있는 곳에서 띄울 수 있어요.</p></section>
       <section><h3>석조전 분수 정원의 스파클</h3><p>궁 안 석조전 분수 옆 좌판에서 스파클을 받아 <strong>사용하기</strong>를 누르면 손에 든 폭죽이 반짝여요.</p></section>
       <section><h3>석조전 서관 전시관</h3><p>계단을 올라 문 앞에서 <strong>입장하기</strong>를 누르세요. 삼국·통일신라부터 근대까지 한국 그림과 공예품 28점을 만날 수 있어요. 가까이에서 <strong>작품 설명</strong>을 열어 보세요.</p></section>
