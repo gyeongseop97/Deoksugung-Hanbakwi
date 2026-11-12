@@ -59,7 +59,7 @@ export function buildGwanghwamunPlaza(T,scene,kit,{benches}){
   while(!step.done)step=build.next();
   return step.value;
 }
-export function* assembleGwanghwamunPlaza(T,scene,kit){
+export function* assembleGwanghwamunPlaza(T,scene,kit,{birdPerches}={}){
   const group=new T.Group();group.name="광화문광장";scene.add(group);
   const {wx,wz,box,cylinder,matte}=kit;
   let seed=3720957;
@@ -161,8 +161,9 @@ export function* assembleGwanghwamunPlaza(T,scene,kit){
       const e=minE+1+random()*(width-2),n=minN+1+random()*(length-2),p=plazaAt(e,n);
       if(!insidePlazaPolygon(p.x,p.y,bed.outline)||planted.some(a=>Math.hypot(a.east-e,a.north-n)<4.6))continue;
       const {x,z}=world(e,n),r=random(),style=pine?"cloud":r<.4?"branchy":r<.73?"round":"column";
-      trees.grow(x,z,{height:pine?6+random()*3:3.8+random()*4.9,style,
+      const tree=trees.grow(x,z,{height:pine?6+random()*3:3.8+random()*4.9,style,
         palette:pine?"pine":r<.22?"ginkgo":r<.39?"amber":r<.52?"maple":r<.73?"olive":"deep"});
+      if(birdPerches&&tree?.top)birdPerches.push({x:tree.top.x-wx(0),y:tree.top.z-wz(0),height:tree.top.y+.015,kind:"tree"});
       planted.push(p);
     }
     for(let i=0;i<target*5;i++){
