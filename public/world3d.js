@@ -11,6 +11,8 @@ import { PET_MS, FEED_MS, jumpLift } from "./activities.js";
 import { makeWalkerModels } from "./walker-model.js";
 import { gbSurveyModels, gbNightGlow, gbShuttles } from "./gyeongbok.js";
 import { gbSite, gwanghwamun, inGyeongbok, gbLightSpots } from "./gyeongbok-layout.js";
+import { buildGwanghwamunPlaza } from "./gwanghwamun-plaza.js";
+import { haechiBasin, inGwanghwamunPlaza, plazaGroundHeight, plazaSites } from "./plaza-layout.js";
 import { addPalacePeople } from "./palace-people.js";
 import { decodeWishFace, WISH_WIDTH, WISH_HEIGHT, WISH_COLORS, WISH_FLIGHT_MS } from "./wish-art.js";
 
@@ -117,6 +119,8 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
 
   const kit={wx,wz,rand,shape,box,cylinder,matte};
   const {benches,trees,catWalls,fountains,lampMaterial,classical,middleModel,hallModel,drawPond,pavilionModels,subwayStations}=buildJeongdong(T,scene,kit);
+  const updatePlaza=buildGwanghwamunPlaza(T,scene,kit,{gatehouse:subwayStations.groups.get("gwanghwamun"),
+    haetae:scene.getObjectsByProperty("name","광화문 해태상"),benches});
   const drawWater=addWater(T,scene,fountains,kit);
   const stations=addStands(T,scene,kit);
   const createItemProp=makeItemProps(T,kit);
@@ -129,6 +133,8 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
   });
   // The same three lights serve both maps: at Gyeongbokgung they move to the halls nearest the walker.
   const lightHomes=spotLights.map((light,i)=>({position:light.position.clone(),range:light.distance,power:i===2?720:126}));
+  const plazaLights=[plazaSites.myeongnyang,plazaSites.haechi,plazaSites.sejong,plazaSites.time,plazaSites.woldae]
+    .map(spot=>({...spot,height:5.4,range:36,power:340}));
   let lightPower=lightHomes.map(home=>home.power),lightDay=lightHomes.map(()=>0);
   // The room a walker stands in, if any: its lamp is lit by day as well as by night.
   function roomAt(point){
@@ -140,11 +146,12 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
   }
   function placeLights(anchor){
     lightDay=lightHomes.map(()=>0);
-    if(!inGyeongbok(anchor.x,anchor.y)){
+    const mapped=inGwanghwamunPlaza(anchor.x,anchor.y)?plazaLights:inGyeongbok(anchor.x,anchor.y)?gbLightSpots:null;
+    if(!mapped){
       spotLights.forEach((light,i)=>{light.position.copy(lightHomes[i].position);light.distance=lightHomes[i].range;});
       lightPower=lightHomes.map(home=>home.power);
     }else{
-      const nearest=gbLightSpots.map(spot=>({spot,gap:Math.hypot(spot.x-anchor.x,spot.y-anchor.y)})).sort((a,b)=>a.gap-b.gap);
+      const nearest=mapped.map(spot=>({spot,gap:Math.hypot(spot.x-anchor.x,spot.y-anchor.y)})).sort((a,b)=>a.gap-b.gap);
       spotLights.forEach((light,i)=>{
         const {spot}=nearest[i];
         light.position.set(wx(spot.x),spot.height,wz(spot.y));light.distance=spot.range;
@@ -364,7 +371,7 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
   function seatAt(position){return benches[position.seat]?.slots[position.seatSide??0];}
   // Low kerbs, benches and ledges can be stood on after a jump, so they raise the floor too.
   function floorHeight(position){
-    return Math.max(groundHeight(position),platformAt(position.x,position.y,true),loftHeight(position));
+    return plazaGroundHeight(position)??Math.max(groundHeight(position),platformAt(position.x,position.y,true),loftHeight(position));
   }
   // Where a walker's feet are drawn: waist-deep below the surface while wading a pond.
   const footing=position=>floorHeight(position)-waterDepth(position.x,position.y);
@@ -391,6 +398,8 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     });
   }
   function groundHeight(position) {
+    const plazaLevel=plazaGroundHeight(position);
+    if(plazaLevel!=null)return plazaLevel;
     const stair=stairHeight(position);
     if(stair!=null)return stair;
     if(Math.abs(position.y-bridge.y)<3.15&&Math.abs(position.x-bridge.x)<3.6)return Math.max(0,.23-(Math.abs(position.x-bridge.x)-2.70)*.34);
@@ -469,10 +478,11 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     skyUniforms.zenith.value.copy(dayZenith).lerp(nightZenith,night);
     scene.fog.color.copy(dayFog).lerp(nightFog,night);
     hemi.color.copy(ambientDay).lerp(ambientNight,night);
-    const anchor=me,angle=view.pan*Math.PI/180,indoors=museum.isInside(anchor.x,anchor.y);
+    const anchor=me,angle=view.pan*Math.PI/180,indoors=museum.isInside(anchor.x,anchor.y),
+      atPlaza=inGwanghwamunPlaza(anchor.x,anchor.y);
     // Around Deoksugung the skyline is fixed; at Gyeongbokgung it travels with the walker
     // like a backdrop so the distant city and hills never drift into the palace.
-    if(inGyeongbok(anchor.x,anchor.y))heavens.position.set(wx(anchor.x)-21,0,wz(anchor.y)+14);
+    if(atPlaza||inGyeongbok(anchor.x,anchor.y))heavens.position.set(wx(anchor.x)-21,0,wz(anchor.y)+14);
     else heavens.position.set(0,0,0);
     if(!indoors&&now>=cullAt){
       // Fog hides everything past half a kilometre, so those map cells are not drawn at all.
@@ -509,6 +519,7 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
       shuttle.bus.position.x=shuttle.stopAt-70*(1-arriving)**2+80*leaving*leaving;
     });
     for(const {material,rest,strength} of gbNightGlow)material.emissiveIntensity=rest+night*strength;
+    updatePlaza(now,night,atPlaza?anchor:null);
     const roster=[me,...peers],present=new Set(roster.map(player=>player.id));
     if(!indoors){drawWater(now*.001,night);drawPond(now*.001,night);nightSky(night);drawPalaceSky(now,night);birds.update(clock,delta,roster);}
     for(const {id,feed} of roster)if(feed&&feed.at<=clock&&feed.at+FEED_MS>clock)parkLife.feed(feed.id,feed.at,id);
@@ -634,7 +645,10 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     ray.setFromCamera(new T.Vector2((clientX-rect.left)/rect.width*2-1,-(clientY-rect.top)/rect.height*2+1),camera);
     if(guideMarker.visible&&ray.intersectObject(guideMarker,false).length)return {...ticketGuide.approach,guide:true};
     if(!ray.ray.intersectPlane(ground,hit)||hit.distanceTo(camera.position)>105)return null;
-    const distance=hit.distanceTo(ray.ray.origin);
+    let distance=hit.distanceTo(ray.ray.origin);
+    if(plazaGroundHeight({x:hit.x+300,y:hit.z+225})<0){
+      distance=Math.min(105,distance+haechiBasin.depth/Math.max(.02,-ray.ray.direction.y)+.25);
+    }
     for(let step=.25;step<distance;step+=.25){
       ray.ray.at(step,sample);
       if(sample.y>floorHeight({x:sample.x+300,y:sample.z+225}))continue;
