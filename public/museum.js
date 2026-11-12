@@ -284,7 +284,7 @@ export function* assembleMuseum(T,scene,{wx,wz}){
     if(!visible||loaded)return;
     loaded=true;
     const loader=new T.TextureLoader();
-    for(const {file,picture} of artworkMeshes)loader.load("/art/"+file+".webp",map=>{
+    for(const {file,picture} of artworkMeshes)loader.load(new URL(`./art/${file}.webp`,import.meta.url).href,map=>{
       map.colorSpace=T.SRGBColorSpace;map.anisotropy=4;
       picture.material.map=map;picture.material.color.setHex(0xffffff);picture.material.needsUpdate=true;
     },undefined,error=>console.warn("Artwork unavailable",file,error));

@@ -3,6 +3,9 @@ import {FEED_MS, ITEMS} from "./public/activities.js";
 import {isInsideMuseum} from "./public/visit-layout.js";
 import {BUS_COUNT,BUS_SEATS,BUS_BOARD_REACH,busAt,busStopById,busSeatPose} from "./public/sejong-bus.js";
 import {bikeDockReach,bikeDocks,bikeMountReach,bikeParkDuration} from "./public/sejong-bike.js";
+import {GITHUB_PAGES_ORIGIN} from "./public/hosting.js";
+import {ensureSocialTables} from "./database/social-schema.mjs";
+import {cleanupSocial,clinkStatement,leaveClinks,selectSocial,socialPayload,startFountainShow} from "./server/social.mjs";
 
 const json = (data, status = 200) => Response.json(data,{status,headers:{"Cache-Control":"no-store"}});
 const validId = (value) => typeof value==="string" && /^[a-f0-9]{32}$/.test(value);
@@ -46,6 +49,9 @@ const validSignal = (signal,self) => validId(signal?.id) && (signal.audience===u
     signal.audience==="person"&&validId(signal.target)&&signal.target!==self));
 const validHand = (h) => h && validId(h.id) && (h.action==="release" ||
   (h.side===-1 || h.side===1) && (h.action==="accept" || h.action==="offer" && validId(h.peer)));
+const validShow=show=>validId(show?.id)&&show.fountain==="myeongnyang";
+const validClink=(clink,id)=>validId(clink?.id)&&(clink.action==="invite"?
+  validId(clink.target)&&clink.target!==id:clink.action==="accept"||clink.action==="decline"||clink.action==="cancel");
 const validFeed = (feed) => feed && validId(feed.claim) && validTime(feed.at) &&
   typeof feed.id==="string" && /^[a-z0-9-]{1,32}$/.test(feed.id);
 const busIndex = index => Number.isInteger(index)&&index>=0&&index<BUS_COUNT;
@@ -437,7 +443,8 @@ export async function api(request,env){
   const url=new URL(request.url);
   if(url.pathname!=="/api/room"&&url.pathname!=="/api/rooms")return json({error:"없는 페이지예요."},404);
   if(request.method!=="POST")return json({error:"지원하지 않는 요청이에요."},405);
-  if(request.headers.get("origin")&&request.headers.get("origin")!==url.origin){
+  const origin=request.headers.get("origin");
+  if(origin&&origin!==url.origin&&origin!==GITHUB_PAGES_ORIGIN){
     return json({error:"이 사이트에서 다시 시도해 주세요."},403);
   }
   const raw=await request.text();
@@ -449,9 +456,11 @@ export async function api(request,env){
   if(!validId(body?.room)||!validId(body.id)||(body.key!==undefined&&!validId(body.key))){
     return json({error:"잘못된 산책방 정보예요."},400);
   }
-  const {room,id,key=null,avatar,view,signal,hand,feed,bus,bike,leave,lookPings}=body;
+  const {room,id,key=null,avatar,view,signal,hand,feed,bus,bike,show,clink,leave,lookPings}=body;
   if(leave===true){
+    await ensureSocialTables(db);
     await db.batch([
+      leaveClinks(db,{room,id,key,now:Date.now()}),
       db.prepare(`
         DELETE FROM handholds WHERE room=? AND (leader=? OR follower=?)
         AND EXISTS (SELECT 1 FROM walkers WHERE room=? AND id=? AND player_key IS ?)
@@ -464,21 +473,23 @@ export async function api(request,env){
   if(feed!=null&&(!key||avatar===undefined||!validFeed(feed)))return json({error:"간식 주기 요청을 읽을 수 없어요."},400);
   if(bus!=null&&(!key||avatar===undefined||!validBus(bus)))return json({error:"버스 요청을 읽을 수 없어요."},400);
   if(bike!=null&&(!key||avatar===undefined||!validBike(bike)))return json({error:"자전거 요청을 읽을 수 없어요."},400);
+  if(show!=null&&(!key||avatar===undefined||!validShow(show)))return json({error:"분수 공연 요청을 읽을 수 없어요."},400);
+  if(clink!=null&&(!key||avatar===undefined||!validClink(clink,id)))return json({error:"건배 요청을 읽을 수 없어요."},400);
   if(signal!=null&&(avatar===undefined||!validSignal(signal,id)))return json({error:"‘여기 봐’ 위치를 읽을 수 없어요."},400);
+  if(avatar!==undefined&&(!validAvatar(avatar)||!validView(view)))return json({error:"산책 위치를 읽을 수 없어요."},400);
+  const chat=avatar?.chat==null?null:cleanChat(avatar.chat);
+  if(avatar?.chat!=null&&(!key||!chat))return json({error:"말풍선은 1~80자로 입력해 주세요."},400);
+  await ensureSocialTables(db);
   const now=Date.now(),active=now-walkerLifetime,online=now-9000,bikeCutoff=now-bikeParkDuration;
   const currentFeed=feed&&feed.at>=now-FEED_MS&&feed.at<=now+1500;
   const operations=[];
   if(avatar!==undefined){
-    if(!validAvatar(avatar)||!validView(view)){
-      return json({error:"산책 위치를 읽을 수 없어요."},400);
-    }
-    const chat=avatar.chat==null?null:cleanChat(avatar.chat);
-    if(avatar.chat!=null&&(!key||!chat))return json({error:"말풍선은 1~80자로 입력해 주세요."},400);
     if(!feed||currentFeed)operations.push(avatarUpdate(db,room,id,key,avatar,view,now,active,feed?.claim,bike?.action));
     if(chat)operations.push(chatUpdate(db,room,id,key,chat,now,active));
     if(signal)operations.push(signalUpdate(db,room,id,key,signal,avatar,now,active));
     if(Math.random()<.004){
       operations.push(db.prepare("DELETE FROM walkers WHERE updated < ?").bind(now-86400000));
+      operations.push(...cleanupSocial(db,room,now-86400000));
       operations.push(db.prepare(`
         DELETE FROM handholds WHERE created < ? AND
           (SELECT COUNT(*) FROM walkers WHERE room=handholds.room AND updated>=?
@@ -491,6 +502,10 @@ export async function api(request,env){
   if(bus)operations.push(...busStatements(db,room,id,key,bus,now,active));
   if(bus||bike)operations.push(releaseTransportHands(db,room,id,key));
   if(hand)operations.push(...handStatements(db,room,id,key,hand,now,online));
+  const socialContext={room,id,key,now,online,show,clink};
+  if(show)operations.push(startFountainShow(db,socialContext));
+  if(clink)operations.push(clinkStatement(db,socialContext));
+  operations.push(selectSocial(db,socialContext));
   operations.push(db.prepare(`
     SELECT id,updated,avatar,view,signal,player_key,nickname,coat FROM walkers
     WHERE room=? AND (updated>=? OR (updated>=? AND ${parkedBikeTime}>?)) ORDER BY id
@@ -522,6 +537,7 @@ export async function api(request,env){
   }
   return json({
     serverTime:now,
+    ...socialPayload(results.at(-3).results[0],{...socialContext,avatar:receiver.avatar}),
     handholds:results.at(-1).results.map(link=>({
       id:link.id,leader:link.leader,follower:link.follower,side:link.side,active:link.accepted!==null
     })),

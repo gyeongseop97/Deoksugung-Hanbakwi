@@ -1,8 +1,10 @@
+import {PLAZA_SHOW_BEAT_MS,PLAZA_SHOW_BEATS,PLAZA_SHOW_DURATION_MS,PLAZA_SHOW_HEARING_METRES,plazaShowNotes} from "./plaza-show.js";
+
 // A small synthesized soundscape: footsteps, wading, birdsong, crickets, a cat's meow, the
 // transit chimes, passing buses and the guard drum. Everything is generated with Web Audio, so there are no
 // audio files to load. Sound starts on the first tap or key press, as browsers require.
 export function makeSound(){
-  let context=null,master=null,noise=null,engine=null,engineStop=null;
+  let context=null,master=null,noise=null,engine=null,engineStop=null,show=null;
   let enabled=localStorage.getItem("jeongdong-sound")!=="off";
   const fraction=value=>Math.max(0,Math.min(1,Number.isFinite(value)?value:0));
   function ready(){
@@ -91,16 +93,70 @@ export function makeSound(){
     voice.connect(amp);amp.connect(master);
     voice.start(start);voice.stop(start+attack+decay+.05);
   }
+
+  function stopShow(){
+    if(!show)return;
+    const {output,voices}=show;
+    show=null;output.disconnect();
+    for(const voice of voices)voice.stop();
+  }
+  function showTone(state,start,pitch,length,volume,type,attack){
+    const voice=context.createOscillator(),amp=context.createGain(),end=start+length;
+    voice.type=type;voice.frequency.value=pitch;
+    amp.gain.setValueAtTime(.0001,start);
+    amp.gain.linearRampToValueAtTime(volume,start+attack);
+    amp.gain.exponentialRampToValueAtTime(.0001,end);
+    voice.connect(amp);amp.connect(state.output);
+    state.voices.add(voice);
+    voice.onended=()=>{state.voices.delete(voice);voice.disconnect();amp.disconnect();};
+    voice.start(start);voice.stop(end+.014);
+  }
+  function plazaShow(state){
+    const ctx=playing();
+    if(!ctx||!state){stopShow();return;}
+    const {startAt,clock,distance}=state,elapsed=clock-startAt;
+    if(!Number.isFinite(elapsed)||!Number.isFinite(distance)||startAt<=0||elapsed>=PLAZA_SHOW_DURATION_MS||
+      elapsed<-3_000||distance>=PLAZA_SHOW_HEARING_METRES){stopShow();return;}
+    if(show?.startAt!==startAt){
+      stopShow();
+      const output=ctx.createGain();output.gain.value=0;output.connect(master);
+      show={startAt,output,voices:new Set(),nextBeat:Math.max(0,Math.floor(elapsed/PLAZA_SHOW_BEAT_MS)),volumeAt:-Infinity};
+    }
+    const now=ctx.currentTime;
+    if(now-show.volumeAt>=.045){
+      const proximity=fraction(1-distance/PLAZA_SHOW_HEARING_METRES)**1.52;
+      show.output.gain.setTargetAtTime(.79*proximity,now,.11);show.volumeAt=now;
+    }
+    // Schedule ahead in audio time from the current server-clock estimate. Joining
+    // halfway through the show continues on the same beat as everyone already there.
+    show.nextBeat=Math.max(show.nextBeat,Math.floor(elapsed/PLAZA_SHOW_BEAT_MS));
+    while(show.nextBeat<PLAZA_SHOW_BEATS&&show.nextBeat*PLAZA_SHOW_BEAT_MS<elapsed+155){
+      const beat=show.nextBeat++,beatOffset=beat*PLAZA_SHOW_BEAT_MS;
+      for(const {voice,note,length,offset,gain} of plazaShowNotes(beat)){
+        const delay=(beatOffset-elapsed)/1_000+offset;
+        if(delay<-.075)continue;
+        const at=now+Math.max(.008,delay),pitch=440*2**((note-69)/12);
+        const limited=Math.min(length,Math.max(.03,(PLAZA_SHOW_DURATION_MS-beatOffset)/1_000-offset));
+        showTone(show,at,pitch,limited,gain,voice==="bass"?"triangle":"sine",voice==="pad"?.16:.018);
+        if(voice==="bell")showTone(show,at,pitch*2.011,limited*.50,gain*.26,"sine",.012);
+      }
+    }
+  }
   return {
     get enabled(){return enabled;},
     wake:ready,
     toggle(){
       enabled=!enabled;localStorage.setItem("jeongdong-sound",enabled?"on":"off");
       if(enabled)ready();
-      else{stopEngine();context?.suspend().catch(()=>{});}
+      else{stopEngine();stopShow();context?.suspend().catch(()=>{});}
       return enabled;
     },
-    bus,
+    bus,plazaShow,
+    clink(){
+      tone(1530,1516,{gain:.043,attack:.004,decay:.16});
+      tone(2294,2284,{gain:.019,attack:.005,decay:.095,delay:.003});
+      tone(3181,3164,{gain:.009,attack:.005,decay:.058,delay:.004});
+    },
     step(surface){
       if(surface==="water")burst({type:"bandpass",frequency:620,q:.7,gain:.2,decay:.24,rate:.6});
       else if(surface==="wood")burst({frequency:380,gain:.17,decay:.07});

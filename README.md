@@ -2,7 +2,7 @@
 
 덕수궁과 정동을 친구와 함께 걷는 3D 게임입니다. 첫 화면에서 닉네임과 캐릭터를 고른 뒤 **오픈서버**, **방 만들기**, **초대코드 입력** 중에서 선택할 수 있습니다. 돌담 편의점에서 츄르를 사면 근처 고양이가 다가옵니다. **간식 주기** 한 번에 약 5초 동안 먹고, 츄르 한 개로 세 번 줄 수 있습니다.
 
-Vercel이 게임 화면과 방 API를 제공하고, Turso의 **libSQL** 데이터베이스가 초대코드, 참가자 상태, 좌석과 손잡기 상태를 저장합니다. 같은 Vercel 주소에서 발급한 초대코드로 접속하면 친구와 같은 방에서 만나요. 기존 공개 사이트와 이 배포본은 각각 방을 관리합니다.
+Vercel이 게임 화면과 방 API를 제공하고, Turso의 **libSQL** 데이터베이스가 초대코드, 참가자 상태, 좌석과 손잡기 상태를 저장합니다. 공식 GitHub Pages 주소는 운영 Vercel의 방 API에 연결되므로 두 주소에서 같은 초대코드를 쓸 수 있습니다.
 
 기존 Vercel 프로젝트를 업데이트하려면 이 폴더의 파일을 연결된 GitHub 저장소에 반영하고 운영 브랜치의 새 배포가 완료되면 테스트하세요. 오픈서버는 첫 입장 시 자동으로 준비되므로 기존 Turso 데이터베이스에 추가로 실행할 초기화 명령은 없습니다.
 
@@ -46,6 +46,11 @@ Vercel이 게임 화면과 방 API를 제공하고, Turso의 **libSQL** 데이�
 3. **Environment Variables**에 위의 두 이름과 값을 넣습니다. 먼저 운영 배포에 연결하려면 **Production**에 적용합니다. 변수는 프로젝트의 서버 설정에 넣습니다.
 4. **Deploy**를 누릅니다. 배포 이후에 변수를 등록하거나 바꿨다면 **Deployments → Redeploy**를 실행합니다. [Vercel GitHub 연결](https://vercel.com/docs/git/vercel-for-github), [Vercel 환경 변수](https://vercel.com/docs/environment-variables)
 5. Vercel이 준 운영 주소를 두 브라우저나 휴대폰 두 대에서 엽니다. 둘 다 **오픈서버**를 선택해 서로 보이는지 확인합니다. 친구끼리만 산책하려면 한쪽에서 **방 만들기**, 다른 쪽에서 **초대코드 입력**을 선택합니다.
+
+## 4. GitHub Pages 주소도 사용하기
+
+1. `gyeongseop97/Deoksugung-Hanbakwi` 저장소의 **Settings → Pages**에서 **Deploy from a branch**, `main`, `/(root)`를 사용합니다. `main`에 변경을 반영하면 GitHub가 정적 게임 화면을 다시 게시합니다. [GitHub Pages 게시 설정](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site)
+2. [GitHub Pages 게임 주소](https://gyeongseop97.github.io/Deoksugung-Hanbakwi/)를 열면 같은 사이트의 `public/`으로 이동합니다. 여기서 만든 초대코드로 [Vercel 운영 주소](https://deoksu-walk.vercel.app/)에서도 입장할 수 있습니다. 두 주소가 Vercel의 같은 방 API와 Turso를 사용하며, 환경 변수는 Vercel에서 관리합니다.
 
 ## 컴퓨터에서 먼저 실행
 
@@ -91,6 +96,8 @@ Vercel이 게임 화면과 방 API를 제공하고, Turso의 **libSQL** 데이�
 ## 광화문광장 맵
 
 광화문역 7번 출구부터 명량분수, 두 동상, 해치마당, 사계정원, 감사의 정원, 육조마당을 지나 광화문 월대까지 약 600m를 걸을 수 있습니다.
+
+명량분수 서쪽 관람 공간에서 **분수쇼 시작**을 누르면 같은 방의 관람객이 32초 동안 물줄기와 조명이 음악에 맞춰 바뀌는 공연을 함께 볼 수 있습니다. 음악은 분수 주변에서 들리고 **소리** 설정을 따릅니다.
 
 세종대로는 `public/sejong-corridor-layout.js`, 광화문광장은 `public/plaza-layout.js`, 경복궁은 `public/gyeongbok-layout.js`에 배치되어 있습니다. 세 구역은 덕수궁에서 사용하던 위도·경도 기준점으로부터 미터 단위로 위치를 계산합니다. 보행 경로는 도로 경계와 횡단보도에 맞춰 연결되어 있습니다.
 

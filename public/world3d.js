@@ -9,6 +9,8 @@ import { addStands, addRegionalStands, makeItemProps, regionalStations, register
 import { assembleMuseum, registerMuseumNavigation, isInsideMuseum, museumOutsideDoor, museumInsideDoor, museumInsideSpawn, stairHeight } from "./museum.js";
 import { PET_MS, FEED_MS, jumpLift } from "./activities.js";
 import { makeWalkerModels } from "./walker-model.js";
+import { makeFirstPersonView } from "./first-person.js";
+import { plazaShowSpot } from "./plaza-show.js";
 import { gbSurveyModels, gbNightGlow } from "./gyeongbok.js";
 import { gbSite, gwanghwamun, gbBounds, inGyeongbok, gbLightSpots } from "./gyeongbok-layout.js";
 import { assembleGwanghwamunPlaza, registerPlazaNavigation } from "./gwanghwamun-plaza.js";
@@ -144,6 +146,7 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
   outdoors.add(deoksRoot,corridorRoot,transportRoot);
   const createItemProp=makeItemProps(T,kit);
   const walkerModels=makeWalkerModels(T,scene,kit,createItemProp);
+  let firstPersonView;
   const spotLights=[gate,middle,stoneHall].map((point,i)=>{
     const light=new T.PointLight(0xffc47f,0,i===2?55:30,2);
     light.position.set(wx(point.x)+(i===0?7:0),i===2?4.5:2.6,wz(point.y)+(i===0?2:i===2?22:9));
@@ -210,7 +213,11 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
   const transportChunks=finishBuild(consolidate(transportRoot,new Set()));
   const guideMarker=makeGuideMarker();
   guideMarker.position.set(wx(ticketGuide.x),2.42,wz(ticketGuide.y));
-  outdoors.add(guideMarker);
+  const showMarker=makeGuideMarker("♫");
+  showMarker.position.set(wx(plazaShowSpot.x),1.95,wz(plazaShowSpot.y));
+  showMarker.scale.setScalar(1.12);
+  showMarker.visible=false;
+  outdoors.add(guideMarker,showMarker);
   registerMuseumNavigation();
   const museum={outsideDoor:museumOutsideDoor,insideDoor:museumInsideDoor,insideSpawn:museumInsideSpawn,
     isInside:isInsideMuseum,floorAt:stairHeight,exhibits:[]};
@@ -243,7 +250,7 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
         import("https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/libs/meshopt_decoder.module.js")
       ]);
       const [{GLTFLoader},{MeshoptDecoder}]=await landmarkLoaders;
-      const asset=await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync("/"+name+".glb");
+      const asset=await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(new URL(`./${name}.glb`,import.meta.url).href);
       asset.scene.position.set(wx(point.x),0,wz(point.y));
       asset.scene.rotation.y=angle;
       const anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());
@@ -562,7 +569,7 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
   }
   function render(state,now){
     if(container.hidden)return;
-    const {me,peers,view,firstPerson,parkedBikes=[],clock=Date.now()}=state,delta=Math.min(.064,(now-(prevTime||now))/1000);
+    const {me,peers,view,firstPerson,fountainShow,parkedBikes=[],clock=Date.now()}=state,delta=Math.min(.064,(now-(prevTime||now))/1000);
     prevTime=now;
     const anchor=me,angle=view.pan*Math.PI/180,indoors=museum.isInside(anchor.x,anchor.y),
       atPlaza=inGwanghwamunPlaza(anchor.x,anchor.y);
@@ -611,6 +618,7 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     }
     outdoors.visible=!indoors;museumView?.setVisible(indoors);
     guideMarker.visible=!indoors&&Math.hypot(anchor.x-ticketGuide.x,anchor.y-ticketGuide.y)<22;
+    showMarker.visible=atPlaza&&!indoors&&Math.hypot(anchor.x-plazaShowSpot.x,anchor.y-plazaShowSpot.y)<38;
     if(guideMarker.visible){
       const pulse=state.guideNearby?Math.sin(now*.004)*.045:0;
       guideMarker.scale.setScalar((state.guideNearby ? .88 : .78)+pulse);
@@ -628,7 +636,7 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     spotLights.forEach((light,i)=>{light.intensity=lightDay[i]*(1-night)+night*lightPower[i];});
     buses.update(clock,indoors?null:anchor);
     if(palaceRoot.parent===outdoors)for(const {material,rest,strength} of gbNightGlow)material.emissiveIntensity=rest+night*strength;
-    if(plazaRoot.parent===outdoors)updatePlaza(now,night,atPlaza?anchor:null);
+    if(plazaRoot.parent===outdoors)updatePlaza(now,night,indoors?null:anchor,fountainShow?.startedAt??0,clock);
     const roster=[me,...peers],present=new Set(roster.map(player=>player.id));
     if(!indoors){
       if(deoksRoot.parent===outdoors&&distanceToDistrict(anchor,deoksBounds)<120){drawWater(now*.001,night);drawPond(now*.001,night);}
@@ -769,6 +777,10 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     });
     for(const [id,entry] of lanterns)if(!lit.has(id))removeLantern(id,entry);
     renderer.render(scene,camera);
+    if(firstPerson){
+      firstPersonView??=makeFirstPersonView(T,createItemProp);
+      firstPersonView.render(renderer,camera,me,{now,clock,delta,seat,clink:me.clink,night});
+    }
   }
   const ray=new T.Raycaster(),ground=new T.Plane(new T.Vector3(0,1,0),0),hit=new T.Vector3(),sample=new T.Vector3();
   function pick(clientX,clientY){
@@ -777,6 +789,7 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
        clientX<rect.left||clientX>rect.right||clientY<rect.top||clientY>rect.bottom)return null;
     ray.setFromCamera(new T.Vector2((clientX-rect.left)/rect.width*2-1,-(clientY-rect.top)/rect.height*2+1),camera);
     if(guideMarker.visible&&ray.intersectObject(guideMarker,false).length)return {...ticketGuide.approach,guide:true};
+    if(showMarker.visible&&ray.intersectObject(showMarker,false).length)return {x:plazaShowSpot.x,y:plazaShowSpot.y};
     if(!ray.ray.intersectPlane(ground,hit)||hit.distanceTo(camera.position)>105)return null;
     let distance=hit.distanceTo(ray.ray.origin);
     if(plazaGroundHeight({x:hit.x+300,y:hit.z+225})<0){
@@ -796,14 +809,15 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
   // A souvenir photograph: one frame from a fixed camera, returned as a JPEG data URL.
   function snapshot(state,{from,to,fov=50}){
     render(state,performance.now());
-    const previous=camera.fov,marker=guideMarker.visible;
+    const previous=camera.fov,marker=guideMarker.visible,musicMarker=showMarker.visible;
     camera.fov=fov;camera.updateProjectionMatrix();
     camera.position.set(wx(from.x),from.height,wz(from.y));
     camera.lookAt(wx(to.x),to.height,wz(to.y));
     guideMarker.visible=false;
+    showMarker.visible=false;
     renderer.render(scene,camera);
     const picture=renderer.domElement.toDataURL("image/jpeg",.92);
-    guideMarker.visible=marker;camera.fov=previous;camera.updateProjectionMatrix();
+    guideMarker.visible=marker;showMarker.visible=musicMarker;camera.fov=previous;camera.updateProjectionMatrix();
     return picture;
   }
   const renderStats=()=>({...renderer.info.render,geometries:renderer.info.memory.geometries,textures:renderer.info.memory.textures,
@@ -985,18 +999,23 @@ function smoothSurveyNormals(geometry,creaseDegrees=48){
   return source;
 }
 
-function makeGuideMarker(){
+function makeGuideMarker(music){
   const canvas=document.createElement("canvas");
   canvas.width=canvas.height=112;
   const ctx=canvas.getContext("2d");
   ctx.beginPath();ctx.arc(56,56,49,0,Math.PI*2);
-  ctx.fillStyle="#453716";ctx.fill();
+  ctx.fillStyle=music?"#244a5b":"#453716";ctx.fill();
   ctx.beginPath();ctx.arc(56,56,43,0,Math.PI*2);
-  ctx.fillStyle="#f1c650";ctx.fill();
-  ctx.strokeStyle="#ffea9a";ctx.lineWidth=4;ctx.stroke();
-  ctx.fillStyle="#342918";
-  ctx.beginPath();ctx.roundRect(50,29,12,36,6);ctx.fill();
-  ctx.beginPath();ctx.arc(56,78,6,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle=music?"#ade4f2":"#f1c650";ctx.fill();
+  ctx.strokeStyle=music?"#d9f5fa":"#ffea9a";ctx.lineWidth=4;ctx.stroke();
+  ctx.fillStyle=music?"#203c53":"#342918";
+  if(music){
+    ctx.font="bold 62px sans-serif";ctx.textAlign="center";ctx.textBaseline="middle";
+    ctx.fillText(music,56,57);
+  }else{
+    ctx.beginPath();ctx.roundRect(50,29,12,36,6);ctx.fill();
+    ctx.beginPath();ctx.arc(56,78,6,0,Math.PI*2);ctx.fill();
+  }
   const map=new T.CanvasTexture(canvas);map.colorSpace=T.SRGBColorSpace;
   return new T.Sprite(new T.SpriteMaterial({map,transparent:true,depthWrite:false,toneMapped:false}));
 }

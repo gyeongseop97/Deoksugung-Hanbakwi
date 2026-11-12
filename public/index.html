@@ -6,9 +6,9 @@
   <meta name="description" content="멀리 있어도 함께 걷는 덕수궁 돌담길.">
   <title>덕수궁 한바퀴</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Crect width='48' height='48' rx='10' fill='%231b271f'/%3E%3Cpath d='M24 8 28 20 40 24 28 28 24 40 20 28 8 24 20 20Z' fill='%23e1c687'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="./style.css">
   <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js"}}</script>
-  <script type="module" src="/walk.js"></script>
+  <script type="module" src="./walk.js"></script>
 </head>
 <body>
   <main id="entry-flow" class="entry-flow" aria-label="산책 시작">
@@ -16,7 +16,7 @@
       <div class="entry-brand"><span class="brandmark" aria-hidden="true">✦</span><span>덕수궁 한바퀴</span></div>
       <section id="profile-step" class="entry-profile" aria-labelledby="profile-title">
         <figure class="entry-cover">
-          <img src="/deoksugung-cover.webp" alt="가을빛이 물든 덕수궁 대한문" width="1200" height="800" fetchpriority="high">
+          <img src="./deoksugung-cover.webp" alt="가을빛이 물든 덕수궁 대한문" width="1200" height="800" fetchpriority="high">
           <figcaption>서울 정동 · 대한문</figcaption>
         </figure>
         <form id="profile-form" class="entry-profile-form">
@@ -146,6 +146,8 @@
                 <button id="pet-cat" type="button" class="quiet activity-button" hidden>쓰다듬기</button>
                 <button id="take-item" type="button" class="quiet activity-button" hidden>받기</button>
                 <button id="use-item" type="button" class="quiet activity-button" hidden>사용하기</button>
+                <button id="clink" type="button" class="quiet activity-button" hidden>건배하기</button>
+                <button id="fountain-show" type="button" class="quiet activity-button" hidden>분수쇼 시작</button>
                 <button id="photo" type="button" class="quiet activity-button" hidden>사진 찍기</button>
                 <button id="subway" type="button" class="quiet activity-button" aria-haspopup="dialog" aria-controls="transit-dialog" hidden>지하철 타기</button>
                 <button id="bus-action" type="button" class="quiet activity-button" hidden>버스 타기</button>
@@ -182,6 +184,10 @@
           <div id="hand-offer" class="hand-offer" role="group" aria-label="손잡기 요청" hidden>
             <p id="hand-message" role="status"></p>
             <div><button id="hand-decline" type="button" class="quiet">거절</button><button id="hand-accept" type="button" class="primary">수락</button></div>
+          </div>
+          <div id="clink-offer" class="hand-offer" role="group" aria-label="건배 요청" hidden>
+            <p id="clink-message" role="status"></p>
+            <div><button id="clink-decline" type="button" class="quiet">거절</button><button id="clink-accept" type="button" class="primary">건배하기</button></div>
           </div>
           <div class="location-guides">
             <div class="look-direction" id="look-direction" hidden>

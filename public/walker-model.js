@@ -1,6 +1,7 @@
 import {FEED_MS, ITEMS, PET_MS, JUMP_HEIGHT} from "./activities.js";
 import {bikeFit,bikePedal,makeRidingBike} from "./sejong-bike-model.js";
 import {isCycling} from "./sejong-bike.js";
+import {CLINK_DURATION_MS} from "./social-events.js";
 
 const TAU = Math.PI * 2;
 const HAIR = ["short", "bob", "long", "bun"];
@@ -564,7 +565,7 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
 
   const down = new T.Vector3(0,-1,0), forward = new T.Vector3(0,0,1);
   const target = new T.Vector3(), direction = new T.Vector3(), elbow = new T.Vector3(), bend = new T.Vector3();
-  const pole = new T.Vector3(), clasp = new T.Vector3(), globalLower = new T.Quaternion();
+  const pole = new T.Vector3(), clasp = new T.Vector3(), grip = new T.Vector3(), globalLower = new T.Quaternion();
   const emoteAnchor = new T.Vector3(), chatAnchor = new T.Vector3();
   const pitch = new T.Quaternion(), inverseChest = new T.Quaternion();
   const xAxis = new T.Vector3(1,0,0);
@@ -692,10 +693,14 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
     const petPose = pet ? smooth(Math.min(petAge/235,(PET_MS-petAge)/275)) : 0;
     const itemAge = spec && item.started ? Math.max(0,clock-item.started) : Infinity;
     const carrying = Boolean(!riding && spec && (item.remaining > 0 || itemAge < spec.duration));
-    const waving = !riding && waveAge >= 0 && waveAge < 2.45 && !pet && !feeding && !(held && carrying);
+    const clinkAge=clock-position.clink?.startedAt;
+    const clink=carrying&&!seat&&!held&&clinkAge>=0&&clinkAge<CLINK_DURATION_MS
+      ? smooth(Math.min(clinkAge/600,(CLINK_DURATION_MS-clinkAge)/730)) : 0;
+    const contact=clink?Math.max(0,1-Math.abs(clinkAge-900)/170)*.045:0;
+    const waving = !clink && !riding && waveAge >= 0 && waveAge < 2.45 && !pet && !feeding && !(held && carrying);
     const waveLift = waving ? smooth(Math.min(waveAge/.27,(2.45-waveAge)/.36)) : 0;
 
-    const facing = Math.PI - (seat?.heading ?? position.heading ?? 252) * Math.PI/180;
+    const facing = Math.PI - (seat?.heading ?? position.clink?.heading ?? position.heading ?? 252) * Math.PI/180;
     const turn = facing - group.rotation.y;
     group.rotation.y += Math.atan2(Math.sin(turn),Math.cos(turn)) * (wasVisible && !seat && !held ? turnEase : 1);
     // Stepping onto or off a ledge eases the floor so the body does not pop.
@@ -748,7 +753,7 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
     } else {
       body.position.y = seated*SEAT_LIFT;
       pelvis.position.set(.020*pendulum*sway,.691+bob-strideDip+idleRise+breath*.004-seated*.145-crouch*.225,0);
-      chest.rotation.set(.020 + sprint*.13 + crouch*.34 + seated*.03,pendulum*sway*.10,pendulum*sway*.065);
+      chest.rotation.set(.020 + sprint*.13 + crouch*.34 + seated*.03 + clink*.22,pendulum*sway*.10,pendulum*sway*.065);
       headJoint.rotation.set(-.030-sprint*.070+crouch*.16, -pendulum*sway*.05,breath*.020-pendulum*sway*.045);
     }
     model.shadow.visible = !seat;
@@ -823,6 +828,11 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
         y = mix(y,.640+Math.cos(waveAge*17)*.034,waveLift);
         z = mix(z,.150,waveLift);
         pole.set(side,-.38,-.32);
+      } else if (clink && side === itemSide) {
+        x=mix(side*.370,side*.055,clink);
+        y=mix(.110,.375,clink);
+        z=mix(.330,.445,clink)-contact;
+        pole.set(side*.8,-.42,-.11);
       } else if (carrying && side === itemSide) {
         x = side*mix(.370,.170,eat); y = mix(.110,.395,eat); z = mix(.330,.440,eat);
         if (spark) { x = side*.440; y = .150; z = .320; }
@@ -844,9 +854,10 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
     }
     itemPivot.visible = carrying;
     if (carrying) {
-      const hand = arms[itemSide===1?1:0].target;
+      const arm=arms[itemSide===1?1:0];
+      const hand=clink?chest.worldToLocal(arm.end.getWorldPosition(grip)):arm.target;
       itemPivot.position.set(hand.x,hand.y+.015,hand.z+.039);
-      itemPivot.rotation.set(spark ? .11 : feeding ? 1.81*feedPose : -.66*eat,0,0);
+      itemPivot.rotation.set(clink ? -.12*clink+contact*3 : spark ? .11 : feeding ? 1.81*feedPose : -.66*eat,0,clink*.08);
     }
     model.itemProp(carrying?item.kind:null,feeding?feedAge/1000:spark&&item.started?itemAge/1000:-1);
 
