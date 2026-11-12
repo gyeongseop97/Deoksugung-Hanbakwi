@@ -1,5 +1,6 @@
 import {FEED_MS, ITEMS, PET_MS, JUMP_HEIGHT} from "./activities.js";
 import {bikeFit,bikePedal,makeRidingBike} from "./sejong-bike-model.js";
+import {isCycling} from "./sejong-bike.js";
 
 const TAU = Math.PI * 2;
 const HAIR = ["short", "bob", "long", "bun"];
@@ -675,7 +676,7 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
     const wasVisible = group.visible;
     group.visible = true;
     const smoothPose = wasVisible ? 1 - Math.exp(-delta*15) : 1;
-    const riding = Boolean(position.bike && !seat);
+    const riding = !seat && isCycling(position);
     const lift = riding ? 0 : jump;
     const airborne = lift/JUMP_HEIGHT;
     const walking = Boolean(position.stepping && !seat && !riding && jump<.06);
