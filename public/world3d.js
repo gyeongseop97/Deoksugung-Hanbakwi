@@ -13,6 +13,7 @@ import { gbSurveyModels, gbNightGlow, gbShuttles } from "./gyeongbok.js";
 import { gbSite, gwanghwamun, inGyeongbok, gbLightSpots } from "./gyeongbok-layout.js";
 import { buildGwanghwamunPlaza } from "./gwanghwamun-plaza.js";
 import { haechiBasin, inGwanghwamunPlaza, plazaGroundHeight, plazaSites } from "./plaza-layout.js";
+import { buildSejongCorridor } from "./sejong-corridor.js";
 import { addPalacePeople } from "./palace-people.js";
 import { decodeWishFace, WISH_WIDTH, WISH_HEIGHT, WISH_COLORS, WISH_FLIGHT_MS } from "./wish-art.js";
 
@@ -66,7 +67,7 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
       }
     `
   }));
-  // Sky, clouds, hills and stars ride on one rig that moves with the walker to the other map.
+  // Keep the sky enclosing the camera along the entire north–south walk.
   const heavens=new T.Group();
   sky.renderOrder=-3;heavens.add(sky);scene.add(heavens);
   scene.fog=new T.FogExp2(0xc6dbe3,.0039);
@@ -119,8 +120,8 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
 
   const kit={wx,wz,rand,shape,box,cylinder,matte};
   const {benches,trees,catWalls,fountains,lampMaterial,classical,middleModel,hallModel,drawPond,pavilionModels,subwayStations}=buildJeongdong(T,scene,kit);
-  const updatePlaza=buildGwanghwamunPlaza(T,scene,kit,{gatehouse:subwayStations.groups.get("gwanghwamun"),
-    haetae:scene.getObjectsByProperty("name","광화문 해태상"),benches});
+  buildSejongCorridor(T,scene,kit);
+  const updatePlaza=buildGwanghwamunPlaza(T,scene,kit,{benches});
   const drawWater=addWater(T,scene,fountains,kit);
   const stations=addStands(T,scene,kit);
   const createItemProp=makeItemProps(T,kit);
@@ -146,7 +147,7 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
   }
   function placeLights(anchor){
     lightDay=lightHomes.map(()=>0);
-    const mapped=inGwanghwamunPlaza(anchor.x,anchor.y)?plazaLights:inGyeongbok(anchor.x,anchor.y)?gbLightSpots:null;
+    const mapped=inGyeongbok(anchor.x,anchor.y)?gbLightSpots:inGwanghwamunPlaza(anchor.x,anchor.y)?plazaLights:null;
     if(!mapped){
       spotLights.forEach((light,i)=>{light.position.copy(lightHomes[i].position);light.distance=lightHomes[i].range;});
       lightPower=lightHomes.map(home=>home.power);
@@ -480,10 +481,9 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     hemi.color.copy(ambientDay).lerp(ambientNight,night);
     const anchor=me,angle=view.pan*Math.PI/180,indoors=museum.isInside(anchor.x,anchor.y),
       atPlaza=inGwanghwamunPlaza(anchor.x,anchor.y);
-    // Around Deoksugung the skyline is fixed; at Gyeongbokgung it travels with the walker
-    // like a backdrop so the distant city and hills never drift into the palace.
-    if(atPlaza||inGyeongbok(anchor.x,anchor.y))heavens.position.set(wx(anchor.x)-21,0,wz(anchor.y)+14);
-    else heavens.position.set(0,0,0);
+    // Gradually follow the northward route without shifting the skyline at district boundaries.
+    const horizonFollow=T.MathUtils.smoothstep(180-anchor.y,0,220);
+    heavens.position.set((wx(anchor.x)-21)*horizonFollow,0,(wz(anchor.y)+14)*horizonFollow);
     if(!indoors&&now>=cullAt){
       // Fog hides everything past half a kilometre, so those map cells are not drawn at all.
       cullAt=now+260;
