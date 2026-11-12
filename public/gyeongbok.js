@@ -116,10 +116,8 @@ export function buildGyeongbok(T,scene,kit,tools){
   // ---- Ground -------------------------------------------------------------------------
   const centre=world(0,410);
   box(0x677253,centre.x,-.36,centre.z,900,.65,1280);
-  const road=world(0,-74);
-  flat(new T.BoxGeometry(620,.05,30),materials.road,road.x,.012,road.z);
   plot(rect(-wallHalf,wallHalf,0,wallNorth),materials.earth,.008);
-  plot(rect(-92,92,-58,0),materials.paving,.02);
+  plot(rect(-92,92,-52,0),materials.paving,.02);
   for(const {kind,west,east,south,north} of gbLawns)plot(rect(west,east,south,north),materials.garden[kind],.017);
   for(const court of [gbCourts.heungnye,gbCourts.geunjeong]){
     plot(rect(court.west+1,court.east-1,court.south+1,court.north-1),materials.court,.022);
@@ -722,7 +720,7 @@ export function buildGyeongbok(T,scene,kit,tools){
     block(g.position.x,g.position.z,3.6,1.1,stop.angle,2.7);
     // The bus stands on the road beyond the kerb, facing along it.
     const bus=new T.Group();
-    bus.position.set(-.6,0,3.6);g.add(bus);
+    bus.position.set(-.6,0,stop===cityHallBusStop?7.2:3.6);g.add(bus);
     box(blue,0,1.55,0,10.4,2.5,2.5,bus);
     box(0xe9edf0,0,2.86,0,10.2,.12,2.4,bus);
     box(0x1c2733,0,1.95,1.26,9.2,.95,.03,bus);box(0x1c2733,0,1.95,-1.26,9.2,.95,.03,bus);
