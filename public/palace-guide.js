@@ -8,7 +8,7 @@ const royalBuildings="https://royal.khs.go.kr/ROYAL/contents/R402000000.do?id=20
 const palaceRecord="https://digital.khs.go.kr/heri/heriDetail.do?ctptNo=1331101240000&ctptUid=13898859674581300745";
 const modernMuseum="https://www.mmca.go.kr/upload/m/data/exhibition/2012/09/14/20120914091758.pdf";
 const pavilionByName=Object.fromEntries(pavilions.map(site=>[site.name,site]));
-const gyeongbokTour="https://royal.khs.go.kr/ROYAL/contents/R404000000.do?schGroupCode=gbg";
+const gyeongbokTour="https://royal.khs.go.kr/ROYAL/contents/R101020000.do?bdProgramCode=storyCtg3&menuId=03_01_02&pageType=story&schBdcode=gbg";
 const guideDistance=3.8;
 
 function footprint(site){
@@ -122,7 +122,22 @@ const guides=[
     geoncheonggung:"고종이 1873년에 지은 궁 안의 궁이에요. 1887년 우리나라에서 처음으로 전등을 밝힌 곳이며, 1895년 명성황후가 시해된 을미사변의 현장이기도 합니다. 2007년에 복원했습니다.",
     jibokjae:"고종이 서재로 쓰며 외국 사신을 맞이하던 건물이에요. 벽돌을 쌓아 올린 중국풍 양식이 궁 안의 다른 전각과 다릅니다.",
     "palace-museum":"조선 왕실과 대한제국 황실의 유물을 전시하는 박물관이에요. 경복궁역 5번 출구와 바로 이어집니다."
-  }).map(([id,description])=>guide("gb-"+id,gbSite[id],description,gyeongbokTour))
+  }).map(([id,description])=>guide("gb-"+id,gbSite[id],description,gyeongbokTour)),
+  ...[
+    ["gyejodang","세종이 왕세자였던 문종의 집무 공간으로 마련한 전각이에요. 동궁 권역에 있으며 2023년에 복원했습니다.",
+      "https://royal.khs.go.kr/ROYAL/contents/R402000000.do?id=20240903132445164232&schM=view"],
+    ["sojubang","궁중 음식을 준비하던 곳이에요. 내소주방에서는 왕과 왕비의 수라를, 외소주방에서는 잔치 음식을 마련했습니다.",
+      "https://royal.khs.go.kr/ROYAL/contents/R701000000.do"],
+    ["heungbokjeon","고종 때 외국 사신을 접견하던 전각이에요. 일제강점기에 철거됐다가 2020년에 복원했습니다.",
+      "https://royal.khs.go.kr/ROYAL/contents/R603040000.do"],
+    ["amisan","교태전 뒤뜰의 계단식 화단에 왕비의 온돌방과 연결된 육각 굴뚝 네 기가 서 있어요. 벽돌을 조합해 학, 봉황, 꽃과 나무를 새겼습니다.",
+      "https://digital.khs.go.kr/heri/heriDetail.do?ctptNo=1121108110000&ctptUid=13898859671268200463"],
+    ["hamhwadang","향원지 남쪽에 있는 전각이에요. 고종 때 집경당과 함께 경연과 외국 사신 접견 등에도 사용했습니다."],
+    ["jipgyeongdang","함화당과 나란히 놓인 전각이에요. 두 건물 사이를 잇는 복도를 볼 수 있습니다."],
+    ["taewonjeon","궁 서북쪽에 있는 전각이에요. 태조의 어진을 보관했고, 왕실의 장례 때 관을 모시는 빈전으로도 썼습니다."],
+    ["janggo","궁중 음식에 쓸 장을 담고 보관하던 곳이에요. 낮은 단에 놓인 여러 크기의 장독을 둘러볼 수 있습니다.",
+      "https://royal.khs.go.kr/ROYAL/contents/R201000000.do?act=view&ceIdx=202610200316"]
+  ].map(([id,description,source])=>guide("gb-"+id,gbSite[id],description,source??gyeongbokTour))
 ];
 
 function squaredDistance(a,b){
