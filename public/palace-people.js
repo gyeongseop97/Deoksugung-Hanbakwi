@@ -1,6 +1,6 @@
 // People of the palace: gate sentries, a marching guard patrol and visitors strolling in
 // hanbok. Everyone follows the shared room clock, so all players see the same scene.
-import {at} from "./gyeongbok-layout.js";
+import {at,gbBounds} from "./gyeongbok-layout.js";
 
 const point=([east,north])=>at(east,north);
 const length=(a,b)=>Math.hypot(b.x-a.x,b.y-a.y);
@@ -121,11 +121,12 @@ export function addPalacePeople(T,scene,kit,walkerModels,{floorHeight,labelSprit
 
   // anchor: the walker the camera follows (null indoors). sparse: slow device, show fewer.
   function update(clock,now,delta,anchor,walkers=[],sparse=false){
-    const seconds=clock/1000,near=anchor&&anchor.x>=1000,{blend}=ceremonyAt(clock);
+    const seconds=clock/1000,{blend}=ceremonyAt(clock),range=sparse?30:handheld?38:50;
+    const {minX,maxX,minY,maxY}=gbBounds;
+    const near=anchor&&anchor.x>=minX-range&&anchor.x<=maxX+range&&anchor.y>=minY-range&&anchor.y<=maxY+range;
     for(const one of people){
-      const pose=near?one.where(seconds,blend):null;
-      const reach=sparse?(one.visitor?0:30):handheld?38:50;
-      if(!pose||Math.hypot(pose.x-anchor.x,pose.y-anchor.y)>reach){
+      const pose=near&&!(sparse&&one.visitor)?one.where(seconds,blend):null;
+      if(!pose||Math.hypot(pose.x-anchor.x,pose.y-anchor.y)>range){
         if(one.model?.group.visible)one.model.group.visible=false;
         continue;
       }
