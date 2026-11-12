@@ -9,11 +9,10 @@ button:not(:disabled):hover{filter:brightness(1.13)}
 :focus-visible{outline:2px solid #f5cc81;outline-offset:3px}
 .top{height:72px;border-bottom:1px solid #354035;display:flex;align-items:center;justify-content:space-between;padding:0 max(5vw,22px);background:#111a14c0}
 .brand{display:flex;gap:11px;align-items:center;margin:0;font-family:inherit;font-size:16px;font-weight:700;line-height:1.25;letter-spacing:normal}
-.brand small{display:block;letter-spacing:.15em;font-size:9px;font-weight:600;color:#aaad97;margin-top:3px}
 .brandmark{display:grid;place-items:center;width:36px;height:36px;border:1px solid #7c7251;background:#303627;border-radius:11px;color:var(--gold);font-size:21px}
 .top-actions,.view-controls,.dialog-actions{display:flex;gap:8px}
 .top-game-actions{display:flex;align-items:center;gap:8px}
-#mobile-view-controls{display:none}
+#mobile-view-controls,.mobile-settings{display:none}
 .quiet{color:var(--ink);border-color:#465347;background:#202e24}
 .invite{background:#d6dbb8;color:#232d1f}
 .invite span,.primary span{margin-right:5px}
@@ -79,13 +78,16 @@ dialog a{color:#f5d297;text-underline-offset:3px}
 .credits{padding-left:20px;line-height:1.9}
 #credits-dialog,#exhibit-dialog,#visitor-guide-dialog,#landmark-guide-dialog{max-height:calc(100dvh - 24px);overflow:auto}
 #exhibit-dialog{max-width:min(550px,calc(100vw - 24px))}
-#visitor-guide-dialog{max-width:min(580px,calc(100vw - 24px));overscroll-behavior:contain}
+#visitor-guide-dialog{max-width:min(700px,calc(100vw - 24px));overscroll-behavior:contain}
+#visitor-guide-dialog .dialog-top{position:sticky;top:0;z-index:1;background:#1b281f}
+#visitor-guide-dialog .close{min-width:44px;min-height:44px}
 #visitor-guide-dialog h2{margin:0}
-#visitor-guide-dialog .guide-intro{margin:12px 0 16px}
-.visitor-guide-list{display:grid;gap:11px}
-.visitor-guide-list section{border-top:1px solid #e8d8aa2b;padding-top:10px}
+.guide-intro{margin:12px 0 15px;padding:10px 12px;border-left:3px solid #d8bc79;background:#283829;color:#f1e7cc}
+.visitor-guide-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.visitor-guide-list section{padding:11px 12px;border:1px solid #465345;border-radius:10px;background:#202e24}
 .visitor-guide-list h3{font-size:16px;margin:0 0 4px;color:#f1d599}
 .visitor-guide-list p{margin:0;line-height:1.55}
+@media(max-width:520px){.visitor-guide-list{grid-template-columns:minmax(0,1fr)}}
 #roster-dialog{max-height:calc(100dvh - 24px);overflow:auto;overscroll-behavior:contain}
 #roster-dialog h2{margin:0}
 #roster-dialog #roster-hint{margin:10px 0 14px}
@@ -121,9 +123,9 @@ dialog input,dialog code{display:block;width:100%;padding:9px;border-radius:7px;
   .panel-head{padding-inline:11px}
   .scene-controls{padding-inline:8px}
 }
-.experience{margin-top:23px;grid-template-columns:minmax(0,2.45fr) minmax(265px,1fr)}
+.experience{margin-top:23px;grid-template-columns:minmax(0,2.45fr) minmax(265px,1fr);align-items:start}
 .panel-head .scene-title{font-size:clamp(24px,3.2vw,42px);margin:3px 0 0;line-height:1.12}
-.scene-wrap,.map-wrap{height:clamp(440px,43vw,680px)}
+.scene-wrap,.map-wrap{height:clamp(345px,min(43vw,calc(100dvh - 250px)),680px)}
 #game{position:absolute;inset:0;overflow:hidden;touch-action:none;cursor:grab;background:linear-gradient(150deg,#546f63,#263d30)}
 #game-shell :is(.top,.experience){-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 #game-shell :is(input,textarea,[contenteditable]){-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
@@ -137,7 +139,6 @@ dialog input,dialog code{display:block;width:100%;padding:9px;border-radius:7px;
 .game-place span{color:#ecd39d;font-size:10px;letter-spacing:.14em}
 .game-place strong{font-size:20px;margin-block:2px}
 .game-place small{color:#dedfcb;font-size:11px}
-.game-place .touch-controls-hint{display:none}
 .bus-status{
   width:max-content;max-width:100%;padding:8px 11px;background:#172923ed;color:#f8f3de;
   border:1px solid #9bbdb185;border-radius:10px;box-shadow:0 4px 14px #13231d53;
@@ -151,11 +152,50 @@ dialog input,dialog code{display:block;width:100%;padding:9px;border-radius:7px;
 .bus-status-times dd{margin-top:1px;font-size:16px;line-height:1.2;font-weight:750;color:#fce0a2;font-variant-numeric:tabular-nums}
 .look-actions{display:flex;align-items:center;flex-wrap:wrap;gap:5px;max-width:100%}
 .look-actions button{min-height:36px;padding:5px 8px;font-size:12px;pointer-events:auto}
+.look-actions button:disabled{opacity:1;color:#b6bfac;border-color:#657562;background:#24352bea}
 .zoom-tools{display:flex;gap:3px}
 .look-actions .zoom-tools button{min-width:36px;padding:0;font-size:21px;line-height:1}
 #landmark-guide-dialog h2{margin:0}
 #landmark-guide-description{margin:12px 0 16px;line-height:1.62}
-.game-hud{position:absolute;z-index:1;right:16px;bottom:16px;display:flex;align-items:end;gap:10px}
+.game-hud{
+  --control-height:44px;--control-gap:6px;--command-height:calc(3 * var(--control-height) + 2 * var(--control-gap));
+  position:absolute;z-index:4;top:0;right:16px;bottom:16px;display:flex;align-items:end;
+  gap:10px;pointer-events:none;
+}
+.game-command{
+  display:grid;grid-template-areas:"social" "nearby" "movement";
+  grid-template-rows:repeat(3,var(--control-height));gap:var(--control-gap);width:clamp(193px,20vw,248px);
+}
+.social-actions,.nearby-controls,.movement-actions{
+  display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--control-gap);min-width:0;
+}
+.social-actions{grid-area:social}
+.nearby-controls{grid-area:nearby;grid-template-columns:minmax(0,1fr) 67px}
+.movement-actions{grid-area:movement}
+.game-command :is(button,.nearby-actions),.game-hud .game-pad button{pointer-events:auto}
+.game-command>div>button{
+  min-width:0;min-height:var(--control-height);padding:4px 7px;
+  border-radius:10px;font-size:13px;
+}
+.game-command :is(.social-actions,.movement-actions)>button{border-color:#8a997f;background:#18281fef}
+.game-command kbd{margin-left:3px}
+#nearby-primary{grid-column:1;line-height:1.2;border-color:#f2dba5;white-space:normal}
+#nearby-primary span{
+  display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;overflow-wrap:anywhere;margin:0;
+}
+#nearby-primary:disabled{opacity:.92;background:#273c33;border-color:#9eb3a0;color:#f1e5c8}
+#nearby-toggle{grid-column:2;padding-inline:3px;border-color:#8a997f;background:#192a22ed;font-size:12px}
+#nearby-toggle[aria-expanded="true"]{color:#f5dca6;border-color:#dec18a;background:#324735}
+.nearby-actions{
+  position:absolute;right:0;bottom:calc(var(--command-height) + 8px);z-index:1;
+  width:min(255px,calc(100vw - 24px));max-height:max(56px,min(260px,calc(100% - var(--command-height) - 18px)));
+  display:grid;gap:4px;padding:6px;overflow:auto;touch-action:pan-y;overscroll-behavior:contain;
+  border:1px solid #a3ac8b;border-radius:12px;background:#17271ff5;box-shadow:0 7px 24px #080f0bb3;
+}
+.nearby-actions button{
+  min-width:0;min-height:44px;padding:6px 10px;text-align:left;white-space:normal;
+  overflow-wrap:anywhere;line-height:1.25;border-radius:7px;
+}
 .game-hud .game-pad{position:static;display:grid;grid-template-columns:repeat(3,40px)}
 .game-pad button{min-height:39px;background:#15231bd9}
 #wish{background:#17261ddf;border-color:#cbb27a;color:#f2d393}
@@ -182,18 +222,29 @@ dialog input,dialog code{display:block;width:100%;padding:9px;border-radius:7px;
   #game-shell{display:flex;flex-direction:column;height:100dvh}
   #game-shell>main{display:flex;flex:1;flex-direction:column;min-height:0;width:100%;padding-bottom:max(4px,env(safe-area-inset-bottom,0px))}
   .top{
-    flex:none;height:auto;min-height:calc(52px + env(safe-area-inset-top,0px));gap:8px;
+    position:relative;z-index:7;flex:none;height:auto;min-height:calc(52px + env(safe-area-inset-top,0px));gap:6px;
     padding:calc(4px + env(safe-area-inset-top,0px)) max(10px,env(safe-area-inset-right,0px)) 4px max(10px,env(safe-area-inset-left,0px));
   }
-  #mobile-view-controls{display:block}
+  #mobile-view-controls,.mobile-settings{display:block}
   .top-game-actions,.top .top-actions,.top .view-controls{gap:5px}
-  .top button{min-height:43px;padding:4px 8px;font-size:12px}
+  .top button,.mobile-settings summary{min-height:44px;padding:4px 8px;font-size:12px}
+  .mobile-settings summary{
+    display:grid;place-items:center;min-width:44px;list-style:none;cursor:pointer;
+    border:1px solid #697867;border-radius:9px;background:#202e24;color:var(--ink);font-weight:650;
+  }
+  .mobile-settings summary::-webkit-details-marker{display:none}
+  .mobile-settings[open] summary{border-color:#dec18a;color:#f5dca6}
+  .mobile-settings-actions{
+    position:absolute;top:calc(100% + 4px);right:max(9px,env(safe-area-inset-right,0px));
+    display:grid;gap:5px;width:133px;padding:6px;border:1px solid #879679;
+    border-radius:11px;background:#17271f;box-shadow:0 7px 20px #07110ac0;
+  }
+  .mobile-settings-actions button{text-align:left}
   .brandmark{width:31px;height:31px}
   .brand{font-size:15px;gap:6px;white-space:nowrap}
-  .brand small{display:none}
   main{padding:0 max(5px,env(safe-area-inset-right,0px)) 0 max(5px,env(safe-area-inset-left,0px))}
   .experience{display:flex;flex:1;flex-direction:column;min-height:0;margin-top:4px}
-  .scene-panel{flex:1;min-height:235px;border-radius:11px}
+  .scene-panel{flex:1;align-self:stretch;min-height:235px;border-radius:11px}
   .scene-head{display:none}
   .panel-head{min-height:55px;padding:5px 10px}
   .panel-head .tag{font-size:8px}
@@ -207,7 +258,6 @@ dialog input,dialog code{display:block;width:100%;padding:9px;border-radius:7px;
   .game-place strong{font-size:17px}
   .game-place small{font-size:10px}
   .game-place .desktop-controls-hint{display:none}
-  .game-place .touch-controls-hint{display:block}
   .look-actions button{min-height:44px;font-size:11px}
   .look-actions .zoom-tools button{min-width:44px}
   #jump kbd{display:none}
@@ -240,16 +290,13 @@ dialog input,dialog code{display:block;width:100%;padding:9px;border-radius:7px;
   #toast{bottom:max(63px,calc(env(safe-area-inset-bottom,0px) + 54px));pointer-events:none}
 }
 @media(max-width:420px){
-  .top{flex-direction:column;align-items:stretch;gap:5px}
-  .top-game-actions{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr)}
-  .top .top-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
-  .top .view-controls{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}
-  .top button{padding-inline:5px}
+  .top .brand{font-size:14px}
+  .top .brandmark{width:27px;height:27px;font-size:17px}
+  .top button{padding-inline:7px}
 }
 
-.game-actions{display:grid;justify-items:end;gap:6px}
 #run{background:#17261dec;border-color:#8d9c7f;color:#ece4cb}
-#run[aria-pressed="true"],#sit[aria-pressed="true"],#night[aria-pressed="true"],#perspective[aria-pressed="true"]{color:#2b2a1c;background:#e1c687;border-color:#edd99e}
+#run[aria-pressed="true"],#sit[aria-pressed="true"],#night[aria-pressed="true"],#perspective[data-active]{color:#2b2a1c;background:#e1c687;border-color:#edd99e}
 #sit{color:#e6e2c6;border-color:#9b9e79;background:#17261de6}
 .map-links{display:flex;flex-wrap:wrap;gap:5px}
 .map-links button{font-size:11px;min-height:34px;padding:4px 8px}
@@ -338,7 +385,6 @@ dialog input,dialog code{display:block;width:100%;padding:9px;border-radius:7px;
 @media(max-width:370px){
   .top .top-actions{gap:4px}
   .top .top-actions button{font-size:11px;padding-inline:6px}
-  .top #invite span{display:none}
   .top .brandmark{width:27px;height:27px}
 }
 .entry-flow{
@@ -537,23 +583,22 @@ dialog input,dialog code{display:block;width:100%;padding:9px;border-radius:7px;
 @media(orientation:portrait) and (max-height:530px){.self-chat{top:calc(34% + 28px);bottom:auto}}
 #emote-open{background:#243629e8;border-color:#8b9b7e}
 #hand{background:#e2c386;color:#2d301f;border-color:#f5dea7}
-#clink{max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #fountain-show{background:#233d49;color:#f0f8fb;border-color:#9dc8dc}
 #fountain-show:disabled{opacity:.88}
 #hand-offer:not([hidden]) ~ #clink-offer{margin-top:92px}
 .hand-offer,.hand-status{
-  position:absolute;z-index:5;left:50%;transform:translateX(-50%);width:max-content;
-  max-width:calc(100% - 20px);border:1px solid #e2bf7d;border-radius:12px;
+  width:max-content;border:1px solid #e2bf7d;border-radius:12px;
   color:#fff0d1;background:#17271fee;box-shadow:0 7px 22px #0b151152;
 }
-.hand-status{bottom:16px;padding:5px 10px;font-size:11px;pointer-events:none;text-align:center}
-.hand-offer{top:85px;padding:9px 10px}
+.hand-status{max-width:100%;padding:5px 10px;font-size:11px;pointer-events:none;text-align:center}
+.hand-offer{position:absolute;z-index:5;left:50%;top:85px;transform:translateX(-50%);max-width:calc(100% - 20px);padding:9px 10px}
 .hand-offer p{margin:0 3px 7px;font-size:13px}
 .hand-offer>div{display:flex;justify-content:flex-end;gap:6px}
 .hand-offer button{min-height:44px}
 .hand-list{display:grid;gap:7px;margin-top:14px;max-height:50vh;overflow:auto}
 .hand-list button{text-align:left;border-left:5px solid var(--player-color);min-height:44px}
 .hand-following .joystick,.hand-following .game-pad{opacity:.48;pointer-events:none}
+.hand-following .game-pad button{pointer-events:none}
 .room-dot{stroke:#fff0d0;stroke-width:2;paint-order:stroke}
 .room-dot-mini{stroke:#fff0d0;stroke-width:.75}
 .museum-map .room-dot,.museum-map .room-dot-mini{stroke-width:.38}
@@ -581,10 +626,12 @@ dialog input,dialog code{display:block;width:100%;padding:9px;border-radius:7px;
   .hand-offer{top:calc(60px + clamp(84px,25.4vw,117px))}
   .location-guides{top:calc(60px + clamp(84px,25.4vw,117px))}
   :is(#hand-offer,#clink-offer):not([hidden]) ~ .location-guides{top:calc(155px + clamp(84px,25.4vw,117px))}
-  .hand-status{bottom:4px;max-width:calc(100% - 142px);font-size:10px;padding:3px 7px}
-  .game-hud{bottom:19px;right:8px}
-  .game-actions{grid-template-columns:repeat(2,auto);justify-items:stretch;gap:4px}
-  .game-actions button{min-height:43px;font-size:11px;padding-inline:7px}
+  .hand-status{font-size:10px;padding:3px 7px}
+  .game-hud{bottom:12px;right:8px}
+  .game-command{width:clamp(160px,45vw,224px)}
+  .nearby-controls{grid-template-columns:minmax(0,1fr) 58px}
+  #nearby-toggle,.game-command>div>button{font-size:12px}
+  .emote-menu{bottom:calc(3 * 44px + 3 * 6px + 12px);left:auto;right:8px;transform:none}
 }
 @media (orientation:landscape) and (max-height:560px){
   .top{min-height:calc(48px + env(safe-area-inset-top,0px));padding-block:calc(2px + env(safe-area-inset-top,0px)) 2px}
@@ -596,15 +643,18 @@ dialog input,dialog code{display:block;width:100%;padding:9px;border-radius:7px;
   #game .minimap{width:var(--minimap-width);top:7px}
   .game-info{top:7px;max-width:min(42%,calc(100% - 130px))}
   .game-place strong{font-size:15px}
-  .game-info:has(.bus-status:not([hidden])) .touch-controls-hint{display:none}
   .game-presence{top:102px}
   .hand-offer{top:46px}
   .location-guides{top:7px;left:auto;right:calc(var(--minimap-width) + 16px);transform:none;justify-items:end;max-width:min(215px,34%)}
   :is(#hand-offer,#clink-offer):not([hidden]) ~ .location-guides{top:142px}
   .self-chat{top:calc(34% + 28px);bottom:auto;max-width:min(410px,82%);padding-block:4px;font-size:13px;line-height:1.3}
-  .game-hud{right:8px;bottom:7px}
-  .game-actions{grid-template-columns:repeat(3,auto)}
-  .game-actions button{min-height:44px}
+  .game-hud{--command-height:calc(2 * var(--control-height) + var(--control-gap));right:8px;bottom:7px}
+  .game-command{
+    grid-template-areas:"social nearby" "social movement";grid-template-columns:75px minmax(0,1fr);
+    grid-template-rows:repeat(2,var(--control-height));width:clamp(227px,41vw,300px);
+  }
+  .social-actions{grid-template-columns:minmax(0,1fr);grid-template-rows:repeat(2,var(--control-height))}
+  .emote-menu{grid-template-columns:repeat(8,44px);bottom:calc(2 * 44px + 2 * 6px + 7px)}
   .joystick{left:9px;bottom:7px;width:92px;height:92px}
   .map-panel{
     width:min(510px,calc(100vw - 18px - env(safe-area-inset-left,0px) - env(safe-area-inset-right,0px)));
@@ -612,9 +662,6 @@ dialog input,dialog code{display:block;width:100%;padding:9px;border-radius:7px;
   }
   .map-panel .map-wrap{height:min(58dvh,300px)}
   dialog{max-height:calc(100dvh - 16px);overflow:auto}
-}
-@media (orientation:landscape) and (max-height:560px) and (max-width:670px){
-  .game-actions{grid-template-columns:repeat(2,auto)}
 }
 @media (orientation:landscape) and (max-height:420px){
   .game-info:has(.bus-status:not([hidden])){

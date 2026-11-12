@@ -1,4 +1,4 @@
-import {FEED_MS, ITEMS, PET_MS, JUMP_HEIGHT} from "./activities.js";
+import {FEED_MS, PET_MS, JUMP_HEIGHT, avatarHands} from "./activities.js";
 import {bikeFit,bikePedal,makeRidingBike} from "./sejong-bike-model.js";
 import {isCycling} from "./sejong-bike.js";
 import {CLINK_DURATION_MS} from "./social-events.js";
@@ -682,27 +682,21 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
     const airborne = lift/JUMP_HEIGHT;
     const walking = Boolean(position.stepping && !seat && !riding && jump<.06);
     const running = walking && Boolean(position.running);
-    const held = !riding && (position.hand === -1 || position.hand === 1);
-    const petAge = clock - position.pet?.at;
     const waveAge = (clock - position.wave) / 1000;
-    const item = position.item, spec = item && ITEMS[item.kind];
-    const feedAge = clock - position.feed?.at;
-    const feeding = !seat && !riding && !walking && !held && item?.kind === "churu" && feedAge >= 0 && feedAge < FEED_MS;
+    const {claspSide,item,spec,itemAge,carrying,feedAge,feeding,petAge,petting:pet,itemSide,waveSide} =
+      avatarHands(position,clock,{riding,seated:Boolean(seat),walking});
     const feedPose = feeding ? smooth(Math.min(feedAge/320,(FEED_MS-feedAge)/360)) : 0;
-    const pet = !feeding && !seat && !riding && !walking && !held && petAge >= 0 && petAge < PET_MS;
     const petPose = pet ? smooth(Math.min(petAge/235,(PET_MS-petAge)/275)) : 0;
-    const itemAge = spec && item.started ? Math.max(0,clock-item.started) : Infinity;
-    const carrying = Boolean(!riding && spec && (item.remaining > 0 || itemAge < spec.duration));
     const clinkAge=clock-position.clink?.startedAt;
-    const clink=carrying&&!seat&&!held&&clinkAge>=0&&clinkAge<CLINK_DURATION_MS
+    const clink=carrying&&!seat&&!claspSide&&clinkAge>=0&&clinkAge<CLINK_DURATION_MS
       ? smooth(Math.min(clinkAge/600,(CLINK_DURATION_MS-clinkAge)/730)) : 0;
     const contact=clink?Math.max(0,1-Math.abs(clinkAge-900)/170)*.045:0;
-    const waving = !clink && !riding && waveAge >= 0 && waveAge < 2.45 && !pet && !feeding && !(held && carrying);
+    const waving = !clink && !riding && waveAge >= 0 && waveAge < 2.45 && !pet && !feeding && !(claspSide && carrying);
     const waveLift = waving ? smooth(Math.min(waveAge/.27,(2.45-waveAge)/.36)) : 0;
 
     const facing = Math.PI - (seat?.heading ?? position.clink?.heading ?? position.heading ?? 252) * Math.PI/180;
     const turn = facing - group.rotation.y;
-    group.rotation.y += Math.atan2(Math.sin(turn),Math.cos(turn)) * (wasVisible && !seat && !held ? turnEase : 1);
+    group.rotation.y += Math.atan2(Math.sin(turn),Math.cos(turn)) * (wasVisible && !seat && !claspSide ? turnEase : 1);
     // Stepping onto or off a ledge eases the floor so the body does not pop.
     model.floorY = wasVisible && model.floorY !== null && Math.abs(floor-model.floorY) < 1.6
       ? mix(model.floorY,floor,1-Math.exp(-delta*17)) : floor;
@@ -797,8 +791,6 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
       leg.end.quaternion.copy(globalLower).invert().multiply(pitch);
     }
 
-    const waveSide = held ? -position.hand : carrying ? -1 : 1;
-    const itemSide = held ? -position.hand : pet ? -1 : 1;
     const spark = carrying && item.kind === "sparkler";
     const eat = carrying && !spark && item.kind !== "churu" && itemAge < spec.duration
       ? smooth(Math.min(itemAge/255,(spec.duration-itemAge)/360)) : 0;
@@ -818,7 +810,7 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
       y += sprint*sway*(.050+Math.max(0,side*pendulum)*.12);
       x += side*airborne*.14; y += airborne*.30; z += airborne*.08;
       pole.set(side*.56,-.12,-1);
-      const clasping = held && side === position.hand;
+      const clasping = side === claspSide;
       if (clasping) {
         inverseChest.copy(chest.quaternion).invert();
         clasp.set(side*.608-pelvis.position.x,.930-pelvis.position.y-chest.position.y,.078).applyQuaternion(inverseChest);

@@ -10,6 +10,7 @@ import {isInsideMuseum,museumBounds,museumGalleries,museumGalleryAt,museumHall} 
 import {museumExhibits} from "./museum-catalog.js";
 import {nearbyPalaceGuide} from "./palace-guide.js";
 import {bindSceneTouch} from "./scene-touch.js";
+import {bindNearbyControls} from "./nearby-controls.js";
 import {bindMapGestures} from "./map-gestures.js";
 import {makeSound} from "./sound.js";
 import {ceremonyAt} from "./palace-people.js";
@@ -61,6 +62,8 @@ const vectors={ArrowUp:[0,-1],ArrowDown:[0,1],ArrowLeft:[-1,0],ArrowRight:[1,0],
 const fragments=new URLSearchParams(location.hash.slice(1));
 const suppliedCode=(fragments.get("code")||"").toUpperCase();
 const entryFlow=$("entry-flow"),profileStep=$("profile-step"),serverStep=$("server-step"),gameShell=$("game-shell");
+const nearbyControls=bindNearbyControls($("nearby-controls"),focusGame);
+const sceneWrap=$("game").closest(".scene-wrap"),mobileSettings=$("mobile-settings");
 const nickname=$("nickname"),joinCode=$("join-code");
 const chatInput=$("chat-input"),chatSend=$("chat-send");
 const profileChoices=[...document.querySelectorAll("[name='entry-character']")];
@@ -88,10 +91,33 @@ $("cat-run-tip-dismiss").addEventListener("click",()=>{
 
 const mobileHeader=matchMedia("(max-width:810px), (orientation:landscape) and (max-height:560px)");
 function placeViewControls(){
-  $(mobileHeader.matches?"mobile-view-controls":"desktop-view-controls").append($("view-controls"));
+  if(mobileHeader.matches){
+    $("mobile-view-controls").append($("perspective"));
+    $("mobile-settings-actions").append($("sound"),$("night"),$("character"));
+  }else{
+    mobileSettings.open=false;
+    $("view-controls").append($("perspective"),$("sound"),$("night"));
+    $("game-room-controls").prepend($("character"));
+  }
+  labelInvite();
 }
 mobileHeader.addEventListener("change",placeViewControls);
 placeViewControls();
+function labelInvite(){
+  if(!session)return;
+  const open=session.mode==="open";
+  const button=$("invite");
+  button.textContent=open?"오픈방":mobileHeader.matches?"초대":"초대코드";
+  button.setAttribute("aria-label",open?"오픈서버 정보":"초대코드");
+}
+gameShell.addEventListener("pointerdown",event=>{
+  if(!event.target.closest("#nearby-controls,#joystick"))nearbyControls.close();
+  if(mobileSettings.open&&!mobileSettings.contains(event.target))mobileSettings.open=false;
+});
+mobileSettings.addEventListener("toggle",()=>{
+  if(mobileSettings.open){nearbyControls.close();setEmotes(false);}
+});
+$("nearby-toggle").addEventListener("click",()=>setEmotes(false));
 
 let composingChat=false;
 function chatText(){return chatInput.value.normalize("NFC").replace(/\s+/gu," ").replace(/[\p{Cc}\p{Bidi_Control}]/gu,"").trim();}
@@ -136,12 +162,21 @@ function applyNight(view){
 }
 function myLink(){return session&&links.find(link=>link.leader===session.id||link.follower===session.id);}
 function amFollowingHands(){const link=myLink();return Boolean(link?.active&&link.follower===session.id);}
-$("perspective").setAttribute("aria-pressed",String(firstPerson));
+function labelPerspective(){
+  const button=$("perspective"),label=firstPerson?"3인칭":"1인칭";
+  button.textContent=label;
+  button.setAttribute("aria-label",label+"으로 전환");
+  button.toggleAttribute("data-active",firstPerson);
+}
+labelPerspective();
 const sound=makeSound();
 let strideLeft=1.2,nextStep=0,nextBird=0,nextCat=0,nextCricket=0,nextBusSound=0,nextDrum=0,ceremonyAnnounced=-1;
 let nextShowAudio=0;
 $("sound").setAttribute("aria-pressed",String(sound.enabled));
-$("sound").addEventListener("click",()=>{$("sound").setAttribute("aria-pressed",String(sound.toggle()));focusGame();});
+$("sound").addEventListener("click",()=>{
+  $("sound").setAttribute("aria-pressed",String(sound.toggle()));
+  if(!mobileSettings.open)focusGame();
+});
 window.addEventListener("pointerdown",event=>{if(event.pointerType==="mouse")sound.wake();},{passive:true});
 window.addEventListener("pointerup",event=>{if(event.pointerType!=="mouse")sound.wake();},{passive:true});
 window.addEventListener("keydown",()=>sound.wake(),{passive:true});
@@ -204,7 +239,7 @@ function soundscape(time,travelled,wading,running=false){
 }
 $("perspective").addEventListener("click",()=>{
   firstPerson=!firstPerson;
-  $("perspective").setAttribute("aria-pressed",String(firstPerson));
+  labelPerspective();
   localStorage.setItem("jeongdong-first-person",String(firstPerson));
   focusGame();
 });
@@ -266,6 +301,7 @@ $("wave").addEventListener("click",()=>{
   me.wave=time;dirty=true;$("game").focus({preventScroll:true});
 });
 function setEmotes(open){
+  if(open)nearbyControls.close();
   $("emote-menu").hidden=!open;$("emote-open").setAttribute("aria-expanded",String(open));
 }
 $("emote-open").addEventListener("click",()=>setEmotes($("emote-menu").hidden));
@@ -452,7 +488,8 @@ function updateHandControls(){
     if(status.textContent!==message)status.textContent=message;
   }
   const follower=amFollowingHands();
-  $("game").classList.toggle("hand-following",follower);$("run").disabled=follower;
+  sceneWrap.classList.toggle("hand-following",follower);
+  $("run").disabled=!world||riding||follower||Boolean(me.bus||isCycling(me)||queuedBus||queuedBike);
 }
 $("hand").addEventListener("click",()=>{
   const link=myLink();
@@ -662,6 +699,7 @@ function returnToLobby(message=""){
   $("invite").disabled=$("look").disabled=$("look-target").disabled=true;
   world?.clearChat();
   clearTransit();
+  nearbyControls.close();setEmotes(false);mobileSettings.open=false;
   $("lobby-status").textContent=message;
   sessionStorage.removeItem("jeongdong-room-mode");
   sessionStorage.removeItem("jeongdong-room-code");
@@ -702,7 +740,7 @@ async function enterRoom(action,code){
     else sessionStorage.removeItem("jeongdong-room-code");
     history.replaceState(null,"",location.pathname+location.search+(session.code?"#code="+session.code:""));
     $("invite").disabled=false;
-    $("invite").textContent=session.mode==="open"?"오픈서버":"↗ 초대코드";
+    labelInvite();
     $("look-hint").textContent=(session.mode==="open"?"근처 동행에게":"방 전체에")+" 내 위치를 5초 동안 표시해요.";
     $("lobby-status").textContent="";entryFlow.hidden=true;gameShell.hidden=false;
     world?.parkLife.setSeed(session.room);
@@ -757,6 +795,9 @@ async function copyInvite(link){
 $("copy").addEventListener("click",()=>copyInvite(false));
 $("copy-link").addEventListener("click",()=>copyInvite(true));
 document.querySelectorAll("dialog .close").forEach(button=>button.addEventListener("click",()=>button.closest("dialog").close()));
+document.querySelectorAll("dialog").forEach(dialog=>dialog.addEventListener("close",()=>{
+  if(session&&document.activeElement===document.body)focusGame();
+}));
 $("model-credits").addEventListener("click",()=>$("credits-dialog").showModal());
 window.addEventListener("pagehide",()=>{active=false;clearSyncTimer();sound.bus(null);sound.plazaShow(null);leaveBeacon();});
 document.addEventListener("visibilitychange",()=>{
@@ -779,7 +820,7 @@ $("run").addEventListener("click",()=>{
 });
 function jump(){
   const time=gameTime();
-  if(!session||!world||me.bus||isCycling(me)||queuedBus||queuedBike||feedingLocked(time)||clinkLocked(time)||time-me.jump<JUMP_MS)return;
+  if(!session||!world||riding||me.bus||isCycling(me)||queuedBus||queuedBike||feedingLocked(time)||clinkLocked(time)||time-me.jump<JUMP_MS)return;
   if(pendingSeat)course=[];
   pendingSeat=seatClaim=null;stand();
   jumpBase=standingHeight();
@@ -822,6 +863,7 @@ function interactBench(){
 }
 $("sit").addEventListener("click",interactBench);
 function setMap(open){
+  if(open){nearbyControls.close();setEmotes(false);}
   $("map-panel").classList.toggle("expanded",open);
   $("map-toggle").setAttribute("aria-expanded",String(open));
   if(!open){clearMapGestures();setOverview(false);}
@@ -926,8 +968,14 @@ function resetInput(){clearManualInput();course=[];pendingSeat=seatClaim=null;}
 window.addEventListener("blur",clearManualInput);
 window.addEventListener("keydown",event=>{
   if(event.target.closest("dialog"))return;
-  if(event.key==="Escape"){setMap(false);setEmotes(false);}
-  if(!session||riding||event.target.closest("input"))return;
+  if(event.key==="Escape"){
+    if(mobileSettings.open){
+      mobileSettings.open=false;mobileSettings.querySelector("summary").focus();return;
+    }
+    if(nearbyControls.close(true))return;
+    setMap(false);setEmotes(false);
+  }
+  if(!session||riding||nearbyControls.ownsFocus()||event.target.closest("input,#mobile-settings"))return;
   if(event.code==="Space"&&!event.target.closest("button,a")&&!event.ctrlKey&&!event.metaKey&&!event.altKey){
     event.preventDefault();if(!event.repeat)jump();return;
   }
@@ -1503,8 +1551,7 @@ function updateActivities(time,guideNearby){
   const landmark=eligible&&nearbyPalaceGuide(me);
   setActivity("landmark-guide",landmark?"설명 읽기":null);
   if(landmark)attr($("landmark-guide"),"aria-label",landmark.title+" 설명 읽기");
-  $("jump").hidden=Boolean(me.bus||isCycling(me));
-  $("jump").disabled=!eligible||feeding||clinkLocked(time)||time-me.jump<JUMP_MS;
+  $("jump").disabled=!eligible||riding||feeding||clinkLocked(time)||time-me.jump<JUMP_MS;
   const atFountain=nearWishFountain();
   if($("wish").hidden===Boolean(atFountain))$("wish").hidden=$("wish").disabled=!atFountain;
   const cat=eligible&&me.seat==null&&!myLink()?.active&&world.parkLife.nearestCat(me.x,me.y);
@@ -1637,6 +1684,13 @@ function actors(now,stepping){
   return {self,others};
 }
 let lastFrame=performance.now(),interfaceAt=0,guideNearby=false;
+function preferredNearbyAction(time){
+  if(me.bus||queuedBus)return "bus-action";
+  if(isCycling(me)||queuedBike)return $("bike-action").hidden?"bike-park":"bike-action";
+  if(me.seat!=null)return "sit";
+  if(myLink()?.active)return "hand";
+  if(fountainShow?.endsAt>time&&atShowControls())return "fountain-show";
+}
 function frame(now){
   const elapsed=Math.max(0,Math.min(56,now-lastFrame))/1000;lastFrame=now;
   requestAnimationFrame(frame);
@@ -1652,7 +1706,6 @@ function frame(now){
     guideNearby=!me.bus&&!isCycling(me)&&nearVisitorGuide();
     updateActivities(time,guideNearby);
     updateTransport(time);
-    $("run").hidden=Boolean(me.bus||isCycling(me));
     const seatEnabled=world&&session&&!me.bus&&!isCycling(me)&&!queuedBus&&!queuedBike&&!myLink()?.active&&!feedingLocked(time);
     const bench=seatEnabled&&me.seat==null&&!pendingSeat&&!seatClaim?benchNearby():null;
     const seatLabel=me.seat!=null?"일어나기":seatClaim?"자리 확인 중":pendingSeat?"벤치로 이동 중":
@@ -1663,9 +1716,9 @@ function frame(now){
     const area=outdoorMap(me),jeongdong=area==="덕수궁";
     setText($("game-season"),(jeongdong?"정동":area)+"의 가을");
     setText(sceneTitle,jeongdong?"덕수궁 돌담길":area);
-    setText(sceneTitle.previousElementSibling,jeongdong?"SEOUL · JEONGDONG":"SEOUL · JONGNO");
     refreshShortcuts();
-    updateHandControls();updateLocationGuides(time);updateMaps(self,others);
+    updateHandControls();nearbyControls.refresh(preferredNearbyAction(time));
+    updateLocationGuides(time);updateMaps(self,others);
   }
   lastScene={me:self,peers:[...others.values()],parkedBikes,view:ownView,firstPerson,guideNearby,destination:course.at(-1),clock:time,fountainShow};
   world?.render(lastScene,now);

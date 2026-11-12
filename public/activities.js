@@ -20,3 +20,18 @@ export const ITEMS={
   wine:{name:"와인",verb:"마시기",uses:3,duration:1350,alcohol:true},
   churu:{name:"츄르",verb:"간식 주기",uses:3,duration:FEED_MS}
 };
+
+export function avatarHands(avatar,clock,{riding,seated,walking}){
+  const claspSide=!riding&&(avatar.hand===-1||avatar.hand===1)?avatar.hand:0;
+  const item=avatar.item,spec=ITEMS[item?.kind];
+  const itemAge=item?.started?Math.max(0,clock-item.started):Infinity;
+  const carrying=Boolean(!riding&&spec&&(item.remaining>0||itemAge<spec.duration));
+  const feedAge=clock-avatar.feed?.at,petAge=clock-avatar.pet?.at;
+  const canInteract=!seated&&!riding&&!walking&&!claspSide;
+  const feeding=canInteract&&item?.kind==="churu"&&feedAge>=0&&feedAge<FEED_MS;
+  const petting=canInteract&&!feeding&&petAge>=0&&petAge<PET_MS;
+  // The avatar faces local +Z, so local +X is the avatar's left hand.
+  const itemSide=claspSide?-claspSide:petting?-1:1;
+  const waveSide=claspSide?-claspSide:carrying?-1:1;
+  return {claspSide,item,spec,itemAge,carrying,feedAge,feeding,petAge,petting,itemSide,waveSide};
+}

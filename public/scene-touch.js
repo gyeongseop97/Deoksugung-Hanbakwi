@@ -61,8 +61,11 @@ export function bindSceneTouch(scene,shell,{canTap,onBegin,onTap,onDrag,onPinch}
     if(event.pointerType!=="touch"||event.button!==0||!button||button.disabled)return;
     for(const pointer of pointers.values())pointer.tap=false;
     buttons.set(event.pointerId,{button,x:event.clientX,y:event.clientY,moved:false});
-    button.setPointerCapture(event.pointerId);
-    event.preventDefault();
+    // Let a swipe beginning on an action row scroll the panel.
+    if(!button.closest("[data-scroll-actions]")){
+      button.setPointerCapture(event.pointerId);
+      event.preventDefault();
+    }
   });
   shell.addEventListener("pointermove",event=>{
     const press=buttons.get(event.pointerId);

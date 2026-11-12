@@ -75,36 +75,39 @@
   </main>
   <div id="game-shell" hidden>
   <header class="top">
-    <h1 class="brand"><span class="brandmark" aria-hidden="true">✦</span><span>덕수궁 한바퀴<small>DEOKSUGUNG WALK</small></span></h1>
+    <h1 class="brand"><span class="brandmark" aria-hidden="true">✦</span><span>덕수궁 한바퀴</span></h1>
     <div class="top-game-actions">
       <div id="mobile-view-controls"></div>
-      <div class="top-actions">
+      <div class="top-actions" id="game-room-controls">
         <button id="character" class="quiet" type="button" aria-haspopup="dialog" aria-controls="character-dialog">캐릭터</button>
-        <button id="invite" class="invite" type="button" disabled><span aria-hidden="true">↗</span> 초대코드</button>
+        <button id="invite" class="invite" type="button" aria-haspopup="dialog" disabled>초대코드</button>
       </div>
+      <details class="mobile-settings" id="mobile-settings">
+        <summary>설정</summary>
+        <div class="mobile-settings-actions" id="mobile-settings-actions"></div>
+      </details>
     </div>
   </header>
   <main>
     <section class="experience" aria-label="함께 걷기">
       <article class="panel scene-panel">
         <div class="panel-head scene-head">
-          <div><span class="tag">SEOUL · JEONGDONG</span><h2 class="scene-title">덕수궁 돌담길</h2></div>
+          <h2 class="scene-title">덕수궁 돌담길</h2>
           <div class="top-actions">
             <div id="desktop-view-controls">
               <div class="view-controls" id="view-controls">
-                <button id="perspective" class="quiet" type="button" aria-pressed="false" title="1인칭과 3인칭 전환">1인칭</button>
+                <button id="perspective" class="quiet" type="button" aria-label="1인칭으로 전환">1인칭</button>
                 <button id="sound" class="quiet" type="button" aria-pressed="true" title="소리 켜기와 끄기">소리</button>
                 <button id="night" class="quiet" type="button" aria-pressed="false">☾ 밤</button>
               </div>
             </div>
-            <span class="pill" id="provider"><i></i><span>3D 산책</span></span>
           </div>
         </div>
         <div class="scene-wrap">
           <div id="game" tabindex="0" role="group" aria-label="3D 산책. 조이스틱이나 방향키로 이동, 드래그로 시야 회전, 두 손가락으로 확대 및 축소">
             <p id="loading-game">산책길을 열고 있어요.</p>
             <div class="game-info">
-              <div class="game-place"><span id="game-season">정동의 가을</span><strong id="game-place">매표소 앞</strong><small class="desktop-controls-hint">화면 기준으로 이동 · 드래그로 시야 돌리기</small><small class="touch-controls-hint">드래그로 시야 회전 · 두 손가락으로 줌</small><small id="travel-status" hidden></small></div>
+              <div class="game-place"><span id="game-season">정동의 가을</span><strong id="game-place">매표소 앞</strong><small class="desktop-controls-hint">화면 기준으로 이동 · 드래그로 시야 돌리기</small><small id="travel-status" hidden></small></div>
               <div class="look-actions">
                 <span id="look-hint" hidden>내 위치를 지도에 5초 동안 표시해요.</span>
                 <button id="look" class="primary" type="button" aria-describedby="look-hint" disabled><span aria-hidden="true">✦</span> 여기 봐</button>
@@ -138,49 +141,58 @@
               <span class="mini-north" aria-hidden="true">↑ N</span><span class="mini-label" aria-hidden="true">지도 확대</span>
             </button>
             <div id="joystick" class="joystick" role="group" aria-label="이동 조이스틱"><span aria-hidden="true"></span></div>
-            <div class="game-hud">
-              <div class="game-actions">
-                <button id="visitor-guide" type="button" class="quiet activity-button" aria-haspopup="dialog" aria-controls="visitor-guide-dialog" hidden>관람 안내 읽기</button>
-                <button id="sit" type="button" class="quiet" hidden>앉기</button>
-                <button id="wish" type="button" class="quiet" aria-haspopup="dialog" aria-controls="wish-drawing" hidden disabled>♢ 소원등 <kbd>E</kbd></button>
-                <button id="pet-cat" type="button" class="quiet activity-button" hidden>쓰다듬기</button>
-                <button id="take-item" type="button" class="quiet activity-button" hidden>받기</button>
-                <button id="use-item" type="button" class="quiet activity-button" hidden>사용하기</button>
-                <button id="clink" type="button" class="quiet activity-button" hidden>건배하기</button>
-                <button id="fountain-show" type="button" class="quiet activity-button" hidden>분수쇼 시작</button>
-                <button id="photo" type="button" class="quiet activity-button" hidden>사진 찍기</button>
-                <button id="subway" type="button" class="quiet activity-button" aria-haspopup="dialog" aria-controls="transit-dialog" hidden>지하철 타기</button>
-                <button id="bus-action" type="button" class="quiet activity-button" hidden>버스 타기</button>
-                <button id="bike-action" type="button" class="quiet activity-button" hidden>따릉이 빌리기</button>
-                <button id="bike-park" type="button" class="quiet activity-button" hidden>따릉이에서 내리기</button>
-                <button id="museum-door" type="button" class="quiet activity-button" hidden>입장하기</button>
-                <button id="museum-exhibit" type="button" class="quiet activity-button" aria-haspopup="dialog" hidden>작품 설명</button>
-                <button id="landmark-guide" type="button" class="quiet activity-button" aria-haspopup="dialog" aria-controls="landmark-guide-dialog" hidden>설명 읽기</button>
-                <button id="hand" type="button" class="quiet" hidden>손잡기</button>
-                <button id="emote-open" type="button" class="quiet" aria-controls="emote-menu" aria-expanded="false">☺ 감정</button>
+          </div>
+          <div class="game-hud">
+            <div class="game-command">
+              <div class="social-actions" role="group" aria-label="교류">
+                <button id="emote-open" type="button" class="quiet" aria-controls="emote-menu" aria-expanded="false"><span aria-hidden="true">☺</span> 감정</button>
                 <button id="wave" type="button" class="quiet">인사하기</button>
-                <button id="run" type="button" class="quiet" aria-pressed="false">달리기 <kbd>Shift</kbd></button>
-                <button id="jump" type="button" class="quiet">점프 <kbd>Space</kbd></button>
               </div>
-              <div class="pad game-pad" aria-label="3D 이동 버튼">
-                <button type="button" data-key="ArrowUp" aria-label="앞으로">↑</button>
-                <button type="button" data-key="ArrowLeft" aria-label="왼쪽으로">←</button>
-                <button type="button" data-key="ArrowDown" aria-label="뒤로">↓</button>
-                <button type="button" data-key="ArrowRight" aria-label="오른쪽으로">→</button>
+              <div class="nearby-controls" id="nearby-controls">
+                <button id="nearby-primary" type="button" class="primary" hidden><span></span></button>
+                <button id="nearby-toggle" type="button" class="quiet" aria-expanded="false" aria-controls="nearby-actions" hidden>주변 행동</button>
+                <div class="nearby-actions" id="nearby-actions" role="group" aria-label="주변 행동" tabindex="-1" data-scroll-actions hidden>
+                  <button id="visitor-guide" type="button" class="quiet activity-button" aria-haspopup="dialog" aria-controls="visitor-guide-dialog" hidden>관람 안내 읽기</button>
+                  <button id="bus-action" type="button" class="quiet activity-button" hidden>버스 타기</button>
+                  <button id="bike-action" type="button" class="quiet activity-button" hidden>따릉이 빌리기</button>
+                  <button id="bike-park" type="button" class="quiet activity-button" hidden>따릉이에서 내리기</button>
+                  <button id="subway" type="button" class="quiet activity-button" aria-haspopup="dialog" aria-controls="transit-dialog" hidden>지하철 타기</button>
+                  <button id="museum-door" type="button" class="quiet activity-button" hidden>입장하기</button>
+                  <button id="fountain-show" type="button" class="quiet activity-button" hidden>분수쇼 시작</button>
+                  <button id="take-item" type="button" class="quiet activity-button" hidden>받기</button>
+                  <button id="pet-cat" type="button" class="quiet activity-button" hidden>쓰다듬기</button>
+                  <button id="hand" type="button" class="quiet" hidden>손잡기</button>
+                  <button id="clink" type="button" class="quiet activity-button" hidden>건배하기</button>
+                  <button id="sit" type="button" class="quiet" hidden>앉기</button>
+                  <button id="wish" type="button" class="quiet" aria-haspopup="dialog" aria-controls="wish-drawing" hidden disabled>소원등 <kbd>E</kbd></button>
+                  <button id="museum-exhibit" type="button" class="quiet activity-button" aria-haspopup="dialog" aria-controls="exhibit-dialog" hidden>작품 설명</button>
+                  <button id="use-item" type="button" class="quiet activity-button" hidden>사용하기</button>
+                  <button id="photo" type="button" class="quiet activity-button" hidden>사진 찍기</button>
+                  <button id="landmark-guide" type="button" class="quiet activity-button" aria-haspopup="dialog" aria-controls="landmark-guide-dialog" hidden>설명 읽기</button>
+                </div>
+              </div>
+              <div class="movement-actions" role="group" aria-label="이동 동작">
+                <button id="run" type="button" class="quiet" aria-pressed="false" disabled>달리기 <kbd>Shift</kbd></button>
+                <button id="jump" type="button" class="quiet" disabled>점프 <kbd>Space</kbd></button>
               </div>
             </div>
-            <div id="emote-menu" class="emote-menu" role="group" aria-label="감정 이모지" hidden>
-              <button type="button" data-emoji="😊" aria-label="미소">😊</button>
-              <button type="button" data-emoji="😂" aria-label="웃겨서 눈물">😂</button>
-              <button type="button" data-emoji="❤️" aria-label="하트">❤️</button>
-              <button type="button" data-emoji="👍" aria-label="좋아요">👍</button>
-              <button type="button" data-emoji="😮" aria-label="놀람">😮</button>
-              <button type="button" data-emoji="😢" aria-label="슬픔">😢</button>
-              <button type="button" data-emoji="😠" aria-label="화남">😠</button>
-              <button type="button" data-emoji="✨" aria-label="반짝임">✨</button>
+            <div class="pad game-pad" aria-label="3D 이동 버튼">
+              <button type="button" data-key="ArrowUp" aria-label="앞으로">↑</button>
+              <button type="button" data-key="ArrowLeft" aria-label="왼쪽으로">←</button>
+              <button type="button" data-key="ArrowDown" aria-label="뒤로">↓</button>
+              <button type="button" data-key="ArrowRight" aria-label="오른쪽으로">→</button>
             </div>
           </div>
-          <div id="hand-status" class="hand-status" role="status" hidden></div>
+          <div id="emote-menu" class="emote-menu" role="group" aria-label="감정 이모지" hidden>
+            <button type="button" data-emoji="😊" aria-label="미소">😊</button>
+            <button type="button" data-emoji="😂" aria-label="웃겨서 눈물">😂</button>
+            <button type="button" data-emoji="❤️" aria-label="하트">❤️</button>
+            <button type="button" data-emoji="👍" aria-label="좋아요">👍</button>
+            <button type="button" data-emoji="😮" aria-label="놀람">😮</button>
+            <button type="button" data-emoji="😢" aria-label="슬픔">😢</button>
+            <button type="button" data-emoji="😠" aria-label="화남">😠</button>
+            <button type="button" data-emoji="✨" aria-label="반짝임">✨</button>
+          </div>
           <div id="hand-offer" class="hand-offer" role="group" aria-label="손잡기 요청" hidden>
             <p id="hand-message" role="status"></p>
             <div><button id="hand-decline" type="button" class="quiet">거절</button><button id="hand-accept" type="button" class="primary">수락</button></div>
@@ -190,6 +202,7 @@
             <div><button id="clink-decline" type="button" class="quiet">거절</button><button id="clink-accept" type="button" class="primary">건배하기</button></div>
           </div>
           <div class="location-guides">
+            <div id="hand-status" class="hand-status" role="status" hidden></div>
             <div class="look-direction" id="look-direction" hidden>
               <span class="guidance-arrow" id="look-arrow" aria-hidden="true">↑</span>
               <div class="guidance-copy"><strong id="look-title" role="status"></strong><small id="look-distance"></small></div>
@@ -210,7 +223,7 @@
       </article>
       <article class="panel map-panel" id="map-panel">
         <div class="panel-head">
-          <div><span class="tag">02 / WALK MAP</span><h2>산책 지도</h2></div>
+          <h2>산책 지도</h2>
           <div class="top-actions"><button id="overview-map" class="quiet" type="button" aria-pressed="false" aria-controls="world">전체 지도</button><button class="pill" id="presence" type="button" aria-label="접속자 목록 열기" aria-haspopup="dialog" aria-controls="roster-dialog"><i aria-hidden="true"></i><span>접속자</span></button><button id="close-map" class="quiet" type="button" aria-label="지도 닫기">×</button></div>
         </div>
         <div class="map-wrap">
@@ -355,15 +368,17 @@
       <h2 id="visitor-guide-title">덕수궁 한바퀴 관람 안내</h2>
       <button type="button" class="quiet close" aria-label="닫기">×</button>
     </div>
-    <p class="guide-intro">길을 터치하거나 조이스틱으로 걸어 보세요. 컴퓨터에서는 방향키나 WASD를 쓸 수 있고, 화면을 드래그하면 주변을 둘러볼 수 있어요.</p>
+    <p class="guide-intro">대한문 매표소에서 출발해 세종대로와 광화문광장을 거쳐 경복궁까지 걸어갈 수 있어요. <strong>전체 지도</strong>에서 장소 이름을 누르면 그곳으로 걸어갑니다.</p>
     <div class="visitor-guide-list">
-      <section><h3>돌담길 가게</h3><p>돌담 커피에서 커피를, 단풍 크레페에서 크레페를, 정동 양조에서 맥주를 받아요. 돌담 편의점에서는 고양이에게 줄 츄르를 살 수 있어요.</p></section>
-      <section><h3>광화문과 경복궁 가게</h3><p>광화문광장 동쪽 인도에서는 커피, 조각 케이크, 와인을 받을 수 있어요. 경복궁 국립고궁박물관 앞 한옥 상점에서는 커피, 약과, 막걸리를 받아요. 지도에서 가게 이름을 누르면 입구로 걸어갑니다.</p></section>
-      <section><h3>정동 분수 광장의 소원등</h3><p>돌담길 끝 정동 분수 가까이에서 <strong>소원등</strong>을 누르세요. 네 면에 그림을 그려 지금 서 있는 곳에서 띄울 수 있어요.</p></section>
-      <section><h3>석조전 분수 정원의 스파클</h3><p>궁 안 석조전 분수 옆 좌판에서 스파클을 받아 <strong>사용하기</strong>를 누르면 손에 든 폭죽이 반짝여요.</p></section>
-      <section><h3>석조전 서관 전시관</h3><p>계단을 올라 문 앞에서 <strong>입장하기</strong>를 누르세요. 삼국·통일신라부터 근대까지 한국 그림과 공예품 28점을 만날 수 있어요. 가까이에서 <strong>작품 설명</strong>을 열어 보세요.</p></section>
-      <section><h3>고양이와 쉬어 가기</h3><p>고양이에게 천천히 걸어가면 쓰다듬을 수 있어요. 츄르를 들고 기다렸다가 <strong>간식 주기</strong>를 눌러 보세요. 벤치에는 친구와 나란히 앉을 수도 있어요.</p></section>
-      <section><h3>친구와 함께 걷기</h3><p>오픈서버에서 다른 산책자와 만나거나 초대코드로 친구와 같은 방에 들어오세요. 가까이에서 손을 잡고, 보여주고 싶은 곳에서 <strong>여기 봐</strong>를 눌러 보세요.</p></section>
+      <section><h3>걷고 둘러보기</h3><p>길을 터치하거나 조이스틱으로 걸어요. PC에서는 방향키나 WASD를 쓸 수 있어요. 화면을 드래그해 둘러보고, 두 손가락이나 <strong>−</strong>·<strong>+</strong> 버튼으로 시야를 조절해 보세요. 여러 행동이 가능할 때는 오른쪽 아래 <strong>주변 행동</strong>에서 고를 수 있어요.</p></section>
+      <section><h3>세종대로 순환버스</h3><p>시청앞·덕수궁, 세종문화회관, 경복궁 정류장에서 도착·출발 시간을 확인하세요. 정차 중 <strong>버스 타기</strong>로 빈 좌석을 고르고, 원하는 정류장에 도착하면 <strong>버스 내리기</strong>를 누르세요. 세종문화회관에서는 도로 양쪽의 경복궁 방면과 덕수궁 방면을 확인하세요.</p></section>
+      <section><h3>지하철과 따릉이</h3><p>시청역·광화문역·경복궁역 출구에서는 <strong>지하철 타기</strong>로 목적지를 골라 빠르게 이동해요. 따릉이는 대여소에서 <strong>따릉이 빌리기</strong>와 <strong>따릉이 반납하기</strong>를 이용하세요. 도중에 <strong>따릉이에서 내리기</strong>로 세우면 10분 안에 다시 탈 수 있어요.</p></section>
+      <section><h3>공연과 기념사진</h3><p>광화문광장 명량분수 서쪽에서 <strong>분수쇼 시작</strong>을 누르면 같은 방에서 음악분수 공연을 함께 볼 수 있어요. 경복궁 광화문에서는 수문장 교대식이 열리고, 근정전 포토존에서는 <strong>사진 찍기</strong>를 할 수 있어요.</p></section>
+      <section><h3>소원등과 스파클</h3><p>정동 분수대와 경복궁 향원정에서 <strong>소원등</strong>을 눌러 네 면을 꾸미고 지금 서 있는 곳에서 띄워 보세요. 석조전 분수와 경회루 옆 좌판에서는 스파클을 받아 <strong>사용하기</strong>를 누르면 손에 든 폭죽이 반짝여요.</p></section>
+      <section><h3>석조전 서관 전시관</h3><p>계단을 올라 문 앞에서 <strong>입장하기</strong>를 누르세요. 삼국·통일신라부터 근대까지 한국 그림과 공예품을 시대별로 볼 수 있어요. 전시품 가까이에서 <strong>작품 설명</strong>을 열어 보세요.</p></section>
+      <section><h3>길에서 만나는 가게</h3><p>덕수궁 돌담길에는 커피·크레페·맥주와 츄르를 파는 편의점이 있어요. 광화문광장 동쪽 인도에서는 커피·케이크·와인을, 국립고궁박물관 앞 한옥 상점에서는 커피·약과·막걸리를 받아요. 지도에서 가게 이름을 누르면 입구로 걸어갑니다.</p></section>
+      <section><h3>고양이와 새</h3><p>고양이에게 천천히 다가가 <strong>쓰다듬기</strong>를 눌러 보세요. 츄르를 들고 기다리면 다가오는 고양이에게 <strong>간식 주기</strong>를 할 수 있어요. 산책길에서는 까치와 비둘기가 바닥을 쪼거나 나무에 쉬는 모습도 볼 수 있어요.</p></section>
+      <section><h3>친구와 함께</h3><p>오픈서버에서 다른 산책자와 만나거나 초대코드로 친구와 같은 방에 들어오세요. 가까이에서 손을 잡고 벤치에 나란히 앉거나, 둘 다 음료를 들고 <strong>건배하기</strong>를 눌러 보세요. <strong>여기 봐</strong>를 누르면 상대에게 내 위치가 5초 동안 표시돼요.</p></section>
     </div>
   </dialog>
   <dialog id="exhibit-dialog" aria-labelledby="exhibit-title">

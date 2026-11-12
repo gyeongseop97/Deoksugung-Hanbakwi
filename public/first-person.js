@@ -1,4 +1,4 @@
-import {FEED_MS,ITEMS,PET_MS} from "./activities.js";
+import {FEED_MS,avatarHands,jumpLift} from "./activities.js";
 import {isCycling} from "./sejong-bike.js";
 import {CLINK_DURATION_MS} from "./social-events.js";
 
@@ -63,32 +63,34 @@ export function makeFirstPersonView(T,createItemProp){
       fabric.roughness=outfit==="puffer"?.63:.86;
       trouser.color.set(({puffer:0x4d6787,tee:0xc7b089,hanbok:0xb9b295})[outfit]??0x3f4452);
     }
-    const riding=!seat&&isCycling(position),seated=Boolean(seat),walking=position.stepping&&!seated&&!riding;
+    const riding=!seat&&isCycling(position),seated=Boolean(seat);
+    const walking=Boolean(position.stepping&&!seated&&!riding&&jumpLift(position,clock)<.06);
     const motion=walking?(position.blocked?.40:1):0;
     stride=mix(stride,motion,1-Math.exp(-delta*11));
     phase+=delta*(position.running?16:10.4);
-    const item=position.item,spec=ITEMS[item?.kind],itemAge=item?.started?Math.max(0,clock-item.started):Infinity;
-    const carrying=Boolean(!riding&&spec&&(item.remaining>0||itemAge<spec.duration));
-    const held=position.hand===1||position.hand===-1,sideForItem=held?-position.hand:1;
-    const spark=carrying&&item.kind==="sparkler",feedAge=clock-position.feed?.at;
-    const feeding=carrying&&item.kind==="churu"&&feedAge>=0&&feedAge<FEED_MS;
+    const {claspSide,item,spec,itemAge,carrying,feedAge,feeding,petAge,petting,itemSide,waveSide}=
+      avatarHands(position,clock,{riding,seated,walking});
+    const spark=carrying&&item.kind==="sparkler";
     const use=carrying&&!spark&&item.kind!=="churu"?ease(Math.min(itemAge/235,(spec.duration-itemAge)/300)):0;
     const drink=spec?.verb==="마시기";
     const cheersEvent=clink??position.clink,clinkAge=clock-cheersEvent?.startedAt;
-    const cheers=drink&&clinkAge>=0&&clinkAge<CLINK_DURATION_MS?ease(Math.min(clinkAge/280,(CLINK_DURATION_MS-clinkAge)/420)):0;
+    const cheers=carrying&&drink&&!seated&&!claspSide&&clinkAge>=0&&clinkAge<CLINK_DURATION_MS
+      ?ease(Math.min(clinkAge/280,(CLINK_DURATION_MS-clinkAge)/420)):0;
     let toastDirection=0;
     if(cheers&&Number.isFinite(cheersEvent.heading)){
       worldCamera.getWorldDirection(direction);
       toastDirection=Math.sin(cheersEvent.heading*Math.PI/180-Math.atan2(direction.x,-direction.z));
     }
-    const waveAge=clock-position.wave,waving=!riding&&waveAge>=0&&waveAge<2450;
+    const waveAge=clock-position.wave;
+    const waving=!cheers&&!riding&&waveAge>=0&&waveAge<2450&&!petting&&!feeding&&!(claspSide&&carrying);
     const wave=waving?ease(Math.min(waveAge/270,(2450-waveAge)/360)):0;
-    const petAge=clock-position.pet?.at,pet=!riding&&!seated&&!carrying&&petAge>=0&&petAge<PET_MS;
     lap.visible=seated;handlebar.visible=riding;itemPivot.visible=carrying;
     for(const [i,arm] of forearms.entries()){
       const {side,palm,wrist,elbow,shoulder,sleeve,lower,cuff,ribs,fingers}=arm;
       const step=Math.sin(phase+side*Math.PI/2)*stride,bob=seated||riding?0:Math.sin(phase*2)*stride;
-      const holding=carrying&&side===sideForItem,waveHand=waving&&side===(carrying?-sideForItem:held?-position.hand:1);
+      // The camera faces -Z, so its horizontal axis is the reverse of the avatar's.
+      const avatarSide=-side;
+      const holding=carrying&&avatarSide===itemSide,waveHand=waving&&avatarSide===waveSide;
       let x=side*(seated?.48:.70),y=seated?-.80:-.73,z=seated?.74:.72;
       if(riding){x=side*.62;y=-.63+Math.sin(now*.010)*.014;z=.83;}
       else if(holding){
@@ -96,8 +98,8 @@ export function makeFirstPersonView(T,createItemProp){
         x=side*mix(.54,.28,lift)+.14*cheers*toastDirection;
         y=mix(-.67,-.39,lift)-.18*feedingPose;z=mix(.76,.62,use)+.13*cheers+.12*feedingPose;
       }else if(waveHand){x=side*mix(.68,.57,wave);y=mix(-.73,-.05,wave);z=.74;}
-      else if(pet&&side===1){x=.36;y=-.68+Math.sin(petAge*.017)*.06;z=.93;}
-      else if(held&&side===position.hand){x=side*.83;y=-.68;z=.83;}
+      else if(petting&&avatarSide===1){x=side*.36;y=-.68+Math.sin(petAge*.017)*.06;z=.93;}
+      else if(avatarSide===claspSide){x=side*.83;y=-.68;z=.83;}
       else if(walking){y+=step*(position.running?.15:.095);z+=step*.048;}
       frame(shoulder,side*1.16,-1.56,.55);
       frame(elbow,side*(riding?.86:.93),-1.13,.68);
