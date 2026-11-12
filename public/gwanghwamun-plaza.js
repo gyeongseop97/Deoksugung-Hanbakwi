@@ -18,7 +18,7 @@ export function buildGwanghwamunPlaza(T,scene,kit,{benches}){
     const material=new T.MeshStandardMaterial({color,emissive,emissiveIntensity:day,roughness:.65});
     glow.push({material,day,strength});return material;
   };
-  const lampGlass=lamp(0xf1e8c8,0xffcb81,.05,1.8),blueSign=lamp(0x20459b,0x3260d4,.07,.8);
+  const lampGlass=lamp(0xf1e8c8,0xffcb81,.05,1.8);
   const water=lamp(0x6cabc2,0x1a5f83,.04,.30);
   const world=(e,n)=>{const point=plazaAt(e,n);return {x:wx(point.x),z:wz(point.y)};};
   function block(color,e,n,w,d,h,base=0,rotation=0,collide=false){
@@ -179,8 +179,8 @@ export function buildGwanghwamunPlaza(T,scene,kit,{benches}){
     [-39,157,1.57],[-32,188,-1.57],[-37,205,1.57],[-37,254,0],[-20,287,1.57],[-43,300,-1.57],
     [-32,340,1.57],[-27,398,1.57],[-29,434,1.57],[-7,466,1.57],[-40,479,-1.57],[-32,514,0]])bench(e,n,angle);
 
-  // Southbound exit canopy and the curbside bus shelter both stand outside the walking lane.
-  const [station,bus]=plazaTransitStops;
+  // The subway exit canopy stands outside the walking lane.
+  const [station]=plazaTransitStops;
   const sx=station.east,sn=station.north;
   block(0xb7b7ae,sx,sn,8.7,4.1,.15,.02);
   block(0x596967,sx-1.1,sn,6.3,4.1,2.48,.17);
@@ -193,14 +193,6 @@ export function buildGwanghwamunPlaza(T,scene,kit,{benches}){
   for(let i=0;i<8;i++)block(0x657471,sx+1.0+i*.30,sn,.28,2.88,.035,.255);
   collision(sx-.55,sn,7.8,4.04);
   sign("광화문역 7",sx+3.73,sn,2.89,Math.PI/2,4.03,.50,{background:"#4e318b",sub:"Gwanghwamun  ·  Line 5"});
-  const bx=bus.east,bn=bus.north;
-  block(0x54666a,bx,bn,2.30,7.6,.14,2.93);
-  block(0x769195,bx+.98,bn,.10,7.34,2.25,.54);
-  block(0x474f4d,bx+.49,bn,1.18,4.30,.14,.42);
-  for(const side of [-1,1])block(0x485753,bx+.80,bn+side*3.50,.14,.16,2.9,.04);
-  block(blueSign,bx+.36,bn-4.1,.17,.77,.91,1.88);
-  sign("세종문화회관",bx-.39,bn,2.92,-Math.PI/2,5.5,.33,{background:"#415458"});
-  collision(bx+.55,bn,1.20,7.4,2.9);
 
   // The media ramp is set down into the plaza, with a real sloped walking surface.
   const {west,east,south,north,rampEnd,depth}=basin;
