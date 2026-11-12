@@ -1,4 +1,4 @@
-import {addObstacle} from "./layout.js";
+import {addLandmarks,addObstacle} from "./layout.js";
 import {at as palaceAt} from "./gyeongbok-layout.js";
 import {plazaAt} from "./plaza-layout.js";
 import {makeRegionalItemProps} from "./regional-item-props.js";
@@ -20,11 +20,12 @@ const avenueShops=[
 ].map(shop=>({...shop,...plazaAt(52.10,shop.north,shop.name),area:"gwanghwamun",angle:-Math.PI/2,w:15.94,d:7.2,h:8.4}));
 const shops=[...palaceShops,...avenueShops];
 
-export const regionalStations=shops.map(({x,y,d,angle,name,kind})=>({kind,name,
+export const regionalStations=shops.map(({x,y,d,angle,name,kind,area})=>({kind,name,area,
   x:x+Math.sin(angle)*(d/2+1.75),y:y+Math.cos(angle)*(d/2+1.75)}));
 
 export function registerRegionalStands(){
   for(const {x,y,w,d,angle,h} of shops)addObstacle(x,y,w,d,angle,h);
+  addLandmarks(regionalStations.map(({x,y,name})=>({x,y,name:name+" 앞"})));
 }
 
 export function standSign(T,parent,text,subtitle,width,x,y,z,background,ink,height=width*160/512){
