@@ -595,7 +595,7 @@ export function addParkLife(T,scene,kit){
   const palaceRoam=makeCatRoaming({trails:gbCatTrails,origin:gbStation.arrive,plan:false});
   const plazaRoam=makeCatRoaming({trails:gbPlazaCatTrails,origin:gbPlazaCatTrails[0][0],plan:false});
   const hunting=createCatHunts(kit.birds,clearSegment);
-  let seed,population,sight=39,northLoaded=!kit.deferNorth;
+  let seed,population,sight=39,northLoaded=!kit.deferNorth,audible=[];
   const setSparse=value=>{sight=value?24:39;};
   function buildCats(limit){
     const {hash,count,palaceCount,coats,used}=population;
@@ -624,6 +624,7 @@ export function addParkLife(T,scene,kit){
     seed=next;
     for(const cat of live){cat.paws.dispose();cat.group.removeFromParent();}
     live.length=0;
+    audible=[];
     social.reset();
     hunting.reset();
     const hash=catSeedNumber(seed),random=randomSequence(hash);
@@ -659,6 +660,7 @@ export function addParkLife(T,scene,kit){
       cat.group.visible=cat.canPet=cat.feedable=false;
       return false;
     });
+    audible=anchor?active:[];
     for(const cat of active){
       const previousTime=cat.updatedAt??now,time=Math.max(now,previousTime);
       const feeding=cat.feeding&&time>=cat.feeding.at&&time<cat.feeding.until?cat.feeding:null;
@@ -832,6 +834,21 @@ export function addParkLife(T,scene,kit){
     }
     return nearest&&{id:nearest.id,x:nearest.x,y:nearest.y,name:nearest.name};
   }
+  function soundSource(point,maxDistance){
+    if(!scene.visible||!point||!Number.isFinite(maxDistance)||maxDistance<=0)return null;
+    const ear=point.height??(heightAt(point)+1.28);
+    let nearest=null,best=maxDistance**2;
+    for(const {pose} of audible){
+      if(!pose)continue;
+      const horizontal=(pose.x-point.x)**2+(pose.y-point.y)**2;
+      if(horizontal>=best)continue;
+      const {jump}=pose;
+      const height=jump?jumpHeight(heightAt(jump.from),heightAt(jump.to),jump.arc,jump.progress):heightAt(pose);
+      const gap=horizontal+(height-ear)**2;
+      if(gap<best){nearest={x:pose.x,y:pose.y,height};best=gap;}
+    }
+    return nearest&&{...nearest,distance:Math.sqrt(best)};
+  }
   function nearestFeedCat(x,y,playerId){
     let nearest=null,range=1.48;
     for(const cat of live){
@@ -864,6 +881,7 @@ export function addParkLife(T,scene,kit){
     return true;
   }
   function resetInteractions(){
+    audible=[];
     social.reset();
     hunting.reset();
     for(const cat of live){
@@ -876,5 +894,5 @@ export function addParkLife(T,scene,kit){
   }
   // How many cats live on each map (used when checking a build).
   const census=()=>({deoksugung:live.filter(cat=>!cat.palace).length,gyeongbokgung:live.filter(cat=>cat.palace).length});
-  return {update,nearestCat,nearestFeedCat,pet,feed,resetInteractions,setSeed,census,setSparse,loadNorth};
+  return {update,nearestCat,nearestFeedCat,soundSource,pet,feed,resetInteractions,setSeed,census,setSparse,loadNorth};
 }
