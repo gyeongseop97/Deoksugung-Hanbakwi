@@ -252,6 +252,8 @@ dialog input,dialog code{display:block;width:100%;padding:9px;border-radius:7px;
 .map-key span{white-space:nowrap}
 .map-key .bus-dot{background:#91c9f2}
 .map-key .bike-dot{background:#8ed7a2}
+.overview-map #map-landscape .map-label:not(.overview-label){visibility:hidden}
+.overview-map .overview-label{font-size:76px;stroke-width:13px}
 @media (max-width:810px), (orientation:landscape) and (max-height:560px){
   #run kbd{display:none}
   #run,#sit,.map-links button{min-height:44px}
