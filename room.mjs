@@ -11,6 +11,9 @@ import {getRoomWeather} from "./server/room-weather.mjs";
 import {cleanupSocial,clinkStatement,leaveClinks,selectSocial,socialPayload,startFountainShow} from "./server/social.mjs";
 import {ensureMinigameTables} from "./database/minigame-schema.mjs";
 import {cleanupMinigames,leaveMinigames,minigamePayload,minigameStatements,selectMinigames,validMinigame} from "./server/minigames.mjs";
+import {ensureUmbrellaPairs,umbrellaWeather,umbrellaActorsReady,umbrellaPairMarked,umbrellaPairJoin,
+  visibleUmbrellaPairs,markUmbrellaPair,purgeUmbrellaPairs,clearUmbrellaMarkers} from "./server/umbrella-pairs.mjs";
+import {ensurePicnicTables,validPicnic,picnicStatements,selectPicnics,picnicPayload,cleanupPicnics} from "./server/picnic.mjs";
 
 const json = (data, status = 200) => Response.json(data,{status,headers:{"Cache-Control":"no-store"}});
 const validId = (value) => typeof value==="string" && /^[a-f0-9]{32}$/.test(value);
@@ -40,6 +43,10 @@ const validAvatar = (a) => validPoint(a) &&
   (a.seatSide==null || (a.seatSide===0 || a.seatSide===1) && a.seat!=null) &&
   (a.running===undefined || typeof a.running==="boolean") &&
   (a.umbrella===undefined || typeof a.umbrella==="boolean") &&
+  (a.umbrellaReady===undefined || typeof a.umbrellaReady==="boolean") &&
+  (a.picnicClaim==null || validId(a.picnicClaim)) &&
+  (a.catFriends===undefined || Array.isArray(a.catFriends) && a.catFriends.length<=64 &&
+    new Set(a.catFriends).size===a.catFriends.length && a.catFriends.every(id=>typeof id==="string"&&/^[a-z0-9-]{1,32}$/.test(id))) &&
   (a.wish===undefined || validTime(a.wish)) &&
   (a.wishOrigin==null || validPoint(a.wishOrigin)) &&
   (a.wishHeading===undefined || finite(a.wishHeading,0,360)) &&
@@ -55,7 +62,7 @@ const validSignal = (signal,self) => validId(signal?.id) && (signal.audience===u
   validView(signal.view)&&(signal.point===undefined||validPoint(signal.point)):
   validPoint(signal.point)&&(signal.audience==="nearby"||signal.audience==="room"||
     signal.audience==="person"&&validId(signal.target)&&signal.target!==self));
-const validHand = (h) => h && validId(h.id) && (h.action==="release" ||
+const validHand = (h) => h && validId(h.id) && (h.kind===undefined||h.kind==="umbrella") && (h.action==="release" ||
   (h.side===-1 || h.side===1) && (h.action==="accept" || h.action==="offer" && validId(h.peer)));
 const validShow=show=>validId(show?.id)&&show.fountain==="myeongnyang";
 const validClink=(clink,id)=>validId(clink?.id)&&(clink.action==="invite"?
@@ -142,6 +149,7 @@ async function enterRoom(db,body){
   delete initialAvatar.chat;
   delete initialAvatar.bus;
   delete initialAvatar.bike;
+  delete initialAvatar.picnicClaim;
   const {results}=await db.prepare(`
     INSERT INTO walkers (room,id,updated,avatar,view,player_key,nickname,coat)
     VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE((
@@ -169,12 +177,12 @@ async function enterRoom(db,body){
     serverTime:now,weather:await getRoomWeather(db,now)});
 }
 
-function avatarUpdate(db,room,id,key,avatar,view,now,active,pendingFeed="",bikeAction){
-  const {feed,chat,bus,bike,...snapshotData}=avatar;
+function avatarUpdate(db,room,id,key,avatar,view,now,active,pendingFeed="",bikeAction,pendingPicnic){
+  const {feed,chat,bus,bike,picnicClaim,...snapshotData}=avatar;
   const snapshot=JSON.stringify(snapshotData);
   const inheritWish=avatar.wishArt===undefined&&avatar.wish>now-WISH_FLIGHT_MS?avatar.wish:null;
   const acknowledgedFeed=validId(feed?.claim)?feed.claim:null;
-  const snapshotPatch=`json_patch(
+  const snapshotPatch=`json_patch(json_patch(
     json_patch(
       CASE WHEN json_extract(avatar,'$.wish')=? AND json_type(avatar,'$.wishArt')='array'
         THEN json_object('wishArt',json_extract(avatar,'$.wishArt')) ELSE '{}' END,
@@ -186,6 +194,11 @@ function avatarUpdate(db,room,id,key,avatar,view,now,active,pendingFeed="",bikeA
     CASE WHEN json_type(avatar,'$.chat')='object' THEN json_object('chat',json(
       CASE WHEN json_extract(avatar,'$.chat.at')>? THEN json_extract(avatar,'$.chat')
         ELSE json_remove(json_extract(avatar,'$.chat'),'$.text') END))
+      ELSE '{}' END),
+    CASE WHEN json_type(avatar,'$.picnicClaim')='text' THEN
+      CASE WHEN json_extract(avatar,'$.picnicClaim') IS NOT ?
+        THEN json_object('picnicClaim',json_extract(avatar,'$.picnicClaim'),'item',json_extract(avatar,'$.item'))
+        ELSE json_object('picnicClaim',json_extract(avatar,'$.picnicClaim')) END
       ELSE '{}' END)`;
   // A regular avatar packet cannot reserve or release a vehicle. A lease that
   // expired while the player was disconnected must not reclaim its old seat.
@@ -201,12 +214,16 @@ function avatarUpdate(db,room,id,key,avatar,view,now,active,pendingFeed="",bikeA
       'bike',json_extract(avatar,'$.bike'),'seat',NULL,'seatSide',NULL${mountedPose})
     ELSE '{}' END)`;
   const bikeCutoff=now-bikeParkDuration;
+  const picnicGuard=pendingPicnic?`AND NOT EXISTS (SELECT 1 FROM picnic_requests p
+    WHERE p.room=walkers.room AND p.player=walkers.id AND p.request=?)`:"";
+  const picnicArgs=pendingPicnic?[pendingPicnic]:[];
   if(avatar.seat==null){
     return db.prepare(`
       UPDATE walkers SET updated=MAX(updated,?), avatar=json_patch(json_patch(?, ${snapshotPatch}), ${transportPatch}), view=?
       WHERE room=? AND id=? AND player_key IS ?
-        AND json_extract(avatar,'$.feed.claim') IS NOT ?
-    `).bind(now,snapshot,inheritWish,acknowledgedFeed,now-chatLifetime,bikeCutoff,active,JSON.stringify(view),room,id,key,pendingFeed);
+        AND json_extract(avatar,'$.feed.claim') IS NOT ? ${picnicGuard}
+    `).bind(now,snapshot,inheritWish,acknowledgedFeed,now-chatLifetime,picnicClaim??null,
+      bikeCutoff,active,JSON.stringify(view),room,id,key,pendingFeed,...picnicArgs);
   }
   const preferred=avatar.seatSide??0;
   return db.prepare(`
@@ -221,9 +238,9 @@ function avatarUpdate(db,room,id,key,avatar,view,now,active,pendingFeed="",bikeA
     ), json_set(?, '$.seat', NULL, '$.seatSide', NULL)), ${snapshotPatch}), ${transportPatch}),
     view=?
     WHERE room=? AND id=? AND player_key IS ?
-      AND json_extract(avatar,'$.feed.claim') IS NOT ?
+      AND json_extract(avatar,'$.feed.claim') IS NOT ? ${picnicGuard}
   `).bind(now,snapshot,preferred,1-preferred,room,id,active,avatar.seat,preferred,snapshot,inheritWish,acknowledgedFeed,
-    now-chatLifetime,bikeCutoff,active,JSON.stringify(view),room,id,key,pendingFeed);
+    now-chatLifetime,picnicClaim??null,bikeCutoff,active,JSON.stringify(view),room,id,key,pendingFeed,...picnicArgs);
 }
 
 function chatUpdate(db,room,id,key,chat,now,active){
@@ -417,18 +434,22 @@ const readyPair=`
       (json_extract(a.avatar,'$.y')-json_extract(b.avatar,'$.y')) *
       (json_extract(a.avatar,'$.y')-json_extract(b.avatar,'$.y')) <= 6.25
 `;
-function handStatements(db,room,id,key,hand,now,online){
+function handStatements(db,room,id,key,hand,now,online,wet){
   if(hand.action==="release")return [db.prepare(`
     DELETE FROM handholds WHERE room=? AND id=? AND (leader=? OR follower=?)
     AND EXISTS (SELECT 1 FROM walkers WHERE room=? AND id=? AND player_key=?)
-  `).bind(room,hand.id,id,id,room,id,key)];
+  `).bind(room,hand.id,id,id,room,id,key),clearUmbrellaMarkers(db,room)];
+  const umbrella=hand.kind==="umbrella";
+  if(umbrella&&!wet)return [];
+  const eligiblePair=umbrella?`${readyPair} AND ${umbrellaActorsReady}`:readyPair;
+  const matchingKind=umbrella?umbrellaPairMarked:`NOT ${umbrellaPairMarked}`;
   if(hand.action==="accept")return [db.prepare(`
     UPDATE handholds SET accepted=?, side=?
-    WHERE room=? AND id=? AND follower=? AND accepted IS NULL AND created>=?
+    WHERE room=? AND id=? AND follower=? AND accepted IS NULL AND created>=? AND ${matchingKind}
     AND EXISTS (
       SELECT 1 FROM walkers a JOIN walkers b ON b.room=a.room
       WHERE a.room=handholds.room AND a.id=handholds.leader AND b.id=handholds.follower
-        AND b.player_key=? AND ${readyPair}
+        AND b.player_key=? AND ${eligiblePair}
     )
   `).bind(now,hand.side,room,hand.id,id,now-15000,key,online,online)];
   return [
@@ -442,11 +463,12 @@ function handStatements(db,room,id,key,hand,now,online){
     db.prepare(`
       INSERT INTO handholds (room,id,leader,follower,side,created)
       SELECT ?, ?, ?, ?, ?, ? FROM walkers a JOIN walkers b ON b.room=a.room
-      WHERE a.room=? AND a.id=? AND a.player_key=? AND b.id=? AND a.id<>b.id AND ${readyPair}
+      WHERE a.room=? AND a.id=? AND a.player_key=? AND b.id=? AND a.id<>b.id AND ${eligiblePair}
       AND NOT EXISTS (SELECT 1 FROM handholds h WHERE h.room=a.room
         AND (h.leader IN (a.id,b.id) OR h.follower IN (a.id,b.id)))
       ON CONFLICT(room,id) DO NOTHING
-    `).bind(room,hand.id,id,hand.peer,hand.side,now,room,id,key,hand.peer,online,online)
+    `).bind(room,hand.id,id,hand.peer,hand.side,now,room,id,key,hand.peer,online,online),
+    ...(umbrella?[markUmbrellaPair(db,room,hand.id)]:[])
   ];
 }
 
@@ -459,7 +481,7 @@ export async function api(request,env){
     return json({error:"이 사이트에서 다시 시도해 주세요."},403);
   }
   const raw=await request.text();
-  if(raw.length>7300)return json({error:"요청이 너무 길어요."},413);
+  if(raw.length>9800)return json({error:"요청이 너무 길어요."},413);
   let body;
   try{body=JSON.parse(raw);}catch{return json({error:"잘못된 요청이에요."},400);}
   const db=env.DB;
@@ -468,10 +490,11 @@ export async function api(request,env){
     return json({error:"잘못된 산책방 정보예요."},400);
   }
   const {room,id,key=null,avatar,view,signal,hand,feed,bus,bike,show,clink,leave,lookPings}=body;
-  const minigame=body.minigame;
+  const {minigame,picnic}=body;
   if(leave===true){
     await ensureSocialTables(db);
     await ensureMinigameTables(db);
+    await ensureUmbrellaPairs(db);
     await db.batch([
       leaveClinks(db,{room,id,key,now:Date.now()}),
       leaveMinigames(db,{room,id,key,now:Date.now()}),
@@ -479,11 +502,12 @@ export async function api(request,env){
         DELETE FROM handholds WHERE room=? AND (leader=? OR follower=?)
         AND EXISTS (SELECT 1 FROM walkers WHERE room=? AND id=? AND player_key IS ?)
       `).bind(room,id,id,room,id,key),
+      clearUmbrellaMarkers(db,room),
       db.prepare("DELETE FROM walkers WHERE room=? AND id=? AND player_key IS ?").bind(room,id,key)
     ]);
     return json({ok:true});
   }
-  if(hand!=null&&(!key||!validHand(hand)))return json({error:"손잡기 요청을 읽을 수 없어요."},400);
+  if(hand!=null&&(!key||!validHand(hand)))return json({error:"함께 걷기 요청을 읽을 수 없어요."},400);
   if(feed!=null&&(!key||avatar===undefined||!validFeed(feed)))return json({error:"간식 주기 요청을 읽을 수 없어요."},400);
   if(bus!=null&&(!key||avatar===undefined||!validBus(bus)))return json({error:"버스 요청을 읽을 수 없어요."},400);
   if(bike!=null&&(!key||avatar===undefined||!validBike(bike)))return json({error:"자전거 요청을 읽을 수 없어요."},400);
@@ -492,6 +516,7 @@ export async function api(request,env){
   const photo=body.photo;
   if(photo!=null&&(!key||avatar===undefined||!validPhoto(photo)))return json({error:"단체 사진 요청을 읽을 수 없어요."},400);
   if(minigame!=null&&(!key||avatar===undefined||!validMinigame(minigame)))return json({error:"민속놀이 요청을 읽을 수 없어요."},400);
+  if(picnic!=null&&(!key||avatar===undefined||!validPicnic(picnic)))return json({error:"피크닉 요청을 읽을 수 없어요."},400);
   if(signal!=null&&(avatar===undefined||!validSignal(signal,id)))return json({error:"‘여기 봐’ 위치를 읽을 수 없어요."},400);
   if(avatar!==undefined&&(!validAvatar(avatar)||!validView(view)))return json({error:"산책 위치를 읽을 수 없어요."},400);
   const chat=avatar?.chat==null?null:cleanChat(avatar.chat);
@@ -499,34 +524,46 @@ export async function api(request,env){
   await ensureRoomPhotos(db);
   await ensureSocialTables(db);
   await ensureMinigameTables(db);
+  await ensureUmbrellaPairs(db);
+  await ensurePicnicTables(db);
   const now=Date.now(),active=now-walkerLifetime,online=now-9000,bikeCutoff=now-bikeParkDuration;
+  const weather=await getRoomWeather(db,now),wet=umbrellaWeather(weather);
   const currentFeed=feed&&feed.at>=now-FEED_MS&&feed.at<=now+1500;
   const operations=[];
   if(avatar!==undefined){
-    if(!feed||currentFeed)operations.push(avatarUpdate(db,room,id,key,avatar,view,now,active,feed?.claim,bike?.action));
+    const pendingPicnic=picnic?.action==="place"||picnic?.action==="take"?picnic.id:undefined;
+    if(!feed||currentFeed)operations.push(avatarUpdate(db,room,id,key,avatar,view,now,active,feed?.claim,bike?.action,pendingPicnic));
     if(chat)operations.push(chatUpdate(db,room,id,key,chat,now,active));
     if(signal)operations.push(signalUpdate(db,room,id,key,signal,avatar,now,active));
     if(Math.random()<.004){
       operations.push(db.prepare("DELETE FROM walkers WHERE updated < ?").bind(now-86400000));
       operations.push(...cleanupSocial(db,room,now-86400000));
       operations.push(...cleanupMinigames(db,room,now-600000));
+      operations.push(...cleanupPicnics(db,room,now));
       operations.push(db.prepare(`
         DELETE FROM handholds WHERE created < ? AND
           (SELECT COUNT(*) FROM walkers WHERE room=handholds.room AND updated>=?
             AND id IN (handholds.leader,handholds.follower)) < 2
       `).bind(now-86400000,active));
+      operations.push(clearUmbrellaMarkers(db,room));
     }
   }
   if(currentFeed)operations.push(feedUpdate(db,room,id,key,feed,now));
   if(bike)operations.push(bikeStatement(db,room,id,key,bike,now,active));
   if(bus)operations.push(...busStatements(db,room,id,key,bus,now,active));
-  if(bus||bike)operations.push(releaseTransportHands(db,room,id,key));
-  if(hand)operations.push(...handStatements(db,room,id,key,hand,now,online));
+  if(bus||bike)operations.push(releaseTransportHands(db,room,id,key),clearUmbrellaMarkers(db,room));
+  if(hand){
+    if(hand.action!=="release")operations.push(...purgeUmbrellaPairs(db,{room,now,online,wet}));
+    operations.push(...handStatements(db,room,id,key,hand,now,online,wet));
+  }
   if(photo)operations.push(writeRoomPhoto(db,{room,id,key,now,online,photo}));
   const photoSelection=operations.push(selectRoomPhoto(db,room,now))-1;
   const minigameContext={room,id,key,now,online,minigame};
   if(minigame)operations.push(...minigameStatements(db,minigameContext));
   const minigameSelection=operations.push(selectMinigames(db,minigameContext))-1;
+  const picnicContext={room,id,key,now,online,picnic};
+  if(picnic)operations.push(...picnicStatements(db,picnicContext));
+  const picnicSelection=operations.push(selectPicnics(db,picnicContext))-1;
   const socialContext={room,id,key,now,online,show,clink};
   if(show)operations.push(startFountainShow(db,socialContext));
   if(clink)operations.push(clinkStatement(db,socialContext));
@@ -536,22 +573,26 @@ export async function api(request,env){
     WHERE room=? AND (updated>=? OR (updated>=? AND ${parkedBikeTime}>?)) ORDER BY id
   `).bind(room,active,bikeCutoff-walkerLifetime,bikeCutoff));
   operations.push(db.prepare(`
-    SELECT h.id,h.leader,h.follower,h.side,h.accepted
+    SELECT h.id,h.leader,h.follower,h.side,h.accepted,u.id IS NOT NULL AS umbrella
     FROM handholds h JOIN walkers a ON a.room=h.room AND a.id=h.leader
     JOIN walkers b ON b.room=h.room AND b.id=h.follower
+    ${umbrellaPairJoin}
     WHERE h.room=? AND (h.accepted IS NOT NULL OR h.created>=?)
-      AND a.updated>=? AND b.updated>=?
-  `.trimStart()).bind(room,now-15000,online,online));
+      AND a.updated>=? AND b.updated>=? AND ${visibleUmbrellaPairs}
+  `.trimStart()).bind(room,now-15000,online,online,Number(wet)));
   const results=await db.batch(operations);
   const rows=results.at(-2).results;
   const ownRow=rows.find(row=>row.id===id&&row.player_key===key&&row.updated>=active);
   if(!ownRow)return json({error:"산책방에 다시 입장해 주세요."},409);
   const receiver={id,avatar:transportAvatar(ownRow,now)};
+  const receiverIndoors=isInsideMuseum(receiver.avatar.x,receiver.avatar.y);
   const walkers=[],parkedBikes=[];
   for(const row of rows){
     const avatar=row===ownRow?receiver.avatar:transportAvatar(row,now);
     if(avatar.bike?.parked)parkedBikes.push({id:row.id,...avatar.bike.parked});
     if(row.updated<active)continue;
+    if(avatar.catFriends&&(row===ownRow||receiverIndoors||
+      Math.hypot(avatar.x-receiver.avatar.x,avatar.y-receiver.avatar.y)>62))delete avatar.catFriends;
     if(row.id===id||now-avatar.wish>=WISH_FLIGHT_MS)delete avatar.wishArt;
     const chat=avatar.chat;
     if(chat?.text&&chat.at>now-chatLifetime)avatar.chat={id:chat.id,text:chat.text,at:chat.at};
@@ -560,15 +601,19 @@ export async function api(request,env){
       signal:visibleSignal(row,avatar,receiver,lookPings===true,room,now),
       nickname:row.nickname||"동행",coat:row.coat??0x397e70,handholdAvailable:Boolean(row.player_key)});
   }
+  const handholds=[],umbrellas=[];
+  for(const {id,leader,follower,side,accepted,umbrella} of results.at(-1).results){
+    const link={id,leader,follower,side,active:accepted!==null};
+    if(umbrella)umbrellas.push({...link,kind:"umbrella"});else handholds.push(link);
+  }
   return json({
     serverTime:now,
-    weather:await getRoomWeather(db,now),
+    weather,
     ...socialPayload(results.at(-3).results[0],{...socialContext,avatar:receiver.avatar}),
     photoSession:roomPhotoPayload(results[photoSelection],receiver.avatar),
     ...minigamePayload(results[minigameSelection].results[0],minigame),
-    handholds:results.at(-1).results.map(link=>({
-      id:link.id,leader:link.leader,follower:link.follower,side:link.side,active:link.accepted!==null
-    })),
+    ...picnicPayload(results[picnicSelection].results[0],picnic),
+    handholds,umbrellas,
     transport:transportResult(bus,bike,receiver.avatar,walkers,id,now),walkers,parkedBikes
   });
 }

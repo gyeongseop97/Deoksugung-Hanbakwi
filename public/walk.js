@@ -33,6 +33,8 @@ import {buskingSpot,buskingBeat,BUSKING_HEARING_METRES} from "./street-people.js
 import {bindPhotoMode,PHOTO_REACH} from "./photo-mode.js";
 import {bindPhotoAlbum,downloadPhoto,importPhotos,listPhotos,makePhotoCard} from "./photo-album.js";
 import {bindTutorial} from "./tutorial.js";
+import {makePicnic} from "./picnic-client.js";
+import {isPicnicItem} from "./picnic-data.js";
 
 const $=id=>document.getElementById(id);
 const token=()=>Array.from(crypto.getRandomValues(new Uint8Array(16)),byte=>byte.toString(16).padStart(2,"0")).join("");
@@ -57,7 +59,7 @@ function initialAvatar(){
     }
   }catch{}
   return {x:ticketApproach.x+1,y:ticketApproach.y-2.4,heading:entranceHeading,vx:0,vy:0,wish:0,wishOrigin:null,wishHeading:0,wishArt:null,wave:0,jump:0,emote:null,chat:null,
-    seat:null,seatSide:null,bus:null,bike:null,item:null,umbrella:false,blushUntil:0,blushLevel:0,pet:null,feed:null,running:false,blocked:false,up:false,character,look};
+    seat:null,seatSide:null,bus:null,bike:null,item:null,picnicClaim:null,umbrella:false,umbrellaReady:false,blushUntil:0,blushLevel:0,pet:null,feed:null,running:false,blocked:false,up:false,character,look};
 }
 const me=initialAvatar(),people=new Map(),markers=new Map(),seenSignals=new Map(),lookPings=new Map(),formations=new Map();
 let ownView=initialView(),trackedPersonId=null,world,worldLoading,worldFailed=false;
@@ -69,6 +71,7 @@ let links=[],queuedSignal=null,queuedHand=null,queuedFeed=null,queuedChat=null,t
 let queuedBus=null,queuedBike=null,lastBusHeading=null;
 let fountainShow=null,clinks=[],queuedShow=null,queuedClink=null;
 let queuedMinigame=null,queuedPhoto=null,roomPhoto=null,minigameKiteCuts=[];
+let queuedPicnic=null;
 const heardClinks=new Set();
 let parkedBikes=[];
 let lastChatAt=0;
@@ -95,6 +98,17 @@ const passport=bindPassport({
   getLook:()=>me.look,applyLook:applyLookPatch,focusGame,onNotice:toast,
   getProfile:()=>({nickname:nickname.value.trim(),character:me.character,look:{...me.look}}),applyProfile,
   listPhotos,importPhotos,onShowStamp:showMapRoute
+});
+const picnic=makePicnic({
+  send(command){
+    if(!canPicnic(gameTime())||queuedPicnic)return false;
+    queuedPicnic=command;wakeSync();return true;
+  },
+  self:()=>session?.id,getAvatar:()=>session?me:null,now:()=>gameTime(),
+  getPeople:()=>[...people.values()].filter(({avatar})=>!avatar.bus&&!isCycling(avatar))
+    .map(({id,nickname,position})=>({id,nickname,x:position.x,y:position.y})),
+  focusGame:()=>{if(session)focusGame();},
+  onOffer:item=>toast(item.nickname+" 님이 "+ITEMS[item.kind].name+" 한 몫을 건넸어요. 돗자리에서 받을 수 있어요.")
 });
 const minigames=makeMinigames({
   mount:sceneWrap,
@@ -220,12 +234,21 @@ function updateEnvironment(time){
   }
   const wet=["rain","snow"].includes(currentEnvironment.weather)&&!isInsideMuseum(me.x,me.y);
   if(!wet)umbrellaFolded=false;
-  const umbrella=wet&&!umbrellaFolded&&!me.bus&&!riding&&!isCycling(me);
-  if(me.umbrella!==umbrella){me.umbrella=umbrella;dirty=true;wakeSync();}
-  setActivity("umbrella",wet&&!me.bus&&!riding&&!isCycling(me)?umbrella?"우산 접기":"우산 쓰기":null);
+  const available=wet&&!me.bus&&!riding&&!isCycling(me);
+  const ready=available&&me.seat==null;
+  const link=myLink(),sharing=isUmbrellaLink(link);
+  const guest=sharing&&link.active&&link.follower===session.id;
+  const umbrella=available&&!umbrellaFolded&&!guest;
+  if(me.umbrella!==umbrella||me.umbrellaReady!==ready){
+    Object.assign(me,{umbrella,umbrellaReady:ready});dirty=true;wakeSync();
+  }
+  if(sharing&&(!ready||link.leader===session.id&&!umbrella)&&!queuedHand)releasePair(link);
+  setActivity("umbrella",available&&!guest?umbrella?"우산 접기":"우산 쓰기":null);
 }
 $("umbrella").addEventListener("click",()=>{umbrellaFolded=me.umbrella;updateEnvironment(gameTime());focusGame();});
 function myLink(){return session&&links.find(link=>link.leader===session.id||link.follower===session.id);}
+const isUmbrellaLink=link=>link?.kind==="umbrella";
+function sharingUmbrella(){const link=myLink();return Boolean(isUmbrellaLink(link)&&link.active);}
 function amFollowingHands(){const link=myLink();return Boolean(link?.active&&link.follower===session.id);}
 function labelPerspective(){
   const button=$("perspective"),label=firstPerson?"3인칭":"1인칭";
@@ -284,7 +307,11 @@ function soundscape(time,travelled,wading,running=false){
     }
   }
   if(sound.enabled&&!document.hidden){
-    if(time>=nextBusSound){nextBusSound=time+125;updateBusSound(time,indoors);}
+    if(time>=nextBusSound){
+      nextBusSound=time+125;updateBusSound(time,indoors);
+      const rain=indoors||me.bus?0:currentEnvironment.rain;
+      sound.rain(rain,rain>0&&(me.umbrella||sharingUmbrella()||world.underDoldamAwning(me)));
+    }
     if(!indoors&&!me.bus){
       if(time>=nextBird){
         const bird=world.birds.soundSource(me,22);
@@ -549,68 +576,81 @@ function resetLocationGuides(){
   updateLocationGuides(gameTime());
 }
 
-function handCandidates(){
+function handCandidates(kind){
   if(!world||!session||me.seat!=null||me.bus||isCycling(me)||myLink()||feedingLocked(gameTime()))return [];
+  const umbrella=kind==="umbrella";
+  if(umbrella&&(!me.umbrella||!me.umbrellaReady||queuedBus||queuedBike))return [];
   const busy=new Set(links.flatMap(link=>[link.leader,link.follower]));
-  return [...people.values()].filter(person=>person.available&&!busy.has(person.id)&&
+  return [...people.values()].filter(person=>person.available&&(!umbrella||person.avatar.umbrellaReady)&&!busy.has(person.id)&&
     near(me,person.position.x,person.position.y)<=2.4&&handSide(me,{...person.avatar,...person.position})!==0)
     .sort((a,b)=>near(me,a.position.x,a.position.y)-near(me,b.position.x,b.position.y));
 }
 function updateHandControls(){
-  const link=myLink(),incoming=link&&!link.active&&link.follower===session.id;
+  const link=myLink(),umbrella=isUmbrellaLink(link),incoming=link&&!link.active&&link.follower===session.id;
   const other=link&&people.get(link.leader===session.id?link.follower:link.leader);
-  const button=$("hand"),status=$("hand-status"),request=$("hand-offer");
-  button.hidden=!(link&&!incoming)&&!handCandidates().length;
-  button.disabled=Boolean(queuedHand);
-  const label=link?(link.active?"손 놓기":"요청 취소"):"손잡기";
-  if(button.textContent!==label)button.textContent=label;
+  const status=$("hand-status"),request=$("hand-offer");
+  setActivity("hand",link&&!umbrella&&!incoming?(link.active?"손 놓기":"요청 취소"):
+    handCandidates().length?"손잡기":null,Boolean(queuedHand));
+  setActivity("share-umbrella",link&&umbrella&&!incoming?(link.active?"같이 쓰기 끝내기":"우산 요청 취소"):
+    handCandidates("umbrella").length?"우산 같이 쓰기":null,Boolean(queuedHand));
   request.hidden=!incoming;
   $("hand-accept").disabled=$("hand-decline").disabled=Boolean(queuedHand);
   if(incoming){
-    const message=(other?.nickname||"친구")+" 님이 손을 내밀었어요.";
-    if($("hand-message").textContent!==message)$("hand-message").textContent=message;
+    attr(request,"aria-label",umbrella?"우산 같이 쓰기 요청":"손잡기 요청");
+    setText($("hand-message"),(other?.nickname||"친구")+(umbrella?" 님이 우산을 같이 쓰자고 했어요.":" 님이 손을 내밀었어요."));
   }
   status.hidden=!link||Boolean(incoming);
   if(link&&!incoming){
-    const message=link.active?(link.leader===session.id?"손잡고 함께 걷는 중 · 내가 앞장서요":(other?.nickname||"친구")+" 님의 걸음에 맞추는 중"):"손잡기 요청을 보냈어요.";
-    if(status.textContent!==message)status.textContent=message;
+    const active=link.leader===session.id?(umbrella?"우산 같이 쓰는 중 · 내가 앞장서요":"손잡고 함께 걷는 중 · 내가 앞장서요"):
+      (other?.nickname||"친구")+" 님의 걸음에 맞추는 중";
+    setText(status,link.active?active:umbrella?"우산 같이 쓰기 요청을 보냈어요.":"손잡기 요청을 보냈어요.");
   }
   const follower=amFollowingHands();
   sceneWrap.classList.toggle("hand-following",follower);
-  $("run").disabled=!world||riding||follower||Boolean(me.bus||isCycling(me)||queuedBus||queuedBike);
+  $("run").disabled=!world||riding||follower||Boolean(umbrella&&link.active||me.bus||isCycling(me)||queuedBus||queuedBike);
 }
-$("hand").addEventListener("click",()=>{
+function releasePair(link){
+  queuedHand={action:"release",id:link.id,...(isUmbrellaLink(link)?{kind:"umbrella"}:{})};
+  wakeSync();
+}
+function openPairOffer(kind){
+  if(queuedHand)return;
   const link=myLink();
-  if(link){queuedHand={action:"release",id:link.id};wakeSync();return;}
-  const candidates=handCandidates();
-  if(candidates.length===1){offerHand(candidates[0]);return;}
+  if(link){releasePair(link);return;}
+  const candidates=handCandidates(kind);
+  if(candidates.length===1){offerHand(candidates[0],kind);return;}
   if(!candidates.length)return;
+  setText($("hand-title"),kind==="umbrella"?"누구와 우산을 같이 쓸까요?":"누구와 손잡을까요?");
   $("hand-list").replaceChildren(...candidates.map(person=>{
     const button=document.createElement("button");
     button.type="button";button.className="quiet";button.textContent=person.nickname;
     button.style.setProperty("--player-color",hexCoat(person.coat));
     button.addEventListener("click",()=>{
       $("hand-people").close();
-      offerHand(handCandidates().find(candidate=>candidate.id===person.id));
+      offerHand(handCandidates(kind).find(candidate=>candidate.id===person.id),kind);
     });
     return button;
   }));
   $("hand-people").showModal();
-});
-function offerHand(person){
+}
+$("hand").addEventListener("click",()=>openPairOffer("hand"));
+$("share-umbrella").addEventListener("click",()=>openPairOffer("umbrella"));
+function offerHand(person,kind){
   if(!person){toast("친구에게 조금 더 가까이 가 주세요.");return;}
-  queuedHand={action:"offer",id:token(),peer:person.id,side:handSide(me,{...person.avatar,...person.position})};
+  queuedHand={action:"offer",id:token(),peer:person.id,side:handSide(me,{...person.avatar,...person.position}),
+    ...(kind==="umbrella"?{kind}:{})};
   wakeSync();
 }
 $("hand-decline").addEventListener("click",()=>{
-  const link=myLink();if(link){queuedHand={action:"release",id:link.id};wakeSync();}
+  const link=myLink();if(link)releasePair(link);
 });
 $("hand-accept").addEventListener("click",()=>{
   const link=myLink(),leader=link&&people.get(link.leader);
-  if(!leader||link.active||link.follower!==session.id||feedingLocked(gameTime()))return;
+  if(!leader||link.active||link.follower!==session.id||queuedHand||feedingLocked(gameTime()))return;
   const side=handSide(leader.avatar,me);
-  if(!side){toast("서로 가까운, 걸을 수 있는 곳에서 손을 잡아 주세요.");return;}
-  queuedHand={action:"accept",id:link.id,side};
+  const umbrella=isUmbrellaLink(link);
+  if(!side||umbrella&&!me.umbrellaReady){toast(umbrella?"우산을 든 친구에게 조금 더 가까이 가 주세요.":"서로 가까운, 걸을 수 있는 곳에서 손을 잡아 주세요.");return;}
+  queuedHand={action:"accept",id:link.id,side,...(umbrella?{kind:"umbrella"}:{})};
   wakeSync();
 });
 
@@ -673,7 +713,7 @@ function wakeSync(){
 }
 function syncCadence(){
   const fast=dirty||myLink()||queuedHand||queuedSignal||queuedFeed||queuedChat||queuedBus||queuedBike||seatClaim||moving(me)||me.blocked||
-    queuedShow||queuedClink||queuedPhoto||queuedMinigame||
+    queuedShow||queuedClink||queuedPhoto||queuedMinigame||queuedPicnic||
     [...people.values()].some(person=>moving(person.avatar)||person.avatar.blocked);
   if(fast)return movingCadence();
   return session.mode==="open"?(people.size?195+Math.min(55,Math.max(0,people.size-5)*5):330):
@@ -685,15 +725,15 @@ async function sync(){
   syncInFlight=visit;
   const sent=performance.now(),signal=queuedSignal,hand=queuedHand,claim=seatClaim,feed=queuedFeed,chat=queuedChat;
   const bus=queuedBus,bike=queuedBike;
-  const show=queuedShow,clink=queuedClink,photo=queuedPhoto,minigame=queuedMinigame;
+  const show=queuedShow,clink=queuedClink,photo=queuedPhoto,minigame=queuedMinigame,picnicCommand=queuedPicnic;
   syncStarted=sent;
-  const post=dirty||signal||hand||claim||feed||chat||bus||bike||show||clink||photo||minigame||Date.now()-lastPost>=3800;
+  const post=dirty||signal||hand||claim||feed||chat||bus||bike||show||clink||photo||minigame||picnicCommand||Date.now()-lastPost>=3800;
   const base={room:visit.room,id:visit.id,key:visit.key,lookPings:true};
-  const avatar=post?{...me}:null;
+  const avatar=post?{...me,catFriends:passport.friendlyCatIds()}:null;
   if(avatar&&claim)Object.assign(avatar,{seat:claim.bench,seatSide:claim.side});
   if(avatar){if(chat)avatar.chat=chat;else delete avatar.chat;}
   if(avatar&&(avatar.wish===lastWishSynced||gameTime(sent)-avatar.wish>=WISH_FLIGHT_MS))delete avatar.wishArt;
-  const body=post?{...base,avatar,view:{...ownView},signal,hand,feed,bus,bike,show,clink,photo,minigame}:base;
+  const body=post?{...base,avatar,view:{...ownView},signal,hand,feed,bus,bike,show,clink,photo,minigame,picnic:picnicCommand}:base;
   if(post)dirty=false;
   try{
     const response=await request("/api/room",body),data=await response.json();
@@ -719,22 +759,33 @@ async function sync(){
     if(confirmed?.feed&&confirmed.feed.claim!==me.feed?.claim){
       me.feed=confirmed.feed;me.item=confirmed.item??null;
     }
+    if(confirmed?.picnicClaim&&confirmed.picnicClaim!==me.picnicClaim){
+      me.picnicClaim=confirmed.picnicClaim;me.item=confirmed.item??null;
+    }
     if(feed&&queuedFeed===feed){
       queuedFeed=null;
       if(confirmed?.feed?.claim!==feed.claim)toast("고양이에게 가까이 다가가 다시 간식을 주세요.");
-      else passport.feedCat(confirmed.feed.id,feed.name,confirmed.feed.claim);
+      else{
+        const previous=passport.friendlyCatIds();
+        passport.feedCat(confirmed.feed.id,feed.name,confirmed.feed.claim);
+        if(passport.friendlyCatIds()!==previous)dirty=true;
+      }
     }
     receivePeople(people,data.walkers,visit.id,data.serverTime);
+    if(queuedPicnic===picnicCommand)queuedPicnic=null;
+    picnic.receive(data.picnics??[],picnicCommand,data.picnicResult);
     if(claim)confirmSeat(claim,confirmed);
-    changeLinks(data.handholds||[]);
+    const previousLink=myLink();
+    changeLinks([...(data.handholds||[]),...(data.umbrellas||[])]);
+    if(isUmbrellaLink(previousLink)&&!myLink()&&!hand&&!queuedHand)releasePair(previousLink);
     confirmSocial(data,show,clink);
     confirmRoomPhoto(data.photoSession,photo);
     if(queuedMinigame===minigame)queuedMinigame=null;
     minigames.receive(data.minigames??[],minigame,data.minigameResult,data.minigameFree??[]);
     minigameKiteCuts=data.minigameKiteCuts??[];
     const link=myLink();
-    if(hand?.action==="offer"&&!link)toast("가까이 있는 친구에게 다시 손을 내밀어 주세요.");
-    if(hand?.action==="accept"&&!link?.active)toast("손잡기 요청이 끝났어요. 가까이에서 다시 요청해 주세요.");
+    if(hand?.action==="offer"&&!link)toast(hand.kind==="umbrella"?"가까이 있는 친구에게 우산을 같이 쓰자고 다시 요청해 주세요.":"가까이 있는 친구에게 다시 손을 내밀어 주세요.");
+    if(hand?.action==="accept"&&!link?.active)toast(hand.kind==="umbrella"?"우산 같이 쓰기 요청이 끝났어요.":"손잡기 요청이 끝났어요. 가까이에서 다시 요청해 주세요.");
     readLookSignals(data.serverTime);
     refreshPeopleDialogs();
     setPresence(data.walkers.length+"명 접속 중",data.walkers.length);
@@ -817,11 +868,11 @@ function returnToLobby(message=""){
   queuedSignal=queuedHand=queuedFeed=queuedChat=null;people.clear();changeLinks([]);resetLocationGuides();
   queuedBus=queuedBike=lastBusHeading=selectedBus=null;
   fountainShow=queuedShow=queuedClink=null;clinks=[];heardClinks.clear();nextShowAudio=0;
-  queuedPhoto=roomPhoto=queuedMinigame=null;minigames.reset();photoMode.close();tutorial.close();
+  queuedPhoto=roomPhoto=queuedMinigame=queuedPicnic=null;minigames.reset();picnic.reset();photoMode.close();tutorial.close();
   minigameKiteCuts=[];
   lastBuskingBeat=-1;umbrellaFolded=false;environment.liveWeather=null;
   parkedBikes=[];
-  sound.bus(null);sound.plazaShow(null);
+  sound.bus(null);sound.plazaShow(null);sound.rain(0);
   busStatus.hidden=true;
   chatInput.value="";composingChat=false;lastChatAt=0;updateChatSend();
   $("invite").disabled=$("look").disabled=$("look-target").disabled=true;
@@ -988,10 +1039,10 @@ document.querySelectorAll("dialog").forEach(dialog=>dialog.addEventListener("clo
 $("model-credits").addEventListener("click",()=>$("credits-dialog").showModal());
 window.addEventListener("pagehide",()=>{
   rememberWalkPosition();
-  active=false;pageVersion++;clearSyncTimer();sound.bus(null);sound.plazaShow(null);leaveBeacon();
+  active=false;pageVersion++;clearSyncTimer();sound.bus(null);sound.plazaShow(null);sound.rain(0);leaveBeacon();
 });
 document.addEventListener("visibilitychange",()=>{
-  if(document.hidden){rememberWalkPosition();clearManualInput();sound.bus(null);sound.plazaShow(null);}
+  if(document.hidden){rememberWalkPosition();clearManualInput();sound.bus(null);sound.plazaShow(null);sound.rain(0);}
   clearSyncTimer();scheduleSync(document.hidden?1150:0);
 });
 window.addEventListener("online",()=>{if(!document.hidden)scheduleSync(0);});
@@ -1005,12 +1056,12 @@ function markPace(){
   $("run").setAttribute("aria-pressed",String(runToggled));$("run").firstChild.textContent=runToggled?"걷기 ":"달리기 ";
 }
 $("run").addEventListener("click",()=>{
-  if(amFollowingHands()||me.bus||isCycling(me))return;
+  if(amFollowingHands()||sharingUmbrella()||me.bus||isCycling(me))return;
   runToggled=!runToggled;markPace();$("game").focus({preventScroll:true});
 });
 function jump(){
   const time=gameTime();
-  if(!session||!world||riding||me.bus||isCycling(me)||queuedBus||queuedBike||feedingLocked(time)||clinkLocked(time)||time-me.jump<JUMP_MS)return;
+  if(!session||!world||riding||me.bus||isCycling(me)||queuedBus||queuedBike||sharingUmbrella()||feedingLocked(time)||clinkLocked(time)||time-me.jump<JUMP_MS)return;
   if(pendingSeat)course=[];
   pendingSeat=seatClaim=null;stand();
   rememberWalkPosition();
@@ -1363,7 +1414,7 @@ function nearbyStation(){
   return best;
 }
 function canUseItem(time){
-  return Boolean(!me.bus&&!isCycling(me)&&!clinkLocked(time)&&me.item?.remaining&&time-me.item.started>=ITEMS[me.item.kind].duration);
+  return Boolean(!me.bus&&!isCycling(me)&&!picnicInventoryBusy()&&!clinkLocked(time)&&me.item?.remaining&&time-me.item.started>=ITEMS[me.item.kind].duration);
 }
 function feedingLocked(time){
   return Boolean(queuedFeed&&time-queuedFeed.at<FEED_MS||me.feed&&time-me.feed.at<FEED_MS);
@@ -1557,7 +1608,7 @@ function rideTransit(stop,{target,area,line}){
   rememberWalkPosition();
   const linkId=myLink()?.id??(queuedHand?.action==="offer"?queuedHand.id:null);
   if(linkId){queuedHand={action:"release",id:linkId};changeLinks(links);}
-  transitDialog.close();setMap(false);riding=true;resetInput();sound.bus(null);sound.plazaShow(null);
+  transitDialog.close();setMap(false);riding=true;resetInput();sound.bus(null);sound.plazaShow(null);sound.rain(0);
   Object.assign(me,{vx:0,vy:0,blocked:false,running:false});dirty=true;wakeSync();
   $("transit-title").textContent=area;
   $("transit-line").textContent=line;
@@ -1627,7 +1678,7 @@ $("pet-cat").addEventListener("click",()=>{
   dirty=true;nextCat=time+9000;sound.meow();focusGame();
 });
 $("take-item").addEventListener("click",()=>{
-  if(!session||me.seat!=null)return;
+  if(!session||me.seat!=null||picnicInventoryBusy())return;
   const station=nearbyStation(),time=gameTime();
   if(!station||station.kind===me.item?.kind||queuedFeed||clinkLocked(time)||me.item&&time-me.item.started<ITEMS[me.item.kind].duration)return;
   const spec=ITEMS[station.kind];
@@ -1703,7 +1754,7 @@ function clinkLocked(time){
   return Boolean(clink?.startedAt&&clink.endsAt>time);
 }
 function clinkCandidate(time){
-  if(!canClink(me,time)||myLink()||queuedHand||feedingLocked(time)||riding||jumpLift(me,time)>0)return null;
+  if(!canClink(me,time)||myLink()||queuedHand||picnicInventoryBusy()||feedingLocked(time)||riding||jumpLift(me,time)>0)return null;
   let best=null,closest=CLINK_REACH;
   const indoors=isInsideMuseum(me.x,me.y);
   for(const person of people.values()){
@@ -1780,12 +1831,24 @@ for(const action of ["accept","decline"])$("clink-"+action).addEventListener("cl
   if(!clink||clink.to!==session.id||clink.startedAt||queuedClink)return;
   queuedClink={action,id:clink.id};wakeSync();focusGame();
 });
+function picnicInventoryBusy(){
+  return queuedPicnic?.action==="place"||queuedPicnic?.action==="take";
+}
+function canPicnic(time){
+  return Boolean(session&&world&&!riding&&!me.bus&&!isCycling(me)&&!queuedBus&&!queuedBike&&
+    me.seat==null&&!myLink()?.active&&!feedingLocked(time)&&!clinkLocked(time)&&time-me.jump>=JUMP_MS);
+}
+$("picnic").addEventListener("click",()=>{
+  if(!canPicnic(gameTime()))return;
+  resetInput();picnic.open(me);
+});
 function updateActivities(time,guideNearby){
   if(me.item&&me.item.remaining===0&&time-me.item.started>=ITEMS[me.item.kind].duration){
     me.item=null;dirty=true;
   }
   const eligible=world&&session&&!me.bus&&!isCycling(me)&&!queuedBus&&!queuedBike;
   updateSocial(time,eligible);
+  setActivity("picnic",canPicnic(time)?picnic.label(me):null,Boolean(queuedPicnic));
   const available=eligible&&!riding&&me.seat==null&&!myLink()?.active;
   const venue=available&&!minigames.active()&&minigames.nearby(me);
   const arrows=venue?.id==="tuho"&&near(minigamePickup(venue),me.x,me.y)<=MINIGAME_PICKUP_REACH&&!minigames.arrows();
@@ -1797,7 +1860,7 @@ function updateActivities(time,guideNearby){
   const landmark=eligible&&nearbyPalaceGuide(me);
   setActivity("landmark-guide",landmark?"설명 읽기":null);
   if(landmark)attr($("landmark-guide"),"aria-label",landmark.title+" 설명 읽기");
-  $("jump").disabled=!eligible||riding||feeding||clinkLocked(time)||time-me.jump<JUMP_MS;
+  $("jump").disabled=!eligible||riding||feeding||sharingUmbrella()||clinkLocked(time)||time-me.jump<JUMP_MS;
   const atFountain=nearWishFountain();
   if($("wish").hidden===Boolean(atFountain))$("wish").hidden=$("wish").disabled=!atFountain;
   const cat=eligible&&me.seat==null&&!myLink()?.active&&world.parkLife.nearestCat(me.x,me.y);
@@ -1872,7 +1935,7 @@ function motion(now,elapsed){
   const wasMoving=moving(me)||me.blocked,wasBlocked=me.blocked,wasRunning=me.running;
   const leader=follower&&people.get(link.leader);
   // Wading through a pond is slow going, and there is no running in the water.
-  const wading=waterDepth(me.x,me.y)>0,pace=(runToggled||shiftHeld)&&!wading;
+  const wading=waterDepth(me.x,me.y)>0,pace=(runToggled||shiftHeld)&&!wading&&!(isUmbrellaLink(link)&&link.active);
   const speed=elapsed*(isCycling(me)?9.4:wading?1.1:pace?6.675:2.58);
   let blocked=false;
   if(leader){
@@ -1907,10 +1970,10 @@ function motion(now,elapsed){
   return leader?leader.stepping||moved:moved||blocked;
 }
 function actors(now,stepping){
-  const self={...me,id:session?.id||"preview",stepping},others=new Map();
+  const self={...me,id:session?.id||"preview",stepping,catFriends:passport.friendlyCatIds()},others=new Map();
   for(const person of people.values()){
     others.set(person.id,{...person.avatar,...person.position,id:person.id,nickname:person.nickname,
-      coat:person.coat,stepping:person.stepping,running:person.running});
+      coat:person.coat,stepping:person.stepping,running:person.running,sharedUmbrella:0,umbrellaShelter:null});
   }
   function actor(id){return id===self.id?self:others.get(id);}
   for(const link of links){
@@ -1918,7 +1981,14 @@ function actors(now,stepping){
     const leader=actor(link.leader),follower=actor(link.follower);
     if(!leader||!follower||leader.bus||follower.bus||isCycling(leader)||isCycling(follower))continue;
     if(follower!==self)Object.assign(follower,pairedPose(link,leader,follower,now));
-    leader.hand=-link.side;follower.hand=link.side;
+    if(isUmbrellaLink(link)){
+      if(!leader.umbrella||!leader.umbrellaReady||!follower.umbrellaReady||
+        near(leader,follower.x,follower.y)>1.55||isInsideMuseum(leader.x,leader.y)||isInsideMuseum(follower.x,follower.y))continue;
+      leader.sharedUmbrella=-link.side;follower.umbrella=false;
+      leader.umbrellaShelter=follower.umbrellaShelter={x:(leader.x+follower.x)/2,y:(leader.y+follower.y)/2};
+    }else{
+      leader.hand=-link.side;follower.hand=link.side;
+    }
     follower.stepping=leader.stepping;follower.running=leader.running;
   }
   const time=gameTime(now);
@@ -1940,7 +2010,10 @@ function preferredNearbyAction(time){
   if(!bike.hidden&&!bike.disabled)return "bike-action";
   if(isCycling(me)&&!park.hidden&&!park.disabled)return "bike-park";
   if(me.seat!=null)return "sit";
-  if(myLink()?.active)return "hand";
+  const link=myLink();
+  if(link?.active)return isUmbrellaLink(link)?"share-umbrella":"hand";
+  if(!$("picnic").hidden&&(picnic.nearby(me)||me.item?.remaining&&isPicnicItem(me.item.kind)))return "picnic";
+  if(!$("share-umbrella").hidden&&!$("share-umbrella").disabled)return "share-umbrella";
   if(!$("minigame").hidden)return "minigame";
   if(joinablePhoto(time))return "photo-join";
   if(fountainShow?.endsAt>time&&atShowControls())return "fountain-show";
@@ -1989,7 +2062,7 @@ function frame(now){
   }
   lastScene={me:self,peers:[...others.values()],parkedBikes,view:ownView,firstPerson:firstPerson&&!photoMode.camera,
     photoCamera:photoMode.camera,environment,guideNearby,destination:course.at(-1),clock:time,fountainShow,
-    minigames:minigames.states(),minigameAction:minigames.localAction(),
+    minigames:minigames.states(),minigameAction:minigames.localAction(),picnics:picnic.states(),
     minigameFree:minigameKiteCuts.concat(minigames.freeStates()),
     minigameAimPreview:minigames.aimPreview()};
   world?.render(lastScene,now);

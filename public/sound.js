@@ -4,7 +4,7 @@ import {PLAZA_SHOW_BEAT_MS,PLAZA_SHOW_BEATS,PLAZA_SHOW_DURATION_MS,PLAZA_SHOW_HE
 // transit chimes, passing buses and the guard drum. Everything is generated with Web Audio, so there are no
 // audio files to load. Sound starts on the first tap or key press, as browsers require.
 export function makeSound(){
-  let context=null,master=null,noise=null,engine=null,engineStop=null,show=null;
+  let context=null,master=null,noise=null,engine=null,engineStop=null,show=null,rainfall=null,rainStop=null;
   let enabled=localStorage.getItem("jeongdong-sound")!=="off";
   const fraction=value=>Math.max(0,Math.min(1,Number.isFinite(value)?value:0));
   function ready(){
@@ -70,6 +70,31 @@ export function makeSound(){
     engine.tireLevel.gain.setTargetAtTime(.075+speed*.24,now,.16);
     engine.muffler.frequency.setTargetAtTime(inside?155+speed*115:265+speed*350,now,.19);
     engine.volume.gain.setTargetAtTime(proximity*(inside?.085:.115)*(.68+speed*.32),now,.11);
+  }
+  function stopRain(){
+    clearTimeout(rainStop);rainStop=null;
+    if(!rainfall)return;
+    const {source,filter,volume}=rainfall;
+    source.stop();source.disconnect();filter.disconnect();volume.disconnect();rainfall=null;
+  }
+  function rain(strength,covered=false){
+    const ctx=playing(),amount=fraction(strength);
+    if(!ctx||amount<.02){
+      if(rainfall&&rainStop===null){
+        rainfall.volume.gain.setTargetAtTime(0,context.currentTime,.09);
+        rainStop=setTimeout(stopRain,440);
+      }
+      return;
+    }
+    if(!rainfall){
+      const source=ctx.createBufferSource(),filter=ctx.createBiquadFilter(),volume=ctx.createGain();
+      source.buffer=noise;source.loop=true;filter.type="lowpass";filter.Q.value=.32;
+      volume.gain.value=0;source.connect(filter);filter.connect(volume);volume.connect(master);source.start();
+      rainfall={source,filter,volume};
+    }
+    clearTimeout(rainStop);rainStop=null;
+    rainfall.filter.frequency.setTargetAtTime(covered?760:3600,ctx.currentTime,.18);
+    rainfall.volume.gain.setTargetAtTime(amount*(covered?.036:.095),ctx.currentTime,.15);
   }
   // A short burst of filtered noise: the body of a footstep, a splash or a drum.
   function burst({type="lowpass",frequency=900,q=1,gain=.2,attack=.004,decay=.09,rate=1}){
@@ -148,10 +173,10 @@ export function makeSound(){
     toggle(){
       enabled=!enabled;localStorage.setItem("jeongdong-sound",enabled?"on":"off");
       if(enabled)ready();
-      else{stopEngine();stopShow();context?.suspend().catch(()=>{});}
+      else{stopEngine();stopShow();stopRain();context?.suspend().catch(()=>{});}
       return enabled;
     },
-    bus,plazaShow,
+    bus,plazaShow,rain,
     busking(note,proximity){
       const gain=.072*fraction(proximity)**1.8;
       if(note==null||gain<.001)return;

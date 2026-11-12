@@ -68,7 +68,7 @@ export function makeFirstPersonView(T,createItemProp){
     const motion=walking?(position.blocked?.40:1):0;
     stride=mix(stride,motion,1-Math.exp(-delta*11));
     phase+=delta*(position.running?16:10.4);
-    const {claspSide,item,spec,itemAge,carrying,feedAge,feeding,petAge,petting,itemSide,waveSide}=
+    const {claspSide,item,spec,itemAge,carrying,feedAge,feeding,petAge,petting,itemSide,waveSide,umbrellaHand}=
       avatarHands(position,clock,{riding,seated,walking});
     const spark=carrying&&item.kind==="sparkler";
     const use=carrying&&!spark&&item.kind!=="churu"?ease(Math.min(itemAge/235,(spec.duration-itemAge)/300)):0;
@@ -82,7 +82,7 @@ export function makeFirstPersonView(T,createItemProp){
       toastDirection=Math.sin(cheersEvent.heading*Math.PI/180-Math.atan2(direction.x,-direction.z));
     }
     const waveAge=clock-position.wave;
-    const waving=!cheers&&!riding&&waveAge>=0&&waveAge<2450&&!petting&&!feeding&&!(claspSide&&carrying);
+    const waving=!umbrellaHand&&!cheers&&!riding&&waveAge>=0&&waveAge<2450&&!petting&&!feeding&&!(claspSide&&carrying);
     const wave=waving?ease(Math.min(waveAge/270,(2450-waveAge)/360)):0;
     lap.visible=seated;handlebar.visible=riding;itemPivot.visible=carrying;
     for(const [i,arm] of forearms.entries()){
@@ -90,14 +90,15 @@ export function makeFirstPersonView(T,createItemProp){
       const step=Math.sin(phase+side*Math.PI/2)*stride,bob=seated||riding?0:Math.sin(phase*2)*stride;
       // The camera faces -Z, so its horizontal axis is the reverse of the avatar's.
       const avatarSide=-side;
-      const holding=carrying&&avatarSide===itemSide,waveHand=waving&&avatarSide===waveSide;
+      const holding=carrying&&avatarSide===itemSide,waveHand=waving&&avatarSide===waveSide,holdingUmbrella=avatarSide===umbrellaHand;
       let x=side*(seated?.48:.70),y=seated?-.80:-.73,z=seated?.74:.72;
       if(riding){x=side*.62;y=-.63+Math.sin(now*.010)*.014;z=.83;}
       else if(holding){
         const lift=Math.max(use,cheers),feedingPose=feeding?ease(Math.min(feedAge/270,(FEED_MS-feedAge)/290)):0;
         x=side*mix(.54,.28,lift)+.14*cheers*toastDirection;
         y=mix(-.67,-.39,lift)-.18*feedingPose;z=mix(.76,.62,use)+.13*cheers+.12*feedingPose;
-      }else if(waveHand){x=side*mix(.68,.57,wave);y=mix(-.73,-.05,wave);z=.74;}
+      }else if(holdingUmbrella){x=side*.58;y=-.53;z=.76;}
+      else if(waveHand){x=side*mix(.68,.57,wave);y=mix(-.73,-.05,wave);z=.74;}
       else if(petting&&avatarSide===1){x=side*.36;y=-.68+Math.sin(petAge*.017)*.06;z=.93;}
       else if(avatarSide===claspSide){x=side*.83;y=-.68;z=.83;}
       else if(walking){y+=step*(position.running?.15:.095);z+=step*.048;}
@@ -116,7 +117,7 @@ export function makeFirstPersonView(T,createItemProp){
       palm.position.copy(wrist);palm.scale.setScalar(size);
       palm.rotation.set(riding?-.93:holding?-.28:waveHand?-.09:-.55,
         side*(holding?.39:.21),side*(riding?.08:.32)+(waveHand?Math.sin(waveAge*.017)*wave*.40:0));
-      for(const finger of fingers)finger.rotation.x=riding||holding?-1.07:waveHand?-.16:-.52;
+      for(const finger of fingers)finger.rotation.x=riding||holding||holdingUmbrella?-1.07:waveHand?-.16:-.52;
       if(holding){
         itemPivot.position.copy(wrist);itemPivot.position.x-=side*.050*size;
         itemPivot.position.y+=.002*size;itemPivot.position.z-=.036*size;

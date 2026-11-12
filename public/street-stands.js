@@ -27,6 +27,14 @@ const shopPlots=shops.map(shop=>{
   return {shop,x,y,sideX,sideY,angle:-Math.atan2(dy,dx),centerX:x+sideX*offset,centerY:y+sideY*offset};
 });
 const sparklerStand={x:stoneFountain.x+8.1,y:stoneFountain.y+9.8};
+export function underDoldamAwning(point){
+  return shopPlots.some(({shop,centerX,centerY,angle})=>{
+    if(shop.kind==="churu")return false;
+    const dx=point.x-centerX,dy=point.y-centerY;
+    const c=Math.cos(angle),s=Math.sin(angle),front=dx*s+dy*c-shop.depth/2;
+    return Math.abs(dx*c-dy*s)<shop.width*.395&&front>.14&&front<1.17;
+  });
+}
 // Include the roof trim, sidewalk platform and awning over the shop's front.
 export const standPlantingFootprints=[
   ...shopPlots.map(({shop,centerX,centerY,sideX,sideY,angle})=>({

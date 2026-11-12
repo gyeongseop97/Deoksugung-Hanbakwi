@@ -692,7 +692,7 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
     const walking = Boolean(position.stepping && !seat && !riding && jump<.06);
     const running = walking && Boolean(position.running);
     const waveAge = (clock - position.wave) / 1000;
-    const {claspSide,item,spec,itemAge,carrying,feedAge,feeding,petAge,petting:pet,itemSide,waveSide} =
+    const {claspSide,item,spec,itemAge,carrying,feedAge,feeding,petAge,petting:pet,itemSide,waveSide,umbrellaHand} =
       avatarHands(position,clock,{riding,seated:Boolean(seat),walking});
     const feedPose = feeding ? smooth(Math.min(feedAge/320,(FEED_MS-feedAge)/360)) : 0;
     const petPose = pet ? smooth(Math.min(petAge/235,(PET_MS-petAge)/275)) : 0;
@@ -700,10 +700,10 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
     const clink=carrying&&!seat&&!claspSide&&clinkAge>=0&&clinkAge<CLINK_DURATION_MS
       ? smooth(Math.min(clinkAge/600,(CLINK_DURATION_MS-clinkAge)/730)) : 0;
     const contact=clink?Math.max(0,1-Math.abs(clinkAge-900)/170)*.045:0;
-    const waving = !clink && !riding && waveAge >= 0 && waveAge < 2.45 && !pet && !feeding && !(claspSide && carrying);
+    const waving = !umbrellaHand && !clink && !riding && waveAge >= 0 && waveAge < 2.45 && !pet && !feeding && !(claspSide && carrying);
     const waveLift = waving ? smooth(Math.min(waveAge/.27,(2.45-waveAge)/.36)) : 0;
     const umbrellaSide=position.umbrella&&!riding&&!position.bus&&!pet
-      ?SIDE.find(side=>side!==claspSide&&(!carrying||side!==itemSide)&&(!waving||side!==waveSide)):undefined;
+      ?umbrellaHand||SIDE.find(side=>side!==claspSide&&(!carrying||side!==itemSide)&&(!waving||side!==waveSide)):undefined;
 
     const facing = Math.PI - (seat?.heading ?? position.clink?.heading ?? position.heading ?? 252) * Math.PI/180;
     const turn = facing - group.rotation.y;
@@ -828,6 +828,7 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
         x = clasp.x; y = clasp.y; z = clasp.z;
       } else if (side === umbrellaSide) {
         x=side*.288;y=.385+seated*.075;z=.205;
+        if(umbrellaHand&&side!==position.sharedUmbrella){x=position.sharedUmbrella*.065;z=.34;}
         pole.set(side*.67,-.32,-.33);
       } else if (waving && side === waveSide) {
         x = mix(x,side*(.590+Math.sin(waveAge*17)*.075),waveLift);
@@ -863,7 +864,10 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
       model.umbrella.visible=Boolean(umbrellaSide);
       if(umbrellaSide){
         model.umbrella.position.copy(arms[umbrellaSide===1?1:0].target);
-        model.umbrella.rotation.set(-.073,0,umbrellaSide*.20+pendulum*sway*.035);
+        const tilt=umbrellaHand?-position.sharedUmbrella*(umbrellaHand===position.sharedUmbrella?.13:.30):umbrellaSide*.20;
+        model.umbrella.rotation.set(-.073,0,tilt+pendulum*sway*.035);
+        const width=umbrellaHand?1.35:1;
+        model.umbrella.scale.set(width,1,width);
       }
     }
     itemPivot.visible = carrying;

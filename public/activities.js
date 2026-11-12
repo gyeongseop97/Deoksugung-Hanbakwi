@@ -33,5 +33,8 @@ export function avatarHands(avatar,clock,{riding,seated,walking}){
   // The avatar faces local +Z, so local +X is the avatar's left hand.
   const itemSide=claspSide?-claspSide:petting?-1:1;
   const waveSide=claspSide?-claspSide:carrying?-1:1;
-  return {claspSide,item,spec,itemAge,carrying,feedAge,feeding,petAge,petting,itemSide,waveSide};
+  const sharedSide=avatar.sharedUmbrella;
+  const umbrellaHand=sharedSide===1||sharedSide===-1
+    ?carrying&&itemSide===sharedSide?-sharedSide:sharedSide:0;
+  return {claspSide,item,spec,itemAge,carrying,feedAge,feeding,petAge,petting,itemSide,waveSide,umbrellaHand};
 }

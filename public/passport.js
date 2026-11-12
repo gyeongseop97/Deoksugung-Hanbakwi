@@ -83,6 +83,15 @@ export function bindPassport({getLook,applyLook,getProfile,applyProfile,listPhot
   try{storage=localStorage;}catch{}
   const progress=makePassportProgress(storage);
   let room=null,tab="stamps",busy=false,mapHandoff=false;
+  let friendlyData,friendlyRoom,friendlyIds=[];
+  function friendlyCatIds(){
+    const data=progress.data();
+    if(data!==friendlyData||room!==friendlyRoom){
+      friendlyData=data;friendlyRoom=room;
+      friendlyIds=data.cats.filter(cat=>cat.room===room&&isFriendlyCat(cat)).map(cat=>cat.id).sort().slice(0,64);
+    }
+    return friendlyIds;
+  }
   const element=(tag,className,text)=>{
     const node=document.createElement(tag);
     if(className)node.className=className;
@@ -152,8 +161,10 @@ export function bindPassport({getLook,applyLook,getProfile,applyProfile,listPhot
         star.addEventListener("click",()=>{progress.toggleFavorite(cat.room,cat.id);render();});
         card.append(copy,element("span","passport-cat-badge",friendly?"친구":"친해지는 중"),star);return card;
       });
-      if(!rows.length)rows.push(element("p","passport-description","같은 고양이를 세 번 쓰다듬거나 간식을 한 번 주면 친구가 돼요."));
-      $("passport-cats").replaceChildren(...rows);
+      const tip=cats.some(isFriendlyCat)?
+        "친해진 고양이 근처에서 잠깐 멈춰 보세요. 먼저 다가와 몸을 비비거나 곁에서 쉬기도 해요.":
+        "같은 고양이를 세 번 쓰다듬거나 간식을 한 번 주면 친구가 돼요.";
+      $("passport-cats").replaceChildren(element("p","passport-description",tip),...rows);
     }
   }
   function recordCat(id,name,action,token){
@@ -250,7 +261,7 @@ export function bindPassport({getLook,applyLook,getProfile,applyProfile,listPhot
   });
   return {
     visit,visited:id=>Boolean(progress.data().stamps[id]),visitedIds:()=>Object.keys(progress.data().stamps),
-    setRoom:value=>{room=value;},petCat:(id,name,token)=>recordCat(id,name,"pet",token),feedCat:(id,name,token)=>recordCat(id,name,"feed",token),
+    setRoom:value=>{room=value;},friendlyCatIds,petCat:(id,name,token)=>recordCat(id,name,"pet",token),feedCat:(id,name,token)=>recordCat(id,name,"feed",token),
     open(){selectTab("stamps");show(journal);},nearRental:nearHanbokRental,openRental(){
       $("return-hanbok").hidden=!progress.data().rental;show(rental);
     },returnRental,openTransfer,saveRecord,

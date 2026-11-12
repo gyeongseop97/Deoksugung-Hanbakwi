@@ -3,6 +3,7 @@ const FALL_SHADER = `
   uniform vec2 anchor, wind;
   uniform vec3 umbrella;
   uniform float clock, baseHeight, shelter, pixelRatio, strength;
+  uniform vec2 shelterSize;
   varying float opacity;
   void main() {
     float snow = float(IS_SNOW);
@@ -17,8 +18,8 @@ const FALL_SHADER = `
     world.y += position.x * (.25 + particle.w * .27) * (1. - snow);
     world.xz -= position.x * wind * .022 * (1. - snow);
     float distanceFromCamera = length(horizontal);
-    float underUmbrella = 1. - shelter * (1. - smoothstep(.52, .79, length(world.xz - umbrella.xz))) *
-      (1. - smoothstep(1.69, 1.86, world.y - umbrella.y));
+    float underUmbrella = 1. - shelter * (1. - smoothstep(shelterSize.x - .27, shelterSize.x, length(world.xz - umbrella.xz))) *
+      (1. - smoothstep(shelterSize.y - .17, shelterSize.y, world.y - umbrella.y));
     vec4 cameraPoint = viewMatrix * vec4(world, 1.);
     opacity = (1. - smoothstep(10., 14.8, distanceFromCamera)) * underUmbrella *
       smoothstep(.30, 1.2, -cameraPoint.z) * mix(.35, .85, particle.w) * strength;
@@ -66,6 +67,7 @@ export function addSeoulPrecipitation(T, parent) {
     const uniforms = {
       anchor: { value: new T.Vector2() }, wind: { value: new T.Vector2() }, umbrella: { value: new T.Vector3() },
       clock: { value: 0 }, baseHeight: { value: 0 }, shelter: { value: 0 }, strength: { value: 0 },
+      shelterSize: { value: new T.Vector2(.79,1.86) },
       pixelRatio: { value: 1 }, tint: { value: new T.Color() }
     };
     const material = new T.ShaderMaterial({
@@ -82,7 +84,7 @@ export function addSeoulPrecipitation(T, parent) {
   const rain = build(false, 1050);
   const snow = build(true, 720);
   return function update({ x, z, floor, walkerX=x, walkerZ=z, walkerFloor=floor,
-    clock, atmosphere, sheltered, inside, sparse, pixelRatio, night }) {
+    clock, atmosphere, sheltered, sharedShelter, inside, sparse, pixelRatio, night }) {
     function draw(effect, amount, dayColor, nightColor, alpha) {
       const { mesh, geometry, uniforms, count, vertices } = effect;
       mesh.visible = !inside && amount > .018;
@@ -94,6 +96,7 @@ export function addSeoulPrecipitation(T, parent) {
       uniforms.clock.value = (clock % 3600000) / 1000;
       uniforms.baseHeight.value = floor;
       uniforms.shelter.value = Number(sheltered);
+      uniforms.shelterSize.value.set(sharedShelter?1.06:.79,sharedShelter?2.28:1.86);
       uniforms.pixelRatio.value = pixelRatio;
       uniforms.strength.value = alpha * Math.min(1, amount * 1.7);
       uniforms.tint.value.copy(dayColor).lerp(nightColor, night);

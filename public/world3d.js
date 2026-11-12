@@ -7,7 +7,7 @@ import { addPalaceBirds } from "./palace-birds.js";
 import { addPalaceSky } from "./palace-sky.js";
 import { resolveSeoulEnvironment } from "./seoul-environment.js";
 import { addSeoulPrecipitation, makeSeasonFoliage } from "./seoul-weather-scene.js";
-import { addStands, addRegionalStands, makeItemProps, regionalStations, registerRegionalStands } from "./street-stands.js";
+import { addStands, addRegionalStands, makeItemProps, regionalStations, registerRegionalStands, underDoldamAwning } from "./street-stands.js";
 import { registerHanbokRental } from "./passport-data.js";
 import { addHanbokRental } from "./wearables-models.js";
 import { assembleMuseum, registerMuseumNavigation, isInsideMuseum, museumOutsideDoor, museumInsideDoor, museumInsideSpawn, stairHeight } from "./museum.js";
@@ -29,6 +29,7 @@ import { buildSejongBusModels } from "./sejong-bus-model.js";
 import { BUS_FLOOR, busAt, busSeatPose } from "./sejong-bus.js";
 import { addPalacePeople } from "./palace-people.js";
 import { addStreetPeople } from "./street-people.js";
+import { makePicnicWorld } from "./picnic-world.js";
 import { decodeWishFace, WISH_WIDTH, WISH_HEIGHT, WISH_COLORS, WISH_FLIGHT_MS } from "./wish-art.js";
 
 export function makeWorld(container,{onCatFlee,catSeed}={}) {
@@ -162,8 +163,9 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
   const stations=[...addStands(T,transportRoot,makeKit(transportRoot)),...regionalStations];
   outdoors.add(deoksRoot,corridorRoot,transportRoot);
   const createItemProp=makeItemProps(T,kit);
+  const picnicWorld=makePicnicWorld(T,outdoors,kit,floorHeight,createItemProp);
   const walkerModels=makeWalkerModels(T,scene,kit,createItemProp);
-  let firstPersonView;
+  let firstPersonView,firstPersonUmbrella;
   const spotLights=[gate,middle,stoneHall].map((point,i)=>{
     const light=new T.PointLight(0xffc47f,0,i===2?55:30,2);
     light.position.set(wx(point.x)+(i===0?7:0),i===2?4.5:2.6,wz(point.y)+(i===0?2:i===2?22:9));
@@ -601,6 +603,7 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     const anchor=me,angle=view.pan*Math.PI/180,indoors=museum.isInside(anchor.x,anchor.y),
       atPlaza=inGwanghwamunPlaza(anchor.x,anchor.y);
     if(advanceWorld(anchor,indoors))return;
+    picnicWorld.update(indoors?null:anchor,state.picnics);
     const weather=state.environment&&resolveSeoulEnvironment(state.environment,clock);
     const ease=environmentShown?Math.min(1,delta*4.2):1;
     const targetNight=weather?.night??Number(Boolean(view.night));
@@ -792,6 +795,14 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     for(const model of models.values())if(model.group.visible&&model.chatSprite)walkerModels.placeChat(model,cameraUp);
     const anchorModel=models.get(anchor.id);
     if(anchorModel&&cameraDistance<1.08)anchorModel.group.visible=false;
+    const umbrella=firstPerson&&anchor.sharedUmbrella&&anchorModel?.umbrella;
+    if(umbrella?.visible){
+      if(!firstPersonUmbrella){firstPersonUmbrella=umbrella.clone();outdoors.add(firstPersonUmbrella);}
+      umbrella.getWorldPosition(firstPersonUmbrella.position);
+      umbrella.getWorldQuaternion(firstPersonUmbrella.quaternion);
+      umbrella.getWorldScale(firstPersonUmbrella.scale);
+    }
+    if(firstPersonUmbrella)firstPersonUmbrella.visible=Boolean(umbrella?.visible);
     if(anchorModel?.emote.visible||anchorModel?.chatSprite)camera.updateMatrixWorld();
     showLocalSprite(anchorModel,anchorModel?.emote,selfEmote,me.emote?.emoji);
     showLocalSprite(anchorModel,anchorModel?.chatSprite,selfChat,anchorModel?.chatSprite?chatText(me.chat.text):"");
@@ -849,9 +860,10 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     const wet=Math.max(atmosphere.rain,atmosphere.snow)>.018;
     const photoGround=wet&&state.photoCamera?floorHeight(state.photoCamera):null;
     const walkerFloor=wet?floorHeight(anchor):0;
+    const shelter=anchor.umbrellaShelter;
     drawPrecipitation({x:camera.position.x,z:camera.position.z,floor:photoGround??walkerFloor,
-      walkerX:wx(anchor.x),walkerZ:wz(anchor.y),walkerFloor,clock,atmosphere,
-      sheltered:Boolean(anchor.umbrella),inside:indoors||Boolean(anchor.bus&&firstPerson),
+      walkerX:wx(shelter?.x??anchor.x),walkerZ:wz(shelter?.y??anchor.y),walkerFloor,clock,atmosphere,
+      sheltered:Boolean(shelter||anchor.umbrella),sharedShelter:Boolean(shelter),inside:indoors||Boolean(anchor.bus&&firstPerson),
       sparse:quality.sparse,pixelRatio:quality.pinned?quality.max:quality.ratio,night});
     renderer.render(scene,camera);
     if(firstPerson){
@@ -903,7 +915,8 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
   }
   const renderStats=()=>({...renderer.info.render,geometries:renderer.info.memory.geometries,textures:renderer.info.memory.textures,
     areas:{plaza:Boolean(plaza.chunks),palace:Boolean(palace.chunks),museum:Boolean(gallery.chunks)}});
-  return {render,pick,previewWalker,clearChat,floorHeight,groundHeight,renderStats,snapshot,capturePhoto,benches,stations,parkLife,birds,palacePeople,museum};
+  return {render,pick,previewWalker,clearChat,floorHeight,groundHeight,renderStats,snapshot,capturePhoto,
+    benches,stations,parkLife,birds,palacePeople,museum,underDoldamAwning};
 }
 
 // The world is assembled from tens of thousands of small boxes and cylinders. Drawing each

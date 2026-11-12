@@ -4,6 +4,7 @@ import {makeCatRoaming} from "./cat-roaming.js";
 import {gbBounds,gbCatTrails,gbPlazaCatTrails,gbStation} from "./gyeongbok-layout.js";
 import {createCatSocial} from "./cat-social.js";
 import {createCatHunts} from "./cat-hunt.js";
+import {createCatRecognition} from "./cat-recognition.js";
 
 const cats=[
   {id:"cheese",name:"치즈태비",size:1.04,coat:0xd5914b,mark:0x98521f,paw:0xf0d5aa,eyes:[0xa8a953,0xa8a953],pattern:"tabby"},
@@ -595,6 +596,7 @@ export function addParkLife(T,scene,kit){
   const palaceRoam=makeCatRoaming({trails:gbCatTrails,origin:gbStation.arrive,plan:false});
   const plazaRoam=makeCatRoaming({trails:gbPlazaCatTrails,origin:gbPlazaCatTrails[0][0],plan:false});
   const hunting=createCatHunts(kit.birds,clearSegment);
+  const recognizing=createCatRecognition(clearSegment);
   let seed,population,sight=39,northLoaded=!kit.deferNorth,audible=[];
   const setSparse=value=>{sight=value?24:39;};
   function buildCats(limit){
@@ -615,7 +617,7 @@ export function addParkLife(T,scene,kit){
       const model=catModel(T,scene,spec,coat,meshes);
       live.push({...spec,...path,...model,x:home.x,y:home.y,palace:index>=count,
         routeAt:null,updatedAt:null,petFrom:0,petUntil:0,petPose:null,canPet:false,escape:null,checkAt:0,
-        lure:null,lureCheckAt:0,feeding:null,pose:null,social:null,hunt:null,rejoin:null,frame:{}});
+        lure:null,lureCheckAt:0,feeding:null,pose:null,social:null,hunt:null,recognition:null,rejoin:null,frame:{}});
     }
   }
   function setSeed(value){
@@ -627,6 +629,7 @@ export function addParkLife(T,scene,kit){
     audible=[];
     social.reset();
     hunting.reset();
+    recognizing.reset();
     const hash=catSeedNumber(seed),random=randomSequence(hash);
     const count=18+Math.floor(random()*7),palaceCount=30+Math.floor(random()*7),plazaCount=4,coats=[];
     const total=count+palaceCount+plazaCount;
@@ -658,16 +661,22 @@ export function addParkLife(T,scene,kit){
     const active=live.filter(cat=>{
       if(cat.palace?gyeongbokgungNearby:deoksugungNearby)return true;
       cat.group.visible=cat.canPet=cat.feedable=false;
+      if(cat.recognition){cat.recognition=null;cat.routeAt=cat.updatedAt=null;}
       return false;
     });
     audible=anchor?active:[];
     for(const cat of active){
       const previousTime=cat.updatedAt??now,time=Math.max(now,previousTime);
       const feeding=cat.feeding&&time>=cat.feeding.at&&time<cat.feeding.until?cat.feeding:null;
+      if(cat.feeding?.resume&&!feeding&&time>=cat.feeding.until){
+        if(!cat.lure&&!cat.escape)cat.rejoin={from:cat.feeding.pose,at:time};
+        cat.feeding.resume=false;
+      }
       const held=Math.max(0,Math.min(time,cat.petUntil)-Math.max(previousTime,cat.petFrom));
       const elapsed=time-previousTime-held;
       // Hold the shared route during interactions, then regain its phase without jumping.
-      if(!cat.escape&&!cat.lure&&!feeding&&!cat.social&&!cat.hunt&&!cat.rejoin)cat.routeAt=Math.min(time,(cat.routeAt??time)+elapsed*1.28);
+      if(!cat.escape&&!cat.lure&&!feeding&&!cat.social&&!cat.hunt&&!cat.recognition&&!cat.rejoin)
+        cat.routeAt=Math.min(time,(cat.routeAt??time)+elapsed*1.28);
       cat.routeAt??=time;
       cat.updatedAt=time;
       const paused=time>=cat.petFrom&&time<cat.petUntil;
@@ -694,7 +703,7 @@ export function addParkLife(T,scene,kit){
         jump:jumping?{from:current.a,to:current.b,arc:current.arc,progress}:null
       };
       const reachable=!jumping&&surface.surface!=="wall";
-      const reaction=cat.social||cat.hunt||cat.rejoin?cat.pose??patrol:patrol;
+      const reaction=cat.social||cat.hunt||cat.recognition||cat.rejoin?cat.pose??patrol:patrol;
       if(!cat.escape&&reachable&&!reaction.jump&&!feeding&&!paused&&runners.length&&time>=cat.checkAt){
         cat.checkAt=time+110;
         const point=cat.lure?.point??reaction;
@@ -751,13 +760,16 @@ export function addParkLife(T,scene,kit){
       cat.canPet=reachable&&!retreat&&!feeding;
       cat.feedable=Boolean(cat.lure&&!cat.lure.returning&&lured&&!paused&&!feeding);
     }
-    const encounters=social.update(active.filter(cat=>!cat.hunt),now);
-    const hunts=hunting.update(active,now,encounters);
+    const greetings=recognizing.update(active,walkers,now);
+    const roaming=greetings.size?active.filter(cat=>!greetings.has(cat.id)):active;
+    const encounters=social.update(roaming.filter(cat=>!cat.hunt),now);
+    const hunts=hunting.update(roaming,now,encounters);
     for(const cat of active){
       const {time,feeding,paused,onBench,atTree,landTime,seconds,current,patrol,retreat}=cat.frame;
       cat.social=encounters.get(cat.id)??null;
       cat.hunt=hunts.get(cat.id)??null;
-      const pose=cat.hunt??(cat.social?{...cat.pose,...cat.social}:cat.pose);
+      cat.recognition=greetings.get(cat.id)??null;
+      const pose=cat.recognition??cat.hunt??(cat.social?{...cat.pose,...cat.social}:cat.pose);
       const {x,y,heading,stride,jump,leap,moving,sprint}=pose;
       cat.pose=pose;
       cat.x=x;cat.y=y;
@@ -771,7 +783,9 @@ export function addParkLife(T,scene,kit){
       const breath=Math.sin(time*.003+cat.offset);
       const petting=paused&&!feeding?Math.min(1,(time-cat.petFrom)/160,(cat.petUntil-time)/270):0;
       const gait=moving?Math.min(1,(time-cat.petUntil)/180)*(sprint?1.18:1):0;
-      const loaf=onBench&&pose===patrol?Math.max(0,Math.min(1,(landTime-.20)/.44,(current.end-seconds)/.38)):0;
+      const benchLoaf=onBench&&pose===patrol?Math.max(0,Math.min(1,(landTime-.20)/.44,(current.end-seconds)/.38)):0;
+      const greetingLoaf=cat.recognition?.loaf??(cat.petPose?.loaf??0)*(1-Math.min(1,(time-cat.petFrom)/300));
+      const loaf=Math.max(benchLoaf,greetingLoaf);
       const scratch=atTree&&!paused&&pose===patrol?
         Math.max(0,Math.min(1,(landTime-.20)/.38,(current.end-seconds)/.34)):0;
       const eating=feeding?Math.min(1,(time-feeding.at)/220,(feeding.until-time)/260):0;
@@ -784,6 +798,8 @@ export function addParkLife(T,scene,kit){
       const rising=(cat.petPose?.crouch??0)*(1-Math.min(1,(time-cat.petFrom)/180));
       const crouch=cat.hunt?.crouch??rising,wiggle=cat.hunt?.wiggle??0,pounce=cat.hunt?.pounce??0;
       const scan=cat.hunt?.scan??0;
+      const familiarLean=cat.recognition?.lean??0,familiarLift=cat.recognition?.lift??0;
+      const tailUp=cat.recognition?.tail??0;
       const tuck=Math.max(loaf,leap*.72);
       cat.upper.position.set(-wiggle*.050,Math.sin(stride*2)*.009*gait+breath*.005+petting*.023-loaf*.165+
         scratch*.20-eating*.033+nuzzle*.03+swat*.055-crouch*.119,scratch*.26);
@@ -791,17 +807,18 @@ export function addParkLife(T,scene,kit){
       cat.upper.rotation.x=jump?leap*(heightAt(jump.to)>heightAt(jump.from)?-.34:.32):
         (sprint?.075:0)-scratch*.90-swat*.24+crouch*.14;
       cat.upper.rotation.y=wiggle*.20;
-      cat.upper.rotation.z=nuzzle*(cat.social?.side??0)*.23-swat*(cat.social?.side??0)*.16;
+      cat.upper.rotation.z=nuzzle*(cat.social?.side??0)*.23-swat*(cat.social?.side??0)*.16+familiarLean*.24;
       cat.head.rotation.x=petting*(-.27+Math.sin(time*.007)*.07)+(moving?.030:breath*.032)+
-        eating*(.29+.12*Math.sin(time*.018))+greeting*.19-swat*.11+crouch*.06-scan*.38;
-      cat.head.rotation.y=-wiggle*.18;
-      cat.head.rotation.z=petting*.16+nuzzle*(cat.social?.side??0)*.22;
-      cat.eyes.scale.y=1-Math.max(petting*.89,loaf*.58,eating*.64,greeting*.55);
+        eating*(.29+.12*Math.sin(time*.018))+greeting*.19-swat*.11+crouch*.06-scan*.38-familiarLift*.25;
+      cat.head.rotation.y=-wiggle*.18+(cat.recognition?.gaze??0);
+      cat.head.rotation.z=petting*.16+nuzzle*(cat.social?.side??0)*.22+familiarLean*.22;
+      cat.eyes.scale.y=1-Math.max(petting*.89,loaf*.58,eating*.64,greeting*.55,Math.abs(familiarLean)*.56);
       const wag=Math.sin(time*.005+cat.offset)*(.25+petting*.12-loaf*.17);
       const lift=-.06+Math.cos(time*.004)*.08+petting*.14-loaf*.99;
       cat.tail.position.set(loaf*.08,.312,-.240+loaf*.08);
       cat.tail.scale.setScalar(1-loaf*.27);
-      cat.tail.rotation.set(lift-greeting*.44-crouch*.48,wag+loaf*2.45+play*Math.sin(time*.022)*.35+wiggle*.54,0,"YXZ");
+      cat.tail.rotation.set(lift-greeting*.44-crouch*.48+tailUp*.56,
+        wag+loaf*2.45+play*Math.sin(time*.022)*.35+wiggle*.54+tailUp*.19,0,"YXZ");
       cat.shadow.visible=!jump&&(!onBench||Boolean(retreat));
       cat.paws.visible=loaf<.96;
       if(!cat.paws.visible)continue;
@@ -863,7 +880,7 @@ export function addParkLife(T,scene,kit){
     const cat=live.find(candidate=>candidate.id===id);
     const until=at+PET_MS;
     if(!cat?.canPet||!Number.isFinite(at)||until<cat.petFrom)return;
-    if((cat.social||cat.hunt)&&!cat.petPose)cat.petPose={...cat.pose,moving:false};
+    if((cat.social||cat.hunt||cat.recognition)&&!cat.petPose)cat.petPose={...cat.pose,moving:false};
     cat.petFrom=at>cat.petUntil?at:Math.min(cat.petFrom,at);
     cat.petUntil=Math.max(cat.petUntil,until);
   }
@@ -876,7 +893,7 @@ export function addParkLife(T,scene,kit){
     if(overlaps&&(at>previous.at||at===previous.at&&playerId>previous.playerId))return false;
     if(previous&&!overlaps&&at<previous.at)return false;
     const {x,y,height,heading}=overlaps?previous.pose:cat.pose;
-    cat.feeding={at,until,playerId,pose:{x,y,height,heading}};
+    cat.feeding={at,until,playerId,pose:{x,y,height,heading},resume:Boolean(cat.recognition||previous?.resume&&overlaps)};
     cat.feedable=false;cat.canPet=false;
     return true;
   }
@@ -884,12 +901,14 @@ export function addParkLife(T,scene,kit){
     audible=[];
     social.reset();
     hunting.reset();
+    recognizing.reset();
     for(const cat of live){
       cat.routeAt=null;cat.updatedAt=null;
       cat.petFrom=0;cat.petUntil=0;cat.canPet=false;
       cat.escape=null;cat.checkAt=0;
       cat.lure=null;cat.lureCheckAt=0;cat.feedable=false;
-      cat.feeding=null;cat.pose=null;cat.approach=null;cat.social=null;cat.hunt=null;cat.petPose=null;cat.rejoin=null;
+      cat.feeding=null;cat.pose=null;cat.approach=null;cat.social=null;cat.hunt=null;cat.recognition=null;
+      cat.petPose=null;cat.rejoin=null;
     }
   }
   // How many cats live on each map (used when checking a build).
