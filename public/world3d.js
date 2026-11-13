@@ -30,6 +30,13 @@ import { BUS_FLOOR, busAt, busSeatPose } from "./sejong-bus.js";
 import { addPalacePeople } from "./palace-people.js";
 import { addStreetPeople } from "./street-people.js";
 import { makePicnicWorld } from "./picnic-world.js";
+import { buildSubwayAccess,registerExpandedSubway } from "./subway-expansion.js";
+import { jeongdongExtensionBounds,registerJeongdongExtension } from "./jeongdong-extension-layout.js";
+import { buildJeongdongExtension } from "./jeongdong-extension.js";
+import { bukchonBounds,bukchonWalkable,bukchonGroundHeight } from "./bukchon-layout.js";
+import { buildBukchon } from "./bukchon.js";
+import { hwangudanBounds,hwangudanWalkable,hwangudanFloorHeight,registerHwangudanNavigation } from "./seoul-hwangudan-layout.js";
+import { assembleHwangudan } from "./seoul-hwangudan.js";
 import { decodeWishFace, WISH_WIDTH, WISH_HEIGHT, WISH_COLORS, WISH_FLIGHT_MS } from "./wish-art.js";
 
 export function makeWorld(container,{onCatFlee,catSeed}={}) {
@@ -149,6 +156,9 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
   const {benches,trees,catWalls,fountains,lampMaterial,classical,middleModel,hallModel,drawPond,pavilionModels,buildGyeongbokDistrict}=
     buildJeongdong(T,deoksRoot,makeKit(deoksRoot),{deferGyeongbok:true});
   buildSejongCorridor(T,corridorRoot,makeKit(corridorRoot));
+  registerJeongdongExtension();
+  registerHwangudanNavigation();
+  buildJeongdongExtension(T,deoksRoot,makeKit(deoksRoot));
   registerBikeDocks();
   const addDocks=(root,where)=>buildBikeDocks(T,root,makeKit(root),{docks:bikeDocks.filter(where),register:false});
   addDocks(deoksRoot,dock=>dock.y>=28);
@@ -157,6 +167,7 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
   registerPlazaNavigation(benches);
   const drawWater=addWater(T,deoksRoot,fountains,makeKit(deoksRoot));
   registerRegionalStands();
+  registerExpandedSubway();
   registerHanbokRental();
   const minigameProps=registerMinigameProps(floorHeight);
   const minigameWorld=makeMinigameWorld(T,outdoors,kit,floorHeight);
@@ -313,11 +324,11 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
   addSurvey(deoksRoot,"junghwajeon",hall,[hallModel],courtAngle);
   for(const {model,point,groups,angle} of surveyedPavilions)addSurvey(deoksRoot,model,point,groups,angle);
 
-  const deoksBounds={minX:45,maxX:560,minY:30,maxY:420};
+  const deoksBounds={minX:jeongdongExtensionBounds.minX,maxX:560,minY:jeongdongExtensionBounds.minY,maxY:420};
   const plazaRoot=new T.Group(),palaceRoot=new T.Group(),museumRoot=new T.Group();
   const deoks={root:deoksRoot,bounds:deoksBounds,chunks:deoksChunks};
   const corridor={root:corridorRoot,bounds:corridorBounds,chunks:corridorChunks};
-  let museumView,updatePlaza,northWildlife,plazaWildlife;
+  let museumView,updatePlaza,updateHwangudan,northWildlife,plazaWildlife;
   const plaza={root:plazaRoot,bounds:plazaBounds,*build(){
     const birdPerches=[];
     updatePlaza=yield* assembleGwanghwamunPlaza(T,plazaRoot,makeKit(plazaRoot),{birdPerches});
@@ -346,15 +357,34 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     scene.add(museumRoot);
     return [];
   }};
-  const districts=[deoks,corridor,plaza,palace],loading=container.querySelector("#loading-game");
+  function expansionDistrict(bounds,contains,build){
+    const root=new T.Group();
+    return {root,bounds,contains,*build(){
+      yield* build(root,makeKit(root));
+      return yield* consolidate(root,new Set(),foliage.register);
+    }};
+  }
+  const bukchon=expansionDistrict(bukchonBounds,bukchonWalkable,function*(root,localKit){
+    yield* buildBukchon(T,root,localKit);
+    addRegionalStands(T,root,localKit,"bukchon");
+  });
+  const hwangudan=expansionDistrict(hwangudanBounds,hwangudanWalkable,function*(root,localKit){
+    updateHwangudan=(yield* assembleHwangudan(T,root,localKit))?.update;
+  });
+  const stationsDistrict=expansionDistrict({minX:55,maxX:1160,minY:-965,maxY:410},()=>false,function*(root,localKit){
+    yield* buildSubwayAccess(T,root,localKit,floorHeight);
+  });
+  const expansions=[bukchon,hwangudan,stationsDistrict];
+  const districts=[deoks,corridor,plaza,palace,...expansions],loading=container.querySelector("#loading-game");
   function distanceToDistrict({x,y},{minX,maxX,minY,maxY}){
     return Math.hypot(Math.max(minX-x,0,x-maxX),Math.max(minY-y,0,y-maxY));
   }
   function advanceWorld(anchor,indoors){
-    const needed=indoors?gallery:inGyeongbok(anchor.x,anchor.y)?palace:inGwanghwamunPlaza(anchor.x,anchor.y)?plaza:null;
+    const needed=indoors?gallery:expansions.find(district=>district.contains(anchor.x,anchor.y))??
+      (inGyeongbok(anchor.x,anchor.y)?palace:inGwanghwamunPlaza(anchor.x,anchor.y)?plaza:null);
     const pending=needed&&!needed.chunks&&!needed.failed?needed:null;
     let nearby=null,gap=430;
-    if(!indoors&&!pending)for(const district of [plaza,palace]){
+    if(!indoors&&!pending)for(const district of [plaza,palace,...expansions]){
       if(district.chunks||district.failed)continue;
       const distance=distanceToDistrict(anchor,district.bounds);
       if(distance<gap){nearby=district;gap=distance;}
@@ -527,6 +557,8 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
   function groundHeight(position) {
     const plazaLevel=plazaGroundHeight(position);
     if(plazaLevel!=null)return plazaLevel;
+    const outside=bukchonGroundHeight(position)??hwangudanFloorHeight(position);
+    if(outside!=null)return outside;
     const stair=stairHeight(position);
     if(stair!=null)return stair;
     if(Math.abs(position.y-bridge.y)<3.15&&Math.abs(position.x-bridge.x)<3.6)return Math.max(0,.23-(Math.abs(position.x-bridge.x)-2.70)*.34);
@@ -693,6 +725,7 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     buses.update(clock,indoors?null:anchor);
     if(palaceRoot.parent===outdoors)for(const {material,rest,strength} of gbNightGlow)material.emissiveIntensity=rest+night*strength;
     if(plazaRoot.parent===outdoors)updatePlaza(now,night,indoors?null:anchor,fountainShow?.startedAt??0,clock);
+    if(hwangudan.root.parent===outdoors)updateHwangudan?.(night);
     const roster=[me,...peers],present=new Set(roster.map(player=>player.id));
     minigameWorld.begin(clock,indoors?null:anchor,state.minigames,state.minigameAction,state.minigameFree);
     if(!indoors){
@@ -879,17 +912,17 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     ray.setFromCamera(new T.Vector2((clientX-rect.left)/rect.width*2-1,-(clientY-rect.top)/rect.height*2+1),camera);
     if(guideMarker.visible&&ray.intersectObject(guideMarker,false).length)return {...ticketGuide.approach,guide:true};
     if(showMarker.visible&&ray.intersectObject(showMarker,false).length)return {x:plazaShowSpot.x,y:plazaShowSpot.y};
-    if(!ray.ray.intersectPlane(ground,hit)||hit.distanceTo(camera.position)>105)return null;
-    let distance=hit.distanceTo(ray.ray.origin);
-    if(plazaGroundHeight({x:hit.x+300,y:hit.z+225})<0){
+    const flat=ray.ray.intersectPlane(ground,hit);
+    let distance=flat?Math.min(105,hit.distanceTo(ray.ray.origin)):105;
+    if(flat&&plazaGroundHeight({x:hit.x+300,y:hit.z+225})<0){
       distance=Math.min(105,distance+haechiBasin.depth/Math.max(.02,-ray.ray.direction.y)+.25);
     }
     for(let step=.25;step<distance;step+=.25){
       ray.ray.at(step,sample);
       if(sample.y>floorHeight({x:sample.x+300,y:sample.z+225}))continue;
-      hit.copy(sample);break;
+      return {x:sample.x+300,y:sample.z+225};
     }
-    return {x:hit.x+300,y:hit.z+225};
+    return flat&&hit.distanceTo(camera.position)<=105?{x:hit.x+300,y:hit.z+225}:null;
   }
   function clearChat(){
     for(const model of models.values())walkerModels.clearChat(model);

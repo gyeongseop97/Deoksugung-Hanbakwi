@@ -93,6 +93,10 @@ function cityBackdrop(T,parent){
   function rand(){seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;}
   function tower(bearing,distance,width,depth,height,color,angle=0){
     const {x,z}=polar(bearing,distance);
+    // The low southeast skyline originally filled the blocks now modeled at
+    // street level around Seoul Plaza, Hwangudan and the Sogong-dong hotels.
+    const footprint=Math.hypot(width,depth)/2,mapX=x+300,mapY=z+225;
+    if(mapX+footprint>621&&mapX-footprint<890&&mapY+footprint>182&&mapY-footprint<439)return;
     buildings.push({x,z,width,depth,height,color,angle});
     if(height>35)roofPieces.push({x,z,y:height+1.2,width:width*.63,depth:depth*.61,height:2.6+rand()*2.1,color,angle});
   }

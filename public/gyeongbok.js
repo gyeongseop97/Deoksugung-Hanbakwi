@@ -1,6 +1,6 @@
 import {
   gwanghwamun,gbSites,gbSite,gbCourts,gbLake,gbPond,gbPaths,gbLawns,gbStation,subwayStops,
-  gbWoldae,gbHaetae,gbPhotoZone,gbRoyalPavilion,gbUijeongbu,gbBusIsland,gbCrossings,wallHalf,wallNorth,at
+  gbWoldae,gbHaetae,gbPhotoZone,gbRoyalPavilion,gbUijeongbu,gbBusIsland,gbCrossings,wallHalf,wallNorth,folkMuseumEastOpening,at
 } from "./gyeongbok-layout.js";
 import {solidAt} from "./layout.js";
 import {buildGyeongbokCompounds,inGyeongbokCompound} from "./gyeongbok-compounds.js";
@@ -131,10 +131,11 @@ export function* buildGyeongbok(T,scene,kit,tools){
   const corner=(east,north)=>at(east,north);
   wall(corner(-wallHalf,0),corner(-15.6,0),wallHeight,false,false);
   wall(corner(15.6,0),corner(wallHalf,0),wallHeight,false,false);
-  for(const side of [-1,1]){
-    wall(corner(side*wallHalf,0),corner(side*wallHalf,323),wallHeight,false,false);
-    wall(corner(side*wallHalf,337),corner(side*wallHalf,wallNorth),wallHeight,false,false);
-  }
+  wall(corner(-wallHalf,0),corner(-wallHalf,323),wallHeight,false,false);
+  wall(corner(-wallHalf,337),corner(-wallHalf,wallNorth),wallHeight,false,false);
+  wall(corner(wallHalf,0),corner(wallHalf,323),wallHeight,false,false);
+  wall(corner(wallHalf,337),corner(wallHalf,folkMuseumEastOpening.south),wallHeight,false,false);
+  wall(corner(wallHalf,folkMuseumEastOpening.north),corner(wallHalf,wallNorth),wallHeight,false,false);
   wall(corner(-wallHalf,wallNorth),corner(-7,wallNorth),wallHeight,false,false);
   wall(corner(7,wallNorth),corner(wallHalf,wallNorth),wallHeight,false,false);
 

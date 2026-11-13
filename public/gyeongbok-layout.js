@@ -16,6 +16,8 @@ export function inGyeongbok(x,y){
 }
 
 export const wallHalf=250,wallNorth=875;
+// The public museum entrance is farther north than the historic east gate.
+export const folkMuseumEastOpening={south:594,north:602};
 
 // kind: gate (walk through the centre bay), hall, open (pillared pavilion), plain (side building)
 const site=(id,name,sign,east,north,w,d,h,bays,extra={})=>({id,name,sign,...at(east,north,name),east,north,w,d,h,bays,angle:0,...extra});

@@ -1,9 +1,10 @@
 import {addLandmarks,addObstacle} from "./layout.js";
 import {at as palaceAt,gbSite} from "./gyeongbok-layout.js";
 import {plazaAt} from "./plaza-layout.js";
+import {bukchonShopPlots} from "./bukchon-layout.js";
 import {makeRegionalItemProps} from "./regional-item-props.js";
 
-// Fictional counters beside palace visitor paths and between the east-side office buildings.
+// Fictional counters beside visitor paths and between the office buildings.
 // The Sojubang counter uses its existing courtyard, clear of the heritage hall and gates.
 const kitchen=gbSite.sojubang,archive=gbSite.sujeongjeon;
 const palaceShops=[
@@ -16,22 +17,40 @@ const palaceShops=[
   {kind:"churu",name:"경복궁 편의점",subtitle:"고양이 간식",east:-45.5,north:79,angle:-Math.PI/2,
     paint:0x47746a,sign:"#365c52",ink:"#fff0c9"}
 ].map(shop=>({...shop,...palaceAt(shop.east,shop.north,shop.name),area:"gyeongbokgung",w:7.1,d:4.4,h:3.81}));
+const storefronts={
+  coffee:{subtitle:"COFFEE ROASTERS",wall:0x9c9686,paint:0x3d564a,counter:0xa17b56,glass:0xc5d1a4,sign:"#344c42",ink:"#fff2d0"},
+  cake:{subtitle:"CAKE & PATISSERIE",wall:0xd8c2ac,paint:0xaa696e,counter:0xdcaaa0,glass:0xf7d1b4,sign:"#f3d9c9",ink:"#723f4a"},
+  wine:{subtitle:"WINE BAR",wall:0x957973,paint:0x543b45,counter:0x80574f,glass:0xe0b490,sign:"#573a48",ink:"#f8dba1"}
+};
 const avenueShops=[
-  {kind:"coffee",name:"세종로 로스터리",subtitle:"COFFEE ROASTERS",north:103,wall:0x9c9686,paint:0x3d564a,
-    counter:0xa17b56,glass:0xc5d1a4,sign:"#344c42",ink:"#fff2d0"},
-  {kind:"cake",name:"오후 케이크",subtitle:"CAKE & PATISSERIE",north:119,wall:0xd8c2ac,paint:0xaa696e,
-    counter:0xdcaaa0,glass:0xf7d1b4,sign:"#f3d9c9",ink:"#723f4a"},
-  {kind:"wine",name:"와인 서가",subtitle:"WINE BAR",north:135,wall:0x957973,paint:0x543b45,
-    counter:0x80574f,glass:0xe0b490,sign:"#573a48",ink:"#f8dba1"},
-  {kind:"churu",name:"광화문 편의점",north:232,w:7.8,d:5.7,h:3.62}
-].map(shop=>({w:15.94,d:7.2,h:8.4,...shop,...plazaAt(52.10,shop.north,shop.name),area:"gwanghwamun",angle:-Math.PI/2}));
-const shops=[...palaceShops,...avenueShops];
+  ["coffee","세종로 로스터리",-58.6,109,11.2],
+  ["cake","오후 케이크",-58.6,125,11.2],
+  ["wine","와인 서가",-58.6,279],
+  ["churu","광화문 편의점",-57.8,303],
+  ["churu","세종로 편의점",51.2,340],
+  ["coffee","광장 앞 커피",-58.6,348],
+  ["cake","정류장 디저트",-58.6,368],
+  ["wine","광장 와인",-58.6,388],
+  ["coffee","의정부지 앞 카페",52.1,438],
+  ["cake","육조길 케이크",52.1,457],
+  ["wine","육조길 와인",52.1,476]
+].map(([kind,name,east,north,width])=>({
+  ...(kind==="churu"?{w:7.8,d:5.7,h:3.62}:{w:width??15.94,d:7.2,h:8.4,...storefronts[kind]}),
+  ...plazaAt(east,north,name),kind,area:"gwanghwamun",angle:east<0?Math.PI/2:-Math.PI/2
+}));
+const bukchonShops=[
+  ["churu","삼청로 편의점",bukchonShopPlots.churu],
+  ["coffee","화개길 커피",bukchonShopPlots.coffee],
+  ["cake","팔판길 디저트",bukchonShopPlots.crepe],
+  ["wine","가회동 와인",bukchonShopPlots.beer]
+].map(([kind,name,plot])=>({...storefronts[kind],...plot,kind,name,area:"bukchon",h:kind==="churu"?3.62:3.81}));
+const shops=[...palaceShops,...avenueShops,...bukchonShops];
 
 export const regionalStations=shops.map(({x,y,d,angle,name,kind,area})=>({kind,name,area,
   x:x+Math.sin(angle)*(d/2+1.75),y:y+Math.cos(angle)*(d/2+1.75)}));
 
 export function registerRegionalStands(){
-  for(const {x,y,w,d,angle,h} of shops)addObstacle(x,y,w,d,angle,h);
+  for(const {x,y,w,d,angle,h,level=0} of shops)addObstacle(x,y,w,d,angle,level+h);
   addLandmarks(regionalStations.map(({x,y,name})=>({x,y,name:name+" 앞"})));
 }
 
@@ -157,16 +176,22 @@ function addBoothRoof(T,group,{matte},w,d){
 
 export function addRegionalStands(T,root,kit,area){
   const {wx,wz,box,cylinder}=kit;
-  const group=new T.Group();group.name=area==="gyeongbokgung"?"경복궁 산책길 좌판":"세종대로 동편 상가";root.add(group);
+  const group=new T.Group();
+  group.name={gyeongbokgung:"경복궁 산책길 좌판",gwanghwamun:"세종대로 상가",bukchon:"북촌 골목 상점"}[area];
+  root.add(group);
   const batch=standBatcher(T),props=makeRegionalItemProps(T,kit);
   for(const shop of shops){
     if(shop.area!==area)continue;
     const building=new T.Group();building.name=shop.name;
-    building.position.set(wx(shop.x),area==="gyeongbokgung"?.048:0,wz(shop.y));building.rotation.y=shop.angle;
+    building.position.set(wx(shop.x),shop.level??(area==="gyeongbokgung"?.048:0),wz(shop.y));building.rotation.y=shop.angle;
     group.add(building);
     if(area==="gyeongbokgung")booth(shop,building);
     else if(shop.kind==="churu")addConvenienceStore(T,building,kit,{name:shop.name,width:shop.w,depth:shop.d,height:shop.h});
-    else avenue(shop,building);
+    else if(area==="bukchon")booth(shop,building);
+    else{
+      building.scale.x=shop.w/15.94;
+      avenue({...shop,w:15.94},building);
+    }
     batch(building);
   }
 

@@ -35,6 +35,18 @@
 
 동상 치수와 세부 형태는 서울미래유산의 [세종대왕 동상](https://futureheritage.seoul.go.kr/futureHeritageMeet/futureHeritage/view.do?htNo=393)과 [이순신장군 동상](https://futureheritage.seoul.go.kr/futureHeritageMeet/futureHeritage/view.do?htNo=391)을 참고했습니다. 감사의 정원은 [서울시 개장 안내](https://news.seoul.go.kr/culture/archives/532816), 역과 정류장은 [광화문광장 오시는 길](https://gwanghwamun.seoul.go.kr/ghm/contents/16.do?mid=1009)을 참고했습니다. 3D 구조물과 표면은 게임용으로 제작했으며, 지도에서 판독하기 어려운 치수와 건물 외관 세부는 추정했습니다.
 
+## 돌담길·환구단·북촌 확장 구간
+
+덕수궁 서·북편의 돌담길은 [서울시 돌담길 개방 안내](https://news.seoul.go.kr/safe/archives/500255)와 [네이버 지도 서편 거리뷰](https://map.naver.com/p?c=16.51,0,0,0,adh&p=eUZnZiygCmG06t7evOQ27w,-86.04,10,80,Float)를 참고했습니다. 미국대사관저 쪽 담장과 창살은 공개 보행로에서 보이는 외관을 재현했습니다.
+
+환구단 정문, 황궁우, 석고, 삼문과 호텔 외관은 [국가유산청 환구단 자료](https://www.heritage.go.kr/heri/cul/culSelectDetail.do?ccbaCpno=1331101570000&pageNo=1_1_2_0), [서울시 환구단 열린 정원](https://mediahub.seoul.go.kr/archives/2015806), [서울시 환구단 삼문 사진](https://mediahub.seoul.go.kr/archives/2004597)과 [네이버 지도 환구단 거리뷰](https://map.naver.com/p/search/%ED%99%98%EA%B5%AC%EB%8B%A8/place/2140928893)를 참고해 게임용으로 제작했습니다. 주변 건물 외관과 높이는 지도와 사진을 바탕으로 추정했습니다.
+
+삼청로·팔판길·북촌의 보행로와 한옥은 [서울시 북촌 도보지도](https://hanok.seoul.go.kr/home/data/bcg/walk/TOUR_1705032369675.pdf), [네이버 지도 팔판길 거리뷰](https://map.naver.com/p/search/%EB%B6%81%EC%B4%8C%ED%95%9C%EC%98%A5%EB%A7%88%EC%9D%84/place/2034123296?c=15.00,0,0,0,adh&p=S0TofIlZkACDKYfYsC1Myw,-43.75,5.5,80,Float)와 [Google Earth 북촌 위성지도](https://earth.google.com/web/@37.582999,126.982281,70a,1000d,35y,0h,35t,0r)를 참고했습니다. 한옥 외관과 상점은 게임용으로 제작했습니다.
+
+동십자각은 [서울시 동십자각 사진](https://mediahub.seoul.go.kr/archives/2005311)을 참고해 제작했습니다. 국가유산청 3D 원본은 이용 신청 후 제공됩니다. [동십자각 3D 자료](https://digital.khs.go.kr/heritage/catalogDetail.do?order=1&index=1&id=13984207334840064481&type=1) · [국가유산청 이용 안내](https://digital.khs.go.kr/service/instructionsForUse2.do)
+
+지하철 출입구 위치는 [OpenStreetMap](https://www.openstreetmap.org/copyright)을 참고해 게임 보도 폭에 맞췄습니다. 역과 출구 사이 이동은 게임 안의 편의 기능입니다.
+
 ## 전시품과 렌더링
 
 `public/art/`의 이미지와 확대 재현한 유물의 원본 URL 및 이용 조건은 [기본 전시 목록](public/museum-catalog.js), [삼국·고려 추가 목록](public/museum-more-early.js), [조선·근대 추가 목록](public/museum-more-late.js)에 있습니다. 이미지들은 게임에서 빠르게 열리도록 크기를 줄여 WebP로 변환했습니다.

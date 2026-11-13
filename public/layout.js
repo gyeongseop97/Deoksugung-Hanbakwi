@@ -426,7 +426,7 @@ export function clearSegment(from,to,step=.36,feet=0){
 const spacing=2;
 const around=[[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,1],[1,-1],[-1,-1]];
 const gridPoint=(i,{ox,oy,cols})=>({x:ox+i%cols*spacing,y:oy+Math.floor(i/cols)*spacing});
-const walkingBounds={minX:0,maxX:810,minY:-1820,maxY:450};
+const walkingBounds={minX:0,maxX:1160,minY:-1890,maxY:450};
 const gateLink=[gate,...entranceWalk,...stationWalk];
 const gridDown=value=>Math.floor(value/spacing)*spacing,gridUp=value=>Math.ceil(value/spacing)*spacing;
 const gateClearance=6*spacing;

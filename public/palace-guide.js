@@ -2,6 +2,8 @@ import {bridge,clearSegment,courtAngle,gate,hall,middle,palacePond,pavilions,sto
 import {fromBuilding} from "./museum.js";
 import {isInsideMuseum} from "./visit-layout.js";
 import {gbSite} from "./gyeongbok-layout.js";
+import {bukchonLandmarks} from "./bukchon-layout.js";
+import {hwangudanLandmarks} from "./seoul-hwangudan-layout.js";
 
 const royalTour="https://royal.khs.go.kr/ROYAL/contents/R402000000.do?id=20240313092652267385&schM=view";
 const royalBuildings="https://royal.khs.go.kr/ROYAL/contents/R402000000.do?id=20260331093323561530&schM=view";
@@ -9,6 +11,8 @@ const palaceRecord="https://digital.khs.go.kr/heri/heriDetail.do?ctptNo=13311012
 const modernMuseum="https://www.mmca.go.kr/upload/m/data/exhibition/2012/09/14/20120914091758.pdf";
 const pavilionByName=Object.fromEntries(pavilions.map(site=>[site.name,site]));
 const gyeongbokTour="https://royal.khs.go.kr/ROYAL/contents/R101020000.do?bdProgramCode=storyCtg3&menuId=03_01_02&pageType=story&schBdcode=gbg";
+const hwangudanRecord="https://www.heritage.go.kr/heri/cul/culSelectDetail.do?ccbaCpno=1331101570000&pageNo=1_1_2_0";
+const bukchonTour="https://hanok.seoul.go.kr/home/data/bcg/walk/TOUR_1705032369675.pdf";
 const guideDistance=3.8;
 
 function footprint(site){
@@ -137,7 +141,18 @@ const guides=[
     ["taewonjeon","궁 서북쪽에 있는 전각이에요. 태조의 어진을 보관했고, 왕실의 장례 때 관을 모시는 빈전으로도 썼습니다."],
     ["janggo","궁중 음식에 쓸 장을 담고 보관하던 곳이에요. 낮은 단에 놓인 여러 크기의 장독을 둘러볼 수 있습니다.",
       "https://royal.khs.go.kr/ROYAL/contents/R201000000.do?act=view&ceIdx=202610200316"]
-  ].map(([id,description,source])=>guide("gb-"+id,gbSite[id],description,source??gyeongbokTour))
+  ].map(([id,description,source])=>guide("gb-"+id,gbSite[id],description,source??gyeongbokTour)),
+  ...hwangudanLandmarks.map((site,index)=>guide("hwangudan-"+index,site,site.description,hwangudanRecord,[site])),
+  ...[
+    [0,"경복궁 동남쪽 모퉁이에 있던 망루입니다. 궁 담장이 물러나면서 지금은 삼청로 교차로 가운데에 남아 있어요."],
+    [5,"삼청로와 나란히 뻗은 팔판동 골목이에요. 낮은 한옥과 좁은 길을 따라 북촌 쪽으로 걸을 수 있어요."],
+    [7,"삼청로 쪽에서 북촌 한옥 골목으로 오르는 돌계단입니다. 서울시 북촌 팔경 중 하나로, 계단 위에서 삼청동을 내려다볼 수 있어요."],
+    [10,"안국동에서 정독도서관과 북촌 골목으로 이어지는 길이에요. 언덕을 따라 걷다 보면 기와지붕과 낮은 담이 이어집니다."]
+  ].map(([index,description])=>{
+    const site=bukchonLandmarks[index];
+    const source=index===0?"https://mediahub.seoul.go.kr/archives/2005311":bukchonTour;
+    return guide("bukchon-"+index,site,description,source,[site]);
+  })
 ];
 
 function squaredDistance(a,b){

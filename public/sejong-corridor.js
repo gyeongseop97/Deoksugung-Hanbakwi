@@ -389,7 +389,7 @@ function buildCorridorFacades({T,group,wx,wz,box,matte,block,obstacle,label,surf
     [583,-18,22,29,60,0xb6af9d,-1,"뉴서울호텔"],[591,-114,40,19,65,0xa6ab9f,-1,"청계청사"],
     [643,-186,30,22,72,0x7b8b87,-1,"청계11빌딩"],[649,-222,46,22,70,0x9ba89d,-1,""],
     [370,-216,39,42,58,0xa6a694,1,""],[377,-155,41,35,43,0x8e9183,1,""],[364,-91,41,27,38,0xa4a392,1,""],
-    [636,-16,31,37,72,0x84958c,-1,""],[643,50,39,34,55,0x96a098,-1,""],[666,238,39,30,52,0x89988a,-1,""]
+    [636,-16,31,37,72,0x84958c,-1,""],[643,50,39,34,55,0x96a098,-1,""]
   ];
   for(const [x,y,w,d,h,color,side,name] of backdrop){
     mass(color,x,y,w,d,h);
@@ -399,8 +399,6 @@ function buildCorridorFacades({T,group,wx,wz,box,matte,block,obstacle,label,surf
     block(0xacac9e,x,y,w+.35,d+.35,.61,h-.61);
     if(name)label(name,x+side*(w/2+.13),y,Math.min(7,h*.72),Math.min(16,d*.64),side*Math.PI/2,"#555e55");
   }
-  // Rear-access walls and roof planting prevent the ground behind the historic frontage from looking empty.
-  block(0x74796c,415,132,52,.58,1.15,.06);
-  surface(rectangle(426.9,120,35,15),darker,.048);
-  block(stone,438,130.0,.56,8.0,.62,.05);
+  // Keep the paved rear frontage clear where the palace walkway reaches Sejong-daero.
+  surface(rectangle(426.9,118.5,35,12),darker,.048);
 }

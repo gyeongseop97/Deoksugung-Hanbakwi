@@ -308,7 +308,7 @@
             <button type="button" data-key="ArrowRight" aria-label="오른쪽으로">→</button>
           </div>
         </div>
-        <div class="map-footer"><span class="map-key"><span><i class="dot mine"></i>나</span><span><i class="dot theirs"></i>동행</span><span><i class="dot bus-dot"></i>버스</span><span><i class="dot bike-dot"></i>따릉이</span><span><i class="dot stamp-dot"></i>찍은 도장</span><span><i class="dot stamp-dot unvisited"></i>미방문 도장</span></span><div class="map-links"><button id="model-credits" class="quiet" type="button" aria-haspopup="dialog">자료 출처</button><button id="entrance-target" class="quiet" type="button" aria-label="매표소로 순간이동">매표소</button><button id="fountain-target" class="quiet" type="button" aria-label="정동 분수대로 순간이동">분수대</button><button id="palace-target" class="quiet" type="button" aria-label="중화전으로 순간이동">중화전</button><button id="stop-target" class="quiet" type="button" hidden>정류장</button><button id="plaza-bus-target" class="quiet" type="button" hidden>정류장</button></div></div>
+        <div class="map-footer"><span class="map-key"><span><i class="dot mine"></i>나</span><span><i class="dot theirs"></i>동행</span><span><i class="dot bus-dot"></i>버스</span><span><i class="dot subway-dot"></i>지하철</span><span><i class="dot bike-dot"></i>따릉이</span><span><i class="dot stamp-dot"></i>찍은 도장</span><span><i class="dot stamp-dot unvisited"></i>미방문 도장</span></span><div class="map-links"><button id="model-credits" class="quiet" type="button" aria-haspopup="dialog">자료 출처</button><button id="entrance-target" class="quiet" type="button" aria-label="매표소로 순간이동">매표소</button><button id="fountain-target" class="quiet" type="button" aria-label="정동 분수대로 순간이동">분수대</button><button id="palace-target" class="quiet" type="button" aria-label="중화전으로 순간이동">중화전</button><button id="stop-target" class="quiet" type="button" hidden>정류장</button><button id="plaza-bus-target" class="quiet" type="button" hidden>정류장</button></div></div>
       </article>
     </section>
     <footer><span>✦ &nbsp; 서울 궁 한바퀴</span><span>덕수궁 · 광화문광장 · 경복궁을 걷는 3D 산책 공간</span></footer>
@@ -440,6 +440,9 @@
       <li><a href="https://gwanghwamun.seoul.go.kr/ghm/facility/list.do?codeId=CODE_08&amp;mid=1011&amp;siteGrpKey=ghm&amp;siteId=ghm" target="_blank" rel="noopener">서울시 광화문광장 시설 위치안내</a></li>
       <li><a href="https://gwanghwamun.seoul.go.kr/ghm/contents/16.do?mid=1009" target="_blank" rel="noopener">서울시 광화문광장 오시는 길</a></li>
       <li><a href="https://mediahub.seoul.go.kr/archives/2001581" target="_blank" rel="noopener">서울시 세종대로 사람숲길</a> · <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap 기여자</a></li>
+      <li><a href="https://news.seoul.go.kr/safe/archives/500255" target="_blank" rel="noopener">서울시 덕수궁 돌담길 개방 구간</a></li>
+      <li><a href="https://mediahub.seoul.go.kr/archives/2015806" target="_blank" rel="noopener">서울시 환구단 열린 정원</a> · <a href="https://www.heritage.go.kr/heri/cul/culSelectDetail.do?ccbaCpno=1331101570000&amp;pageNo=1_1_2_0" target="_blank" rel="noopener">국가유산청 환구단</a></li>
+      <li><a href="https://hanok.seoul.go.kr/home/data/bcg/walk/TOUR_1705032369675.pdf" target="_blank" rel="noopener">서울시 북촌 도보지도</a></li>
     </ul>
     <p>경내 배치와 외관은 <a href="https://royal.khs.go.kr/ROYAL/contents/R701000000.do?schGroupCode=dsg" target="_blank" rel="noopener">궁능유적본부 관람 지도</a>와 <a href="https://look360.kr/vr/deoksugung_go_kr/deoksugung_go_kr/4736" target="_blank" rel="noopener">덕수궁 360도 파노라마</a>, 첨부 지도와 네이버 지도 거리뷰를 참고해 재현했습니다.</p>
     <p>전시 이미지와 확대 재현한 유물의 출처입니다.</p>
@@ -451,19 +454,19 @@
       <button type="button" class="quiet close" aria-label="닫기">×</button>
     </div>
     <img class="visitor-guide-plaque" src="./seoul-palace-plaque.png" alt="" width="768" height="169" loading="lazy" decoding="async">
-    <p class="guide-intro">대한문 매표소에서 출발해 세종대로와 광화문광장을 거쳐 경복궁까지 걸어갈 수 있어요. 대한문 앞 횡단보도를 건너 <strong>서울광장 쪽 인도</strong>를 따라 광화문으로 갈 수도 있어요. <strong>전체 지도</strong>에서 장소 이름을 누르면 그곳으로 걸어갑니다.</p>
+    <p class="guide-intro">대한문 매표소에서 출발해 광화문광장과 경복궁을 지나 북촌까지 걸어갈 수 있어요. 정동 분수대에서는 서·북쪽 돌담길로, 서울광장 동쪽에서는 횡단보도를 건너 환구단으로 이어져요. <strong>전체 지도</strong>에서 장소 이름을 누르면 그곳으로 걸어갑니다.</p>
     <button id="tutorial-replay" type="button" class="quiet">처음 조작 안내 다시 보기</button>
     <div class="visitor-guide-list">
       <section><h3>걷고 둘러보기</h3><p>길을 터치하거나 조이스틱으로 걸어요. PC에서는 방향키나 WASD를 쓸 수 있어요. 마우스 휠이나 두 손가락으로 시야와 지도를 확대·축소할 수 있어요. 오른쪽 아래에서 손에 든 물건을 골라 쓰거나 <strong>행동</strong>에서 인사·댄스를 할 수 있어요. 손잡기와 건배는 왼쪽의 <strong>동행 행동</strong>에 있어요.</p></section>
-      <section><h3>세종대로 순환버스</h3><p>시청앞·덕수궁, 세종문화회관, 경복궁 정류장에서 도착·출발 시간을 확인하세요. 정차 중 <strong>버스 타기</strong>로 빈 좌석을 고르고, 원하는 정류장에 도착하면 <strong>버스 내리기</strong>를 누르세요. 세종문화회관에서는 도로 양쪽의 경복궁 방면과 덕수궁 방면을 확인하세요.</p></section>
-      <section><h3>지하철과 따릉이</h3><p>시청역·광화문역·경복궁역 출구에서는 <strong>지하철 타기</strong>로 목적지를 골라 빠르게 이동해요. 따릉이는 대여소에서 <strong>따릉이 빌리기</strong>와 <strong>따릉이 반납하기</strong>를 이용하세요. 도중에 <strong>따릉이에서 내리기</strong>로 세우면 10분 안에 다시 탈 수 있어요.</p></section>
+      <section><h3>세종대로 순환버스</h3><p>시청앞·덕수궁, 서울광장·환구단, 세종문화회관, 경복궁 정류장에서 도착·출발 시간을 확인하세요. 정차 중 <strong>버스 타기</strong>로 좌석을 고르고, 도착하면 <strong>버스 내리기</strong>를 누르세요. 세종문화회관에는 경복궁 방면과 덕수궁 방면 정류장이 있어요.</p></section>
+      <section><h3>지하철과 따릉이</h3><p>지도의 보라색 표시가 지하철 출입구예요. 출입구 앞에서 <strong>지하철 타기</strong>를 누르고 역과 출구 번호를 고르면 그곳으로 이동해요. 따릉이는 대여소에서 빌리거나 반납할 수 있어요. 도중에 세워 두면 10분 안에 다시 탈 수 있어요.</p></section>
       <section><h3>공연과 기념사진</h3><p>광화문광장 명량분수 서쪽에서 <strong>분수쇼 시작</strong>을 누르면 같은 방에서 음악분수 공연을 함께 볼 수 있어요. 경복궁 광화문에서는 수문장 교대식이 열리고, 근정전 포토존에서는 <strong>사진 찍기</strong>를 할 수 있어요.</p></section>
       <section><h3>도장과 산책 기록</h3><p>전각과 동상, 유적 터에 가까이 가면 여권에 도장이 찍혀요. 덕수궁·광화문광장·경복궁에서 각각 9곳을 방문하면 꾸미기 보상을 받을 수 있어요. <strong>산책 기록</strong>에서 여권, 앨범, 이어하기 코드를 열 수 있어요.</p></section>
       <section><h3>한복과 전통놀이</h3><p>경복궁 앞 한복 대여소에서 한복과 갓 또는 족두리를 골라 입어 보세요. 근정전 마당에서 투호와 제기차기를, 광화문광장 육조마당에서 연날리기를 혼자 또는 같은 방 친구와 즐길 수 있어요.</p></section>
       <section><h3>돌담길 연주와 사진 모드</h3><p>정동 분수로 가는 길에 버스킹이 열려요. <strong>사진 모드</strong>는 어디서나 열 수 있고, 친구가 가까이에 있으면 단체 사진도 찍을 수 있어요. 사진 카드에는 날짜와 장소가 들어가요.</p></section>
       <section><h3>소원등과 스파클</h3><p>정동 분수대와 경복궁 향원정에서 <strong>소원등</strong>을 눌러 네 면을 꾸미고 지금 서 있는 곳에서 띄워 보세요. 석조전 분수와 경회루 옆 좌판에서는 스파클을 받아 <strong>사용하기</strong>를 누르면 손에 든 폭죽이 반짝여요.</p></section>
       <section><h3>석조전 서관 전시관</h3><p>계단을 올라 문 앞에서 <strong>입장하기</strong>를 누르세요. 삼국·통일신라부터 근대까지 한국 그림과 공예품을 시대별로 볼 수 있어요. 전시품 가까이에서 <strong>작품 설명</strong>을 열어 보세요.</p></section>
-      <section><h3>길에서 만나는 가게</h3><p>덕수궁 돌담길에는 커피·크레페·맥주와 츄르를 파는 편의점이 있어요. 광화문광장 동쪽 인도에서는 커피·케이크·와인을, 국립고궁박물관 앞 한옥 상점에서는 커피·약과·막걸리를 받아요. 지도에서 가게 이름을 누르면 입구로 걸어갑니다.</p></section>
+      <section><h3>길에서 만나는 가게</h3><p>덕수궁 돌담길에서 커피·크레페·맥주를, 경복궁에서는 커피·약과·막걸리를 받아요. 광화문 정류장 주변과 북촌 골목에도 카페, 디저트, 와인 가게, 츄르를 파는 편의점이 있어요. 지도에서 가게 이름을 누르면 입구로 걸어갑니다.</p></section>
       <section><h3>고양이와 새</h3><p>고양이에게 천천히 다가가 <strong>쓰다듬기</strong>를 눌러 보세요. 츄르를 들고 기다리면 다가오는 고양이에게 <strong>간식 주기</strong>를 할 수 있어요. 친해진 고양이는 잠깐 멈춰 기다리면 먼저 다가오기도 해요. 산책길에서는 까치와 비둘기가 바닥을 쪼거나 나무에 쉬는 모습도 볼 수 있어요.</p></section>
       <section><h3>잔디밭 피크닉과 우산</h3><p>광화문광장 육조마당 잔디밭에서 <strong>돗자리 펴기</strong>를 누르고 음식이나 음료를 한 몫씩 나눠 보세요. 비나 눈이 오면 가까운 친구에게 <strong>우산 같이 쓰기</strong>를 요청할 수 있어요. 친구가 수락하면 우산을 든 사람이 앞장서요.</p></section>
       <section><h3>친구와 함께</h3><p>오픈서버에서 다른 산책자와 만나거나 초대코드로 친구와 같은 방에 들어오세요. 가까이에서 손을 잡고 벤치에 나란히 앉거나, 둘 다 음료를 들고 <strong>건배하기</strong>를 눌러 보세요. <strong>여기 봐</strong>를 누르면 상대에게 내 위치가 5초 동안 표시돼요.</p></section>
