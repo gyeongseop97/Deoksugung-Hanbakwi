@@ -60,7 +60,7 @@ export function buildGwanghwamunPlaza(T,scene,kit,{benches}){
   while(!step.done)step=build.next();
   return step.value;
 }
-export function* assembleGwanghwamunPlaza(T,scene,kit,{birdPerches}={}){
+export function* assembleGwanghwamunPlaza(T,scene,kit,{birdPerches,terrainHeight=()=>0}={}){
   const group=new T.Group();group.name="광화문광장";scene.add(group);
   const {wx,wz,box,cylinder,matte}=kit;
   let seed=3720957;
@@ -84,7 +84,9 @@ export function* assembleGwanghwamunPlaza(T,scene,kit,{birdPerches}={}){
   }
   function line(color,a,b,width,height,base=0){
     const dx=b.east-a.east,dn=b.north-a.north;
-    return block(color,(a.east+b.east)/2,(a.north+b.north)/2,Math.hypot(dx,dn)+.015,width,height,base,Math.atan2(dn,dx));
+    const mesh=block(color,(a.east+b.east)/2,(a.north+b.north)/2,Math.hypot(dx,dn)+.015,width,height,base,Math.atan2(dn,dx));
+    mesh.userData.followTerrain=true;mesh.userData.sharedTerrainGeometry=true;
+    return mesh;
   }
 
   function stoneTexture(){
@@ -110,7 +112,8 @@ export function* assembleGwanghwamunPlaza(T,scene,kit,{birdPerches}={}){
     const geometry=new T.ShapeGeometry(path),uv=geometry.attributes.uv,positions=geometry.attributes.position;
     for(let i=0;i<uv.count;i++)uv.setXY(i,positions.getX(i)/3.6,positions.getY(i)/3.6);
     geometry.rotateX(-Math.PI/2);
-    const mesh=new T.Mesh(geometry,material);mesh.position.y=height;mesh.receiveShadow=true;group.add(mesh);
+    const mesh=new T.Mesh(geometry,material);mesh.position.y=height;mesh.receiveShadow=true;
+    mesh.userData.followTerrain=true;group.add(mesh);
     return mesh;
   }
 
@@ -165,7 +168,10 @@ export function* assembleGwanghwamunPlaza(T,scene,kit,{birdPerches}={}){
       const {x,z}=world(e,n),r=random(),style=pine?"cloud":r<.4?"branchy":r<.73?"round":"column";
       const tree=trees.grow(x,z,{height:pine?6+random()*3:3.8+random()*4.9,style,
         palette:pine?"pine":r<.22?"ginkgo":r<.39?"amber":r<.52?"maple":r<.73?"olive":"deep"});
-      if(birdPerches&&tree?.top)birdPerches.push({x:tree.top.x-wx(0),y:tree.top.z-wz(0),height:tree.top.y+.015,kind:"tree"});
+      if(birdPerches&&tree?.top){
+        const x=tree.top.x-wx(0),y=tree.top.z-wz(0);
+        birdPerches.push({x,y,height:tree.top.y+.015+terrainHeight({x,y}),kind:"tree"});
+      }
       planted.push(p);
     }
     for(let i=0;i<target*5;i++){
@@ -239,7 +245,7 @@ export function* assembleGwanghwamunPlaza(T,scene,kit,{birdPerches}={}){
   }
   const rampGeometry=new T.BufferGeometry();rampGeometry.setAttribute("position",new T.Float32BufferAttribute(positions,3));
   rampGeometry.setAttribute("uv",new T.Float32BufferAttribute([0,0,4,0,4,5,0,0,4,5,0,5],2));rampGeometry.computeVertexNormals();
-  const ramp=new T.Mesh(rampGeometry,stone);ramp.receiveShadow=true;group.add(ramp);
+  const ramp=new T.Mesh(rampGeometry,stone);ramp.receiveShadow=true;ramp.userData.followTerrain=true;group.add(ramp);
   const basinLength=north-south,centre=(north+south)/2;
   for(const side of [west,east]){
     block(0x8b9290,side,centre,.31,basinLength,depth,-depth);
@@ -318,7 +324,7 @@ export function* assembleGwanghwamunPlaza(T,scene,kit,{birdPerches}={}){
   yield;
   addPlazaCity(T,group,kit);
   yield;
-  const fountains=addPlazaFountains({T,group,world,block,water,random});
+  const fountains=addPlazaFountains({T,group,world,block,water,random,terrainHeight});
   return function updatePlaza(now,night,anchor,showStart=0,clock=now){
     if(!anchor){fountains(now,night,null);return;}
     for(const item of glow)item.material.emissiveIntensity=item.day+night*item.strength;
@@ -330,7 +336,7 @@ export function* assembleGwanghwamunPlaza(T,scene,kit,{birdPerches}={}){
 }
 
 
-function addPlazaFountains({T,group,world,block,water,random}){
+function addPlazaFountains({T,group,world,block,water,random,terrainHeight}){
   const sources=[];
   const jet=(e,n,h,dx=0,dn=0)=>({e,n,h,dx,dn,phase:random()});
   const myeongnyang=[];
@@ -369,6 +375,7 @@ function addPlazaFountains({T,group,world,block,water,random}){
   for(const source of sources){
     const mesh=new T.InstancedMesh(droplet,dropColor,source.jets.length*droplets);
     mesh.instanceMatrix.setUsage(T.DynamicDrawUsage);mesh.frustumCulled=false;mesh.visible=false;
+    mesh.userData.dynamic=true;
     mesh.name=source.centre.name+" 물줄기";
     if(source===showFountain){
       for(let i=0;i<mesh.count;i++)mesh.setColorAt(i,white);
@@ -377,6 +384,7 @@ function addPlazaFountains({T,group,world,block,water,random}){
     group.add(mesh);source.mesh=mesh;
     for(const value of source.jets){
       const {x,z}=world(value.e,value.n);value.x=x;value.z=z;
+      value.base=terrainHeight(plazaAt(value.e,value.n));
       if(!value.fall){
         block(0x6f7775,value.e,value.n,.21,.21,.026,.039);
         block(water,value.e,value.n,.072,.071,.022,.065);
@@ -406,7 +414,7 @@ function addPlazaFountains({T,group,world,block,water,random}){
       const performance=isShow?frame:null;
       const flowTime=performance?.elapsed??now;
       for(let jetIndex=0;jetIndex<jets.length;jetIndex++){
-        const {x,z,h,dx,dn,phase,fall,row,arc}=jets[jetIndex];
+        const {x,z,h,dx,dn,phase,fall,row,arc,base}=jets[jetIndex];
         let pulse=fall?1:.72+Math.sin(flowTime*.0021+phase*6.3)*.18;
         if(performance){
           const level=plazaShowJet(performance,row,arc);
@@ -416,7 +424,7 @@ function addPlazaFountains({T,group,world,block,water,random}){
           lights.setColorAt(jetIndex,color);
           const energy=(.31+level*.66)*performance.envelope;
           const glowSize=.63+energy*.62;
-          transform.position.set(x,.096,z);transform.scale.set(glowSize,1,glowSize);transform.rotation.set(0,0,0);
+          transform.position.set(x,base+.096,z);transform.scale.set(glowSize,1,glowSize);transform.rotation.set(0,0,0);
           transform.updateMatrix();lights.setMatrixAt(jetIndex,transform.matrix);
           color.lerp(white,.16+(1-performance.envelope)*.72);
         }
@@ -424,7 +432,7 @@ function addPlazaFountains({T,group,world,block,water,random}){
           const time=(flowTime*.00145+phase+i/droplets)%1;
           const drift=fall?time:time*time;
           const y=fall?between(1.19,.18,time):.08+4*h*pulse*time*(1-time);
-          transform.position.set(x+dx*drift,y,z-dn*drift);
+          transform.position.set(x+dx*drift,base+y,z-dn*drift);
           const thickness=.026+time*.025+(performance?.envelope??0)*.019;
           transform.scale.set(thickness,fall?.098:.045+Math.abs(.5-time)*.13,thickness);
           transform.rotation.z=fall?0:-dx*(.10+time*.12);
@@ -457,6 +465,7 @@ function addMyeongnyangShowLights(T,group,jets,world){
   const geometry=new T.PlaneGeometry(1.29,1.29).rotateX(-Math.PI/2);
   const lights=new T.InstancedMesh(geometry,material,jets.length),transform=new T.Object3D(),white=new T.Color(0xffffff);
   lights.name="명량분수 공연 조명";lights.visible=false;lights.frustumCulled=false;
+  lights.userData.dynamic=true;
   for(const [i,jet] of jets.entries()){
     const {x,z}=world(jet.e,jet.n);
     transform.position.set(x,.096,z);transform.updateMatrix();

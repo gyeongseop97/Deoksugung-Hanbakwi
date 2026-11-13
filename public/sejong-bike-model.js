@@ -194,13 +194,13 @@ export function registerBikeDocks(docks=bikeDocks){
   }
 }
 
-export function buildBikeDocks(T,scene,{wx,wz,box,cylinder},{docks=bikeDocks,register=true}={}){
+export function buildBikeDocks(T,scene,{wx,wz,box,cylinder},{docks=bikeDocks,register=true,height=()=>0}={}){
   if(register)registerBikeDocks(docks);
   const parts=bikeParts(T),signMaterial=parts.dockSign??=dockSign(T),signPanel=new T.PlaneGeometry(.76,.38);
   for(const dock of docks){
     const group=new T.Group(),angle=Math.PI-dock.heading*Math.PI/180;
     group.name=dock.name;
-    const level=dockSurfaces.get(dock)??dockLevel(dock);
+    const level=(dockSurfaces.get(dock)??dockLevel(dock))+height(dock);
     group.position.set(wx(dock.x),level,wz(dock.y));group.rotation.y=angle;
     scene.add(group);
     group.add(paintedMesh(T,parts.rack,parts.material));

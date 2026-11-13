@@ -1,7 +1,7 @@
 import {addObstacle} from "./layout.js";
 import {BUS_COUNT, BUS_FLOOR, BUS_LENGTH, BUS_SEATS, BUS_WIDTH, busAt, busLocalPose, busSeatOffset, busStops} from "./sejong-bus.js";
 
-export function buildSejongBusModels(T,scene,kit){
+export function buildSejongBusModels(T,scene,kit,height=()=>0){
   const {wx,wz,box,matte}=kit;
   const stopGroup=new T.Group();stopGroup.name="세종대로 순환버스 정류장";scene.add(stopGroup);
   const busGroup=new T.Group();busGroup.name="세종대로 순환버스";scene.add(busGroup);
@@ -28,7 +28,7 @@ export function buildSejongBusModels(T,scene,kit){
   const shade=0x5f686b,roofColor=0xb1b6b8,blue=0x305ca8;
   for(const stop of busStops){
     const shelter=new T.Group();shelter.name=stop.name;
-    shelter.position.set(wx(stop.shelter.x),0,wz(stop.shelter.y));shelter.rotation.y=(180-stop.shelter.heading)*Math.PI/180;
+    shelter.position.set(wx(stop.shelter.x),height(stop.shelter),wz(stop.shelter.y));shelter.rotation.y=(180-stop.shelter.heading)*Math.PI/180;
     stopGroup.add(shelter);
     const part=(color,x,y,z,w,h,d)=>box(color,x,y,z,w,h,d,shelter);
     part(shade,0,.12,-.49,5.36,.20,.16);
@@ -296,7 +296,7 @@ export function buildSejongBusModels(T,scene,kit){
       const {bus,doors,wheels,steer,previous}=entry,state=busAt(index,time);
       bus.visible=Boolean(state&&anchor&&Math.hypot(anchor.x-state.x,anchor.y-state.y)<145);
       if(!bus.visible){entry.previous=null;continue;}
-      bus.position.set(wx(state.x),.015,wz(state.y));bus.rotation.y=(180-state.heading)*Math.PI/180;
+      bus.position.set(wx(state.x),height(state)+.015,wz(state.y));bus.rotation.y=(180-state.heading)*Math.PI/180;
       const moved=previous?Math.hypot(previous.x-state.x,previous.y-state.y):0;
       if(moved<14&&state.traveling)entry.spin=(entry.spin+moved/.465)%(Math.PI*2);
       for(const wheel of wheels)wheel.rotation.x=entry.spin;

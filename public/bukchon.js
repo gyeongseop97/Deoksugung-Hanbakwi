@@ -1,4 +1,10 @@
-import {bukchonPaths,bukchonTerrain,bukchonShopPlots,dongsipjagak,folkMuseumEastDoor} from "./bukchon-layout.js";
+import {bukchonPaths,bukchonGroundHeight,bukchonTerrain,bukchonShopPlots,bukchonLawns,bukchonStreetTrees,dongsipjagak,folkMuseumEastDoor} from "./bukchon-layout.js";
+import {gbEastWallX,insideGbWall} from "./gyeongbok-perimeter.js";
+import {bikeDocks} from "./sejong-bike.js";
+import {bukchonBusRoads,busStopById} from "./sejong-bus.js";
+import {samcheongLevel} from "./gyeongbok-terrain.js";
+import {mmcaReserved} from "./mmca-layout.js";
+import {buildMmca} from "./mmca.js";
 
 const stone=0x9a9385, mortar=0x6e6559, charcoal=0x393b3c;
 const timber=0x573c2c, darkWood=0x352c27, brass=0xbc9052, asphalt=0x4b4a4a;
@@ -65,13 +71,26 @@ export function* buildBukchon(T,root,kit){
   }
   const grid=5.5;
   const stairs=bukchonPaths.find(path=>path.kind==="stairs");
-  // This base shares the palace district's edge, and remains below its own courtyard
-  // ground so the adjoining district can appear independently during streaming.
-  for(let y=-1858;y<-880;y+=55)create(0x697252,382,-.98,wz(y),210,.43,55);
-  for(let left=719.97;left<1160;left+=44){
+  for(const ring of bukchonBusRoads){
+    const vertices=[];
+    const contour=ring.map(({x,y})=>new T.Vector2(x,y));
+    for(const [a,b,c] of T.ShapeUtils.triangulateShape(contour,[])){
+      const direction=(ring[b].x-ring[a].x)*(ring[c].y-ring[a].y)-(ring[b].y-ring[a].y)*(ring[c].x-ring[a].x);
+      for(const i of direction<0?[a,b,c]:[a,c,b]){
+        const point=ring[i];
+        vertex(vertices,{...point,level:samcheongLevel(point.y)},-.006);
+      }
+    }
+    meshFromTriangles(asphalt,vertices);
+  }
+  // Stop the east-side terrain at the shared palace wall. Its floor and this
+  // verge meet at the same grade as the sidewalk.
+  for(let left=626;left<1160;left+=44){
     for(let top=-1885;top<-850;top+=44){
       const earth=[],plants=[];
       const node=(x,y)=>{
+        const wall=gbEastWallX(y);
+        if(wall!=null&&y< -908)x=Math.max(x,wall+.12);
         const stairGap=Math.hypot(Math.max(937-x,0,x-957),Math.max(-1842-y,0,y+1832));
         const recess=Math.max(0,1-stairGap/10)*2.05;
         return {x,y,level:bukchonTerrain(x,y)-.6-recess};
@@ -79,6 +98,7 @@ export function* buildBukchon(T,root,kit){
       const vertexRows=Array.from({length:9},(_,i)=>Array.from({length:9},(_,j)=>node(left+j*grid,top+i*grid)));
       for(let i=0;i<8;i++)for(let j=0;j<8;j++){
         const a=vertexRows[i][j],b=vertexRows[i][j+1],c=vertexRows[i+1][j+1],d=vertexRows[i+1][j];
+        if(b.x-a.x+c.x-d.x<.02||insideGbWall((a.x+b.x+c.x+d.x)/4,(a.y+b.y+c.y+d.y)/4))continue;
         quad(random()<.16?plants:earth,a,b,c,d);
       }
       meshFromTriangles(streetGrass,earth);meshFromTriangles(park,plants);
@@ -86,13 +106,11 @@ export function* buildBukchon(T,root,kit){
     }
   }
   const walkingColor={road:asphalt,pavement:pave,alley:0x77726c,lane:0x68686a,crosswalk:asphalt,entrance:0xb4ab94};
-  const [avenue,westWalk,eastWalk]=bukchonPaths;
-  for(const [roadSide,walkSide] of [[avenue.left,westWalk.right],[avenue.right,eastWalk.left]]){
-    for(let i=1;i<roadSide.length;i++){
-      const joints=[];
-      quad(joints,roadSide[i-1],walkSide[i-1],walkSide[i],roadSide[i],-.002);
-      meshFromTriangles(0x9b9287,joints);
-    }
+  const [avenue,,eastWalk]=bukchonPaths;
+  for(let i=1;i<avenue.right.length;i++){
+    const joints=[];
+    quad(joints,avenue.right[i-1],eastWalk.left[i-1],eastWalk.left[i],avenue.right[i],-.002);
+    meshFromTriangles(0x9b9287,joints);
   }
   for(const path of bukchonPaths){
     if(path.kind==="stairs")continue;
@@ -152,6 +170,16 @@ export function* buildBukchon(T,root,kit){
       }
     }
     yield;
+  }
+  for(const {outline} of bukchonLawns){
+    const positions=[];
+    const contours=outline.map(({x,y})=>new T.Vector2(x,y));
+    for(const [a,b,c] of T.ShapeUtils.triangulateShape(contours,[])){
+      const normal=(outline[b].x-outline[a].x)*(outline[c].y-outline[a].y)-
+        (outline[b].y-outline[a].y)*(outline[c].x-outline[a].x);
+      for(const index of normal<0?[a,b,c]:[a,c,b])vertex(positions,outline[index],.011);
+    }
+    meshFromTriangles(0x738953,positions);
   }
   for(const [index,{a,b}] of stairs.segments.entries()){
     const treads=[],skirting=[],underpinning=[];
@@ -409,18 +437,18 @@ export function* buildBukchon(T,root,kit){
       crown.scale.set(spread,spread*.75,spread);group.add(material(crown));
     }
   }
-  // Behind Samcheong-ro's east pavement, the low light-gray museum volumes leave an
-  // open frontage before the smaller shop and hanok parcels farther north.
-  for(const [x,y,w,d,h] of [[786,-1202,30,36,8.5],[823,-1221,42,38,8.9],[820,-1264,37,31,6.8]]){
-    const point={x,y,level:bukchonTerrain(x,y)},group=groupAt(point,Math.PI/2);
-    create(0xa8a297,0,-.55,0,w,1.3,d,group);
-    create(0xbdb6a8,0,h/2,0,w,h,d,group);
-    create(0x99968c,0,h+.09,0,w+.13,.18,d+.13,group);
-    create(0x5c6a6b,0,h*.24,d/2+.04,w*.79,h*.37,.08,group);
-    for(let i=-3;i<=3;i++)create(0xa49f96,w*i/8,h*.24,d/2+.11,.10,h*.37,.10,group);
-  }
+  yield* buildMmca(T,root,kit,tiledRoof);
   const limits={alley:15,lane:21,pavement:33};
-  const occupied=Object.values(bukchonShopPlots).map(({x,y,w,d})=>({x,y,radius:Math.hypot(w,d)/2+1.4}));
+  const occupied=[
+    ...Object.values(bukchonShopPlots).map(({x,y,w,d})=>({x,y,radius:Math.hypot(w,d)/2+1.4})),
+    ...bikeDocks.filter(dock=>dock.area==="bukchon").map(({x,y})=>({x,y,radius:4.6})),
+    {...busStopById("bukchon-upper").shelter,radius:5.5},
+    ...bukchonStreetTrees.map(([x,y])=>({x,y,radius:3.5})),
+    ...bukchonLawns.map(({outline})=>{
+      const middle={x:outline.reduce((sum,p)=>sum+p.x,0)/outline.length,y:outline.reduce((sum,p)=>sum+p.y,0)/outline.length};
+      return {...middle,radius:Math.max(...outline.map(p=>distance(p,middle)))+3};
+    })
+  ];
   const closeToStreet=(point,radius)=>{
     for(const path of bukchonPaths){
       if(point.x<path.minX-radius||point.x>path.maxX+radius||point.y<path.minY-radius||point.y>path.maxY+radius)continue;
@@ -443,7 +471,7 @@ export function* buildBukchon(T,root,kit){
         const offsetSide=path.name==="율곡로 북쪽 인도"?-side:side;
         const w=urban?9+random()*6:4.5+random()*3.7,d=urban?7+random()*4:4.6+random()*2.6;
         const radius=Math.hypot(w/2+.42,d/2+1.10),point=apart(roadPoint,angle,offsetSide*(path.width/2+radius+1.08));
-        if(point.x<735||point.y< -1878||point.x>1155||distance(point,{x:816,y:-1232})<56)continue;
+        if(point.x<735||point.y< -1878||point.x>1155||mmcaReserved(point.x,point.y,radius))continue;
         if(closeToStreet(point,radius)||occupied.some(lot=>distance(point,lot)<(radius+lot.radius)*.81))continue;
         occupied.push({...point,radius});
         point.level=bukchonTerrain(point.x,point.y);
@@ -470,7 +498,7 @@ export function* buildBukchon(T,root,kit){
   for(const [x,y,w,d] of blocks){
     for(let z=-d/2+13;z<d/2;z+=22)for(let offset=-w/2+12;offset<w/2;offset+=22){
       const point={x:x+offset+random()*5,y:y+z+random()*5};
-      if(point.x>1135||closeToStreet(point,10)||occupied.some(lot=>distance(point,lot)<lot.radius+8))continue;
+      if(point.x>1135||mmcaReserved(point.x,point.y,11)||closeToStreet(point,10)||occupied.some(lot=>distance(point,lot)<lot.radius+8))continue;
       if((point.x>863&&point.x<937&&point.y< -1478&&point.y> -1608)||random()<.18)continue;
       const width=8+random()*7,depth=7+random()*7,h=4+random()*7,angle=(random()-.5)*.43;
       occupied.push({...point,radius:Math.hypot(width,depth)/2});
@@ -490,11 +518,12 @@ export function* buildBukchon(T,root,kit){
     yield;
   }
   // Additional park greenery stands between the avenues rather than inside the alley.
+  for(const [x,y,h] of bukchonStreetTrees)tree({x,y,level:bukchonTerrain(x,y)},h,true);
   for(const [x,y,h] of [[795,-1351,7],[857,-1405,8.5],[895,-1552,8.6],[915,-1601,7.9],[926,-1650,8],
     [824,-1536,6.3],[876,-1676,7.2],[950,-1738,8.3],[1089,-1748,7.4],[1081,-1822,7.8],
     [747,-1359,6.3],[748,-1411,8.2],[736,-1528,7.1],[754,-1571,8.6],[771,-1633,7.5]]){
     const point={x,y,level:bukchonTerrain(x,y)-.05};
-    if(!closeToStreet(point,h*.57)&&!occupied.some(lot=>distance(point,lot)<lot.radius+h*.29))tree(point,h,random()>.26);
+    if(!mmcaReserved(x,y,h*.45)&&!closeToStreet(point,h*.57)&&!occupied.some(lot=>distance(point,lot)<lot.radius+h*.29))tree(point,h,random()>.26);
   }
   const mainWalk=bukchonPaths[2],lights=0x3b4546;
   for(const {a,b} of mainWalk.segments){
@@ -502,7 +531,7 @@ export function* buildBukchon(T,root,kit){
     const angle=direction(a,b);
     for(let i=0;i<n;i++){
       const p=apart(mix(a,b,(i+.48)/n),angle,3.42);
-      if(Math.abs(p.y-folkMuseumEastDoor.y)<4.5)continue;
+      if(Math.abs(p.y-folkMuseumEastDoor.y)<4.5||mmcaReserved(p.x,p.y))continue;
       const group=groupAt(p,angle);
       material(cylinder(lights,0,1.63,0,.051,3.26,7,group,.75));
       create(lights,0,3.20,-.28,.085,.07,.60,group);
@@ -510,15 +539,17 @@ export function* buildBukchon(T,root,kit){
       create(lights,0,3.24,-.58,.30,.08,.28,group);
     }
   }
-  const entrance=groupAt({...folkMuseumEastDoor,level:0},Math.PI/2);
+  const entrance=groupAt({...folkMuseumEastDoor,level:bukchonGroundHeight(folkMuseumEastDoor)??0},Math.PI/2);
   for(const x of [-3.48,3.48]){
     create(stone,x,.81,0,.56,1.62,.52,entrance);
     create(charcoal,x,1.68,0,.71,.15,.65,entrance);
   }
-  const visitorSign=groupAt({x:folkMuseumEastDoor.x+2.8,y:folkMuseumEastDoor.y+4.9,level:.27},Math.PI/2);
+  const museumSign={x:folkMuseumEastDoor.x+2.8,y:folkMuseumEastDoor.y+4.9};
+  const visitorSign=groupAt({...museumSign,level:bukchonGroundHeight(museumSign)??entrance.position.y},Math.PI/2);
   create(0x605950,0,.72,-.025,.15,1.5,.11,visitorSign);
   sign(visitorSign,"국립민속박물관",1.53,.03,1.94);
-  const stairSign=groupAt({x:944.6,y:-1836.1,level:5.3},-Math.PI/2);
+  const stairFoot={x:941,y:-1839};
+  const stairSign=groupAt({x:944.6,y:-1836.1,level:bukchonGroundHeight(stairFoot)??bukchonTerrain(stairFoot.x,stairFoot.y)},-Math.PI/2);
   create(0x605950,0,.72,-.025,.15,1.5,.11,stairSign);
   sign(stairSign,"북촌 8경 · 돌계단길",1.53,.03,2.04);
   yield;

@@ -1,7 +1,9 @@
 // People may wade through the palace ponds, so their movement checks allow shallow water.
 import {wadeSegment as clearSegment,distance,platformAt,loftStair} from "./layout.js";
-import {JUMP_MS,JUMP_HEIGHT} from "./activities.js";
+import {JUMP_HEIGHT,jumpDuration,jumpLift} from "./activities.js";
 import {busAt,busSeatPose} from "./sejong-bus.js";
+import {canRideBikeSegment} from "./bike-movement.js";
+import {isCycling} from "./sejong-bike.js";
 
 export const normalize = angle => ((angle % 360) + 360) % 360;
 export const angleDelta = (from,to) => normalize(to-from+180)-180;
@@ -74,7 +76,7 @@ export function smoothPeople(people,seconds,serverTime,roundTrip=65){
     const a=sample.avatar,seated=avatar.seat!=null;
     const age=Math.max(0,(serverTime-sample.at)/1000);
     const travelling=!seated&&!a.blocked&&moving(a);
-    const airborne=serverTime-(avatar.jump||0)<JUMP_MS+250;
+    const airborne=serverTime-(avatar.jump||0)<jumpDuration(avatar)+250;
     let goal=seated?avatar:a,predicting=false;
     if(travelling){
       // Predict up to the expected arrival of the next report, then ease to a stop.
@@ -82,10 +84,13 @@ export function smoothPeople(people,seconds,serverTime,roundTrip=65){
       const elapsed=age+uplink;
       const lead=elapsed<=horizon?elapsed:horizon+.16*(1-Math.exp(-(elapsed-horizon)/.16));
       predicting=elapsed<horizon+.35;
-      const feet=platformAt(a.x,a.y)+(airborne?JUMP_HEIGHT:.19);
+      const platform=platformAt(a.x,a.y);
+      const feet=airborne&&avatar.vaultBase!=null?
+        Math.max(platform,avatar.vaultBase+jumpLift(avatar,serverTime)):platform+(airborne?JUMP_HEIGHT:.19);
       for(const share of [1,.6,.3]){
         const guess={x:a.x+(a.vx||0)*lead*share,y:a.y+(a.vy||0)*lead*share};
-        if(a.up||loftStair(a.x,a.y)!=null||clearSegment(a,guess,.36,feet)){goal=guess;break;}
+        const clear=isCycling(a)?canRideBikeSegment(a,guess):clearSegment(a,guess,.36,feet);
+        if(a.up||loftStair(a.x,a.y)!=null||clear){goal=guess;break;}
       }
     }
     const gap=distance(position,goal.x,goal.y);
@@ -133,4 +138,3 @@ export function pairFits(from,to,side){
   const previous=handPosition(from,side),next=handPosition(to,side);
   return clearSegment(to,next)&&clearSegment(previous,next);
 }
-import {isCycling} from "./sejong-bike.js";

@@ -124,6 +124,7 @@ export function isPlazaWalkable(x,y){
   const sajik=sajikRoad;
   if(north>=522&&north<=sajik.north+1&&Math.abs(east-sajik.crossX)<sajik.crossWidth/2)return true;
   if(north>494&&north<529&&east>=41&&east<=66)return true;
+  if(plazaBeds.some(bed=>bed.kind==="lawn"&&insidePlazaPolygon(x,y,bed.outline)))return true;
   if(!insidePlazaPolygon(x,y,plazaOutline))return false;
   return !plazaBeds.some(bed=>bed.kind!=="lawn"&&insidePlazaPolygon(x,y,bed.outline));
 }

@@ -19,8 +19,10 @@ export function buildSejongCorridor(T,scene,kit){
     addObstacle(x,y,w,d,angle,height);
   }
   function strip(color,a,b,width,height,base=0){
-    return block(color,(a.x+b.x)/2,(a.y+b.y)/2,Math.hypot(b.x-a.x,b.y-a.y)+.01,width,height,base,
+    const mesh=block(color,(a.x+b.x)/2,(a.y+b.y)/2,Math.hypot(b.x-a.x,b.y-a.y)+.01,width,height,base,
       Math.atan2(a.y-b.y,b.x-a.x));
+    mesh.userData.followTerrain=true;mesh.userData.sharedTerrainGeometry=true;
+    return mesh;
   }
   const rectangle=(x,y,w,d)=>[
     {x:x-w/2,y:y-d/2},{x:x+w/2,y:y-d/2},{x:x+w/2,y:y+d/2},{x:x-w/2,y:y+d/2}
@@ -30,7 +32,8 @@ export function buildSejongCorridor(T,scene,kit){
     const geometry=new T.ShapeGeometry(path),uv=geometry.attributes.uv,p=geometry.attributes.position;
     for(let i=0;i<uv.count;i++)uv.setXY(i,p.getX(i)/tile,p.getY(i)/tile);
     geometry.rotateX(-Math.PI/2);
-    const mesh=new T.Mesh(geometry,material);mesh.position.y=height;mesh.receiveShadow=true;group.add(mesh);
+    const mesh=new T.Mesh(geometry,material);mesh.position.y=height;mesh.receiveShadow=true;
+    mesh.userData.followTerrain=true;group.add(mesh);
     return mesh;
   }
   function granite(){
@@ -84,8 +87,11 @@ export function buildSejongCorridor(T,scene,kit){
       const x=west+(east-west)*i/8;
       if(crossingAt(x,y)||branchAt(x,y))continue;
       if(i===4){
-        for(const offset of [-.12,.12])block(0xc9ab55,x+offset,y,.075,7.28,.012,.03);
-      }else block(white,x,y,.095,3.22,.012,.03);
+        for(const offset of [-.12,.12]){
+          const lane=x+offset;
+          strip(0xc9ab55,{x:lane,y:y-3.64},{x:lane,y:y+3.64},.075,.012,.03);
+        }
+      }else strip(white,{x,y:y-1.61},{x,y:y+1.61},.095,.012,.03);
     }
   }
   for(let y=-235;y<315;y+=16.8){
@@ -132,6 +138,7 @@ export function buildSejongCorridor(T,scene,kit){
     const mesh=new T.Mesh(new T.PlaneGeometry(width,width*.225),new T.MeshStandardMaterial({map,
       transparent:!background,roughness:.88}));
     mesh.position.set(wx(x),height,wz(y));mesh.rotation.y=angle;group.add(mesh);
+    return mesh;
   }
   const lampGlow=new T.MeshStandardMaterial({color:0xf0e8ca,emissive:0xffdb9d,emissiveIntensity:.18});
   const pedestrianGlow=new T.MeshStandardMaterial({color:0x90c979,emissive:0x79b65e,emissiveIntensity:.42});
@@ -226,10 +233,19 @@ export function buildSejongCorridor(T,scene,kit){
   return group;
 }
 
-function buildCorridorFacades({T,group,wx,wz,box,matte,block,obstacle,label,surface,rectangle,paved,darker,stone}){
+function buildCorridorFacades({T,group,wx,wz,box,matte,block:buildBlock,obstacle,label:buildLabel,surface,rectangle,paved,darker,stone}){
   const granite=0xb4ad9b,ivory=0xd0c7b4,glass=0x486871,deep=0x384b50;
+  let terrainAnchor;
+  const at=(x,y)=>{terrainAnchor={x,y};};
+  function anchored(mesh){
+    if(mesh&&terrainAnchor)mesh.userData.terrainAnchor=terrainAnchor;
+    return mesh;
+  }
+  const block=(...args)=>anchored(buildBlock(...args));
+  const label=(...args)=>anchored(buildLabel(...args));
   function mass(color,x,y,w,d,h,base=0,angle=0,collide=base===0){
     block(color,x,y,w,d,h,base,angle);
+    if(base<=.05&&h>2)block(color,x,y,w,d,.80,base-.80,angle);
     if(collide)obstacle(x,y,w,d,Infinity,angle);
   }
   function windows({x,y,w,d,base=1,levels,columns,pitch,side=1,colors=[glass,deep],ratio=.63,gap=.65}){
@@ -249,6 +265,7 @@ function buildCorridorFacades({T,group,wx,wz,box,matte,block,obstacle,label,surf
   }
 
   // Seoul Hall of Urbanism and Architecture: broad shallow Seoul Maru roof above the glazed hall.
+  at(458.9,100.2);
   surface(rectangle(459,100,27,51),paved,.046);
   mass(0xb7b9ad,458.9,100.2,21.9,43.3,2.85,.045,0,true);
   block(0xcecabf,458.7,100.2,22.55,44.2,.43,2.89);
@@ -260,6 +277,7 @@ function buildCorridorFacades({T,group,wx,wz,box,matte,block,obstacle,label,surf
   label("서울도시건축전시관",470.30,99.9,2.91,11.3,Math.PI/2,"#444e4b");
 
   // The old Bumingwan has a narrow cream frontage, a restored clock tower and an L-shaped wing.
+  at(460.45,15.9);
   mass(0xbab09b,460.45,15.9,22.3,58.7,15.2);
   mass(0xb5aa95,441.6,42.5,34.9,34.6,13.7);
   block(ivory,460.45,15.9,22.8,59.5,.54,15.18);
@@ -276,12 +294,14 @@ function buildCorridorFacades({T,group,wx,wz,box,matte,block,obstacle,label,surf
     const clock=new T.Mesh(new T.CircleGeometry(1.03,24),matte(0xe8dec4));
     clock.rotation.y=face;clock.position.set(wx(461.8+dx*4.23),21.9,wz(35.6+dy*4.53));group.add(clock);
     const hands=new T.Group();hands.position.copy(clock.position);hands.rotation.y=face;group.add(hands);
+    anchored(clock);anchored(hands);
     box(0x4e5147,0,.26,.036,.067,.55,.034,hands).rotation.z=-.27;
     box(0x4e5147,.25,-.02,.039,.48,.06,.035,hands).rotation.z=-.31;
   }
   label("서울특별시의회",472.28,24.9,4.58,12.3,Math.PI/2,"#777767");
 
   // Romanesque brick cathedral behind the gallery, with a cross plan and tiled gables.
+  at(409.8,88.1);
   mass(0x9b5f49,398.8,84.2,53.8,17.2,10.35,0,-.38);
   mass(0xa0664e,409.8,88.1,17,39.5,12.1,0,-.38);
   block(0xc5ac8b,408.5,91.1,21.5,22.8,.47,8.35,-.38);
@@ -299,6 +319,7 @@ function buildCorridorFacades({T,group,wx,wz,box,matte,block,obstacle,label,surf
 
   // Koreana's slim tower and repeated horizontal ribbons are visible from the whole street.
   const hotel={x:454.8,y:-47.8,w:20.4,d:59.2};
+  at(hotel.x,hotel.y);
   mass(0xa6a59a,hotel.x,hotel.y,hotel.w+3.0,hotel.d+2.8,7.2);
   mass(0x779398,hotel.x,hotel.y,hotel.w,hotel.d,76.4,7.2);
   for(let i=0;i<21;i++){
@@ -318,9 +339,10 @@ function buildCorridorFacades({T,group,wx,wz,box,matte,block,obstacle,label,surf
     block(0x454c49,466.52,y,.14,4.74,2.75,.21);
     block(0xa55c45,467.35,y,1.65,4.95,.19,3.07).rotation.z=-.16;
   }
-  for(let y=-67;y<-27;y+=1.30)block(0xc5a747,475.06,y,.28,1.28,.020,.055);
+  for(let y=-67;y<-27;y+=1.30)buildBlock(0xc5a747,475.06,y,.28,1.28,.020,.055);
 
   const press={x:560.2,y:44.5,w:33.6,d:63.2};
+  at(press.x,press.y);
   mass(0xa7aba1,press.x,press.y,press.w,press.d,78.5);
   windows({...press,base:5.7,levels:20,columns:12,pitch:3.53,side:-1,colors:[0x5d7275,0x516d74,0x647e83],ratio:.69,gap:.69});
   for(let level=6;level<78;level+=3.55)block(0xc2c5b9,543.25,press.y,.22,63.18,.31,level);
@@ -330,6 +352,7 @@ function buildCorridorFacades({T,group,wx,wz,box,matte,block,obstacle,label,surf
 
   // The library's west wing sits behind the curb. Its frontage follows the mapped
   // setback instead of extending the wider southern wing through the footway.
+  at(530.55,151.75);
   mass(0xb9b4a4,530.55,151.75,16.0,27.3,17.25);
   block(0xc5c0b0,530.55,151.75,16.54,27.64,.43,17.22);
   block(0xa29e91,530.55,151.75,16.21,27.44,.40,.21);
@@ -338,6 +361,7 @@ function buildCorridorFacades({T,group,wx,wz,box,matte,block,obstacle,label,surf
   for(const y of [138.38,164.99])block(0xc0b9a8,522.50,y,.38,.48,16.5,.68);
 
   // City hall sits behind the older library, its southern wave rising over a glass grid.
+  at(609.7,123.0);
   mass(0x638d93,609.7,123.0,100.4,47.5,42.3);
   for(let i=0;i<20;i++){
     const x=561.9+i*5.0,height=40+Math.sin((i+3)/24*Math.PI)*15.2;
@@ -355,6 +379,7 @@ function buildCorridorFacades({T,group,wx,wz,box,matte,block,obstacle,label,surf
 
   // Dongwha Duty Free occupies the dark granite base of the taller Gwanghwamun Building.
   const duty={x:410.8,y:-196.1,w:33.8,d:51.4};
+  at(duty.x,duty.y);
   mass(0x696e6a,414.3,-196.1,42.4,58.2,10.6);
   mass(0x989a92,duty.x,duty.y,duty.w,duty.d,73.5,10.6);
   windows({...duty,base:11.6,levels:18,columns:13,pitch:3.86,colors:[0x586c71,0x496169,0x61777a],ratio:.56,gap:.81});
@@ -368,11 +393,13 @@ function buildCorridorFacades({T,group,wx,wz,box,matte,block,obstacle,label,surf
 
   // The original newspaper frontage across the road and rounded newer Donga Media Center.
   const ilmin={x:539.3,y:-226.0,w:13.7,d:36.4};
+  at(ilmin.x,ilmin.y);
   mass(0xbab39c,ilmin.x,ilmin.y,ilmin.w,ilmin.d,21.6);
   windows({...ilmin,base:1.8,levels:5,columns:7,pitch:3.45,side:-1,colors:[0x455b59,0x5d706a],ratio:.52,gap:.75});
   for(const level of [4.7,11.9,18.6,21.15])block(0xd1c5aa,532.11,ilmin.y,.56,36.55,.31,level);
   label("일민미술관",532.17,-225,5.3,8,-Math.PI/2,"#a59c88","#3c4841");
   const donga={x:570.9,y:-191.5,w:47.8,d:19.0};
+  at(donga.x,donga.y);
   mass(0x778e90,donga.x,donga.y,donga.w,donga.d,97.0);
   for(let i=0;i<10;i++){
     const angle=i*Math.PI*2/10;
@@ -392,6 +419,7 @@ function buildCorridorFacades({T,group,wx,wz,box,matte,block,obstacle,label,surf
     [636,-16,31,37,72,0x84958c,-1,""],[643,50,39,34,55,0x96a098,-1,""]
   ];
   for(const [x,y,w,d,h,color,side,name] of backdrop){
+    at(x,y);
     mass(color,x,y,w,d,h);
     const levels=Math.max(1,Math.min(25,Math.floor((h-2.6)/3.5)));
     windows({x,y,w,d,base:1.4,levels,columns:Math.max(2,Math.floor(d/4.3)),pitch:3.5,side,

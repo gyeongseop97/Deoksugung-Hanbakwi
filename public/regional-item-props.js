@@ -22,10 +22,34 @@ export function makeRegionalItemProps(T,{box,cylinder,shape}){
     .map(([radius,y])=>new T.Vector2(radius,y)),24);
   const wineRim=new T.TorusGeometry(.054,.002,6,20);wineRim.rotateX(-Math.PI/2);
   const glassMaterial=new T.MeshStandardMaterial({color:0xf6cfd6,roughness:.15,transparent:true,opacity:.32,depthWrite:false});
+  const clearGlass=new T.MeshStandardMaterial({color:0xe8eee3,roughness:.12,transparent:true,opacity:.32,depthWrite:false});
+  const tumbler=new T.LatheGeometry([[0,-.101],[.058,-.101],[.064,-.092],[.072,.105],[.070,.109],
+    [.068,.106],[.060,-.089],[0,-.089]].map(([radius,y])=>new T.Vector2(radius,y)),24);
+  const tumblerRim=new T.TorusGeometry(.069,.002,6,24);tumblerRim.rotateX(-Math.PI/2);
+  const fishShape=new T.Shape();
+  fishShape.moveTo(.103,0);
+  fishShape.bezierCurveTo(.089,.055,.039,.073,-.022,.046);
+  fishShape.lineTo(-.100,.069);fishShape.lineTo(-.087,.012);fishShape.lineTo(-.104,-.059);
+  fishShape.lineTo(-.021,-.037);
+  fishShape.bezierCurveTo(.034,-.067,.087,-.050,.103,0);
+  const fishGeometry=new T.ExtrudeGeometry(fishShape,{depth:.025,bevelEnabled:true,bevelSegments:2,steps:1,bevelThickness:.009,bevelSize:.009});
+  fishGeometry.rotateX(-Math.PI/2);
+  const fishEye=new T.TorusGeometry(.010,.0021,5,12);fishEye.rotateX(-Math.PI/2);
+  const fishScale=new T.TorusGeometry(.012,.0018,4,9,Math.PI*.70);fishScale.rotateX(-Math.PI/2);
+  const plumCup=new T.LatheGeometry([[0,-.068],[.039,-.068],[.043,-.055],[.060,-.031],[.066,.018],
+    [.063,.067],[.060,.067],[.059,.057],[.061,.021],[.054,-.029],[0,-.044]].map(([r,y])=>new T.Vector2(r,y)),24);
+  const limeGeometry=new T.CylinderGeometry(.037,.037,.008,18,1,false,0,Math.PI);
+  limeGeometry.rotateX(Math.PI/2);
+  const iceGeometry=new T.BoxGeometry(.040,.043,.041);
+  const frost=new T.MeshStandardMaterial({color:0xf8f6df,roughness:.27,transparent:true,opacity:.58});
 
   function berry(parent,color,x,y,z,w,h,d){
     const mesh=shape(berryGeometry,color,x,y,z,parent);
     mesh.scale.set(w,h,d);return mesh;
+  }
+  function drinkGlass(parent){
+    const glass=new T.Mesh(tumbler,clearGlass);glass.renderOrder=1;parent.add(glass);
+    shape(tumblerRim,0xdfebe4,0,.106,0,parent);
   }
   return {
     yakgwa(parent){
@@ -49,6 +73,45 @@ export function makeRegionalItemProps(T,{box,cylinder,shape}){
       }
       berry(parent,0xffe7d9,.005,.081,-.059,.018,.012,.017);
     },
+    bingsu(parent){
+      shape(bowlGeometry,0x527c7c,0,0,0,parent);
+      cylinder(0x6e9994,0,.048,0,.116,.010,24,parent);
+      berry(parent,0xf6f4e6,0,.057,0,.105,.048,.104);
+      berry(parent,0xfbf6de,0,.078,0,.083,.041,.079);
+      for(let i=0;i<12;i++){
+        const angle=i*2.399,radius=.017+.055*Math.sqrt(i/12);
+        const bean=berry(parent,i%3===0?0x8c5248:0x6f3d36,Math.cos(angle)*radius,.119-radius*.41,Math.sin(angle)*radius,.014,.011,.009);
+        bean.rotation.y=angle+.6;
+      }
+      for(const [x,z] of [[-.040,.034],[.045,-.032],[.025,.048]]){
+        box(0xf1e4b8,x,.109,z,.026,.023,.026,parent).rotation.y=x*12;
+      }
+      box(0xc8ceca,-.066,.079,-.057,.014,.013,.103,parent).rotation.x=.48;
+      berry(parent,0x9ea9a9,-.066,.105,-.103,.022,.009,.033);
+    },
+    bungeoppang(parent){
+      const paper=box(0xeee2bf,0,-.016,0,.235,.014,.160,parent);
+      paper.rotation.y=-.11;
+      box(0xcfb47f,-.107,-.002,.006,.015,.023,.142,parent).rotation.y=.12;
+      shape(fishGeometry,0xc27a3b,0,0,0,parent);
+      shape(fishEye,0x86502d,.063,.034,-.012,parent);
+      berry(parent,0x8d512c,.063,.035,-.011,.004,.003,.004);
+      for(let row=0;row<3;row++)for(let col=0;col<4;col++){
+        const imprint=shape(fishScale,0xa46136,.028-col*.019+(row%2)*.007,.035,(row-1)*.021,parent);
+        imprint.rotation.y=-Math.PI/2;
+      }
+      for(const z of [-.032,.014,.042])box(0x9a5a32,-.072,.034,z,.043,.002,.003,parent).rotation.y=z*5;
+    },
+    riceCake(parent){
+      cylinder(0xe7d8bf,0,-.044,0,.113,.023,24,parent,.94);
+      cylinder(0xbfb492,0,-.029,0,.102,.008,24,parent);
+      for(const [x,z,color] of [[-.052,.036,0xf4e1c4],[.049,.032,0xc97685],[.006,-.047,0x8ea670]]){
+        berry(parent,color,x,-.001,z,.035,.032,.034);
+        berry(parent,0xf5e0ad,x-.009,.020,z+.012,.008,.006,.007);
+      }
+      box(0x917153,0,-.016,.084,.137,.009,.009,parent).rotation.y=.08;
+      box(0x917153,0,-.014,.098,.137,.009,.009,parent).rotation.y=.14;
+    },
     makgeolli(parent){
       shape(bowlGeometry,0xc99755,0,0,0,parent);
       cylinder(0xf8eccc,0,.037,0,.109,.008,24,parent);
@@ -63,6 +126,30 @@ export function makeRegionalItemProps(T,{box,cylinder,shape}){
       shape(wineGeometry,0x7b1f3e,0,0,0,parent);
       const glass=new T.Mesh(glassGeometry,glassMaterial);glass.renderOrder=1;parent.add(glass);
       shape(wineRim,0xe6bfc3,0,.166,0,parent);
+    },
+    fruitWine(parent){
+      shape(plumCup,0xe6dcc2,0,0,0,parent);
+      cylinder(0xad7131,0,.050,0,.061,.010,24,parent);
+      cylinder(0x557263,0,-.062,0,.042,.010,24,parent);
+      for(let i=0;i<6;i++){
+        const angle=i*Math.PI/3;
+        berry(parent,0x5c7963,Math.cos(angle)*.061,.028,Math.sin(angle)*.061,.006,.009,.006);
+      }
+      berry(parent,0xdabc64,.022,.056,.003,.017,.011,.017);
+      berry(parent,0x7c8852,.027,.066,-.009,.009,.004,.004);
+    },
+    highball(parent){
+      cylinder(0xcb8c46,0,-.0135,0,.058,.153,24,parent,1.13);
+      cylinder(0xf7c781,0,.064,0,.065,.004,24,parent);
+      drinkGlass(parent);
+      for(const [x,y,z,angle] of [[-.025,.057,.022,.3],[.026,.046,-.023,-.27],[.020,.073,.024,.47]]){
+        const ice=new T.Mesh(iceGeometry,frost);ice.position.set(x,y,z);ice.rotation.y=angle;parent.add(ice);
+      }
+      const lime=shape(limeGeometry,0x77964d,.046,.114,.041,parent);
+      lime.rotation.y=.44;lime.rotation.z=-.54;
+      const pulp=shape(limeGeometry,0xd8ca6c,.046,.114,.044,parent);
+      pulp.scale.set(.81,.81,.72);pulp.rotation.copy(lime.rotation);
+      const stir=box(0x374745,-.038,.073,-.029,.009,.165,.009,parent);stir.rotation.z=.18;
     }
   };
 }

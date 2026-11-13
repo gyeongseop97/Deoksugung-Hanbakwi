@@ -5,6 +5,7 @@ import {gbBounds,gbCatTrails,gbPlazaCatTrails,gbStation} from "./gyeongbok-layou
 import {createCatSocial} from "./cat-social.js";
 import {createCatHunts} from "./cat-hunt.js";
 import {createCatRecognition} from "./cat-recognition.js";
+import {expansionWildlife} from "./expansion-wildlife.js";
 
 const cats=[
   {id:"cheese",name:"치즈태비",size:1.04,coat:0xd5914b,mark:0x98521f,paw:0xf0d5aa,eyes:[0xa8a953,0xa8a953],pattern:"tabby"},
@@ -205,7 +206,7 @@ function shortestTurn(from,to,amount){
 }
 
 function scareFrom(pose,runner,time){
-  const origin={x:pose.x,y:pose.y,height:pose.height,heading:pose.heading,approach:pose.approach};
+  const origin={x:pose.x,y:pose.y,height:pose.height,surface:pose.surface,heading:pose.heading,approach:pose.approach};
   const ground=pose.approach??origin;
   return {origin,ground,point:origin,runner,lastThreat:time,leg:null,queue:pose.approach?[{to:ground,arc:.39,ms:490}]:[],
     trace:[ground],stride:0,returning:false,nextReturnAt:0,wall:null};
@@ -281,8 +282,9 @@ function retreatPose(escape,time,runners,walls,walkers){
   if(escape.leg){
     const {from,to,arc,start,ms,sprint}=escape.leg;
     const progress=Math.max(0,Math.min(1,(time-start)/ms));
+    const surface=progress===1?to:from;
     pose=retreatLeg(from,to,progress,from.heading,sprint,arc);
-    pose.height=progress===1?to.height:from.height;
+    pose.height=surface.height;pose.surface=surface.surface;
     pose.stride+=escape.stride;
     if(progress===1){
       escape.point={...to,heading:pose.heading};escape.leg=null;escape.stride=pose.stride;
@@ -571,8 +573,9 @@ function fallingLeaves(T,scene,kit){
       if(active.length<12&&nearby.length){
         const tree=nearby[Math.floor(random()*nearby.length)];
         const angle=random()*Math.PI*2,radius=tree.height*(.08+random()*.16);
+        const terrain=kit.terrainHeight?.({x:tree.x-kit.wx(0),y:tree.z-kit.wz(0)})??0;
         active.push({at:now,x:tree.x+Math.cos(angle)*radius,z:tree.z+Math.sin(angle)*radius,
-          height:tree.height*(.70+random()*.21),speed:.79+random()*.39,
+          height:terrain+tree.height*(.70+random()*.21),speed:.79+random()*.39,
           phase:random()*Math.PI*2,size:.75+random()*.68,tone:palette[Math.floor(random()*palette.length)]});
       }
       nextDrop=now+1150+random()*950;
@@ -580,11 +583,13 @@ function fallingLeaves(T,scene,kit){
     let count=0;
     for(let i=active.length-1;i>=0;i--){
       const leaf=active[i],age=(now-leaf.at)/1000,height=leaf.height-age*leaf.speed;
-      if(height<=.03||(leaf.x-x)**2+(leaf.z-z)**2>42**2){active.splice(i,1);continue;}
       const wave=leaf.phase+age*1.43;
-      object.position.set(leaf.x+age*.38+Math.sin(wave)*.59,height,leaf.z+Math.cos(wave*.87)*.34);
+      const wx=leaf.x+age*.38+Math.sin(wave)*.59,wz=leaf.z+Math.cos(wave*.87)*.34;
+      const floor=kit.floorHeight?.({x:wx-kit.wx(0),y:wz-kit.wz(0)})??0,clearance=height-floor;
+      if(clearance<=.03||(leaf.x-x)**2+(leaf.z-z)**2>42**2){active.splice(i,1);continue;}
+      object.position.set(wx,height,wz);
       object.rotation.set(wave*.76,wave*.49,Math.sin(wave)*.58);
-      object.scale.setScalar(leaf.size*Math.min(1,height/.40));
+      object.scale.setScalar(leaf.size*Math.min(1,clearance/.40));
       object.updateMatrix();mesh.setMatrixAt(count,object.matrix);mesh.setColorAt(count++,color.setHex(leaf.tone));
     }
     mesh.count=count;
@@ -600,6 +605,7 @@ export function addParkLife(T,scene,kit){
   const hunting=createCatHunts(kit.birds,clearSegment);
   const recognizing=createCatRecognition(clearSegment);
   let seed,population,sight=39,northLoaded=!kit.deferNorth,audible=[];
+  const expanded=expansionWildlife.map(area=>({...area,ready:false,index:0}));
   const setSparse=value=>{sight=value?24:39;};
   function buildCats(limit){
     const {hash,count,palaceCount,coats,used}=population;
@@ -639,6 +645,39 @@ export function addParkLife(T,scene,kit){
     const used={homes:new Set(),benches:new Set(),walls:new Set(),trees:new Set()};
     population={hash,count,palaceCount,coats,used,index:0};
     buildCats(northLoaded?total:count);
+    for(const area of expanded){
+      area.index=0;
+      if(area.ready)buildExpansionCats(area,area.catCount);
+    }
+  }
+  function buildExpansionCats(area,limit){
+    const randomBase=catSeedNumber(seed+":"+area.id);
+    const candidates=area.trails.filter(path=>path.length>=2);
+    while(area.index<limit){
+      const index=area.index++,random=randomSequence(randomBase^Math.imul(index+1,0x9e3779b1));
+      if(!candidates.length)continue;
+      const trail=candidates[Math.floor(index*candidates.length/area.catCount)];
+      const start=trail[Math.floor(random()*trail.length)],home=findHome(start);
+      if(!home)continue;
+      const roam=makeCatRoaming({trails:[trail],origin:home,plan:false});
+      const ground=roam(home,random,index);
+      if(!ground.length)continue;
+      const coat=cats[Math.floor(random()*cats.length)];
+      const spec={...coat,id:area.id+"-"+coat.id+"-"+(index+1),name:coat.name+" "+(index+1)};
+      const path=makeRoute(ground,random,kit,population.used,index);
+      const model=catModel(T,scene,spec,coat,meshes);
+      live.push({...spec,...path,...model,x:home.x,y:home.y,area,
+        routeAt:null,updatedAt:null,petFrom:0,petUntil:0,petPose:null,canPet:false,escape:null,checkAt:0,
+        lure:null,lureCheckAt:0,feeding:null,pose:null,social:null,hunt:null,recognition:null,rejoin:null,frame:{}});
+    }
+  }
+  function* loadExpansion(id){
+    const area=expanded.find(value=>value.id===id);
+    while(area.index<area.catCount){
+      buildExpansionCats(area,Math.min(area.catCount,area.index+2));
+      yield;
+    }
+    area.ready=true;
   }
   function* loadNorth(){
     // Resume the original room's sequence, or the current room's sequence if it changed.
@@ -650,7 +689,8 @@ export function addParkLife(T,scene,kit){
   }
   setSeed(kit.catSeed);
   const leaves=fallingLeaves(T,scene,kit);
-  const heightAt=point=>point.height??kit.floorHeight?.(point)??0;
+  const heightAt=point=>point.height==null?(kit.floorHeight?.(point)??0):
+    point.height+(point.surface==="bench"||point.surface==="wall"?(kit.terrainHeight?.(point)??0):0);
   function update(now,anchor,walkers=[],autumn=true){
     const runners=walkers.filter(actor=>actor.running&&actor.stepping&&actor.seat==null&&
       (actor.blocked||Math.hypot(actor.vx,actor.vy)>2.65));
@@ -661,7 +701,9 @@ export function addParkLife(T,scene,kit){
     const deoksugungNearby=!viewer||viewer.y>=30-sight&&viewer.y<=420+sight;
     const gyeongbokgungNearby=!viewer||viewer.y>=gbBounds.minY-sight&&viewer.y<=gbBounds.maxY+sight;
     const active=live.filter(cat=>{
-      if(cat.palace?gyeongbokgungNearby:deoksugungNearby)return true;
+      const bounds=cat.area?.bounds;
+      if(bounds?!viewer||viewer.x>=bounds.minX-sight&&viewer.x<=bounds.maxX+sight&&viewer.y>=bounds.minY-sight&&viewer.y<=bounds.maxY+sight:
+        cat.palace?gyeongbokgungNearby:deoksugungNearby)return true;
       cat.group.visible=cat.canPet=cat.feedable=false;
       if(cat.recognition){cat.recognition=null;cat.routeAt=cat.updatedAt=null;}
       return false;
@@ -696,7 +738,7 @@ export function addParkLife(T,scene,kit){
       const landTime=phase-current.travel;
       const patrol={
         x:current.a.x+current.dx*progress,y:current.a.y+current.dy*progress,
-        height:surface.height,approach:onBench?surface.approach:null,
+        height:surface.height,surface:surface.surface,approach:onBench?surface.approach:null,
         heading:shortestTurn(facingSurface?current.heading:previous,facingSurface?surface.heading:current.heading,
           Math.min(1,(facingSurface?landTime:phase)/.36)),
         stride:progress*current.distance*2*Math.PI/.56,
@@ -914,6 +956,7 @@ export function addParkLife(T,scene,kit){
     }
   }
   // How many cats live on each map (used when checking a build).
-  const census=()=>({deoksugung:live.filter(cat=>!cat.palace).length,gyeongbokgung:live.filter(cat=>cat.palace).length});
-  return {update,nearestCat,nearestFeedCat,soundSource,pet,feed,resetInteractions,setSeed,census,setSparse,loadNorth};
+  const census=()=>({deoksugung:live.filter(cat=>!cat.palace&&!cat.area).length,gyeongbokgung:live.filter(cat=>cat.palace).length,
+    ...Object.fromEntries(expanded.map(area=>[area.id,live.filter(cat=>cat.area===area).length]))});
+  return {update,nearestCat,nearestFeedCat,soundSource,pet,feed,resetInteractions,setSeed,census,setSparse,loadNorth,loadExpansion};
 }

@@ -1,8 +1,9 @@
 import {
   gwanghwamun,gbSites,gbSite,gbCourts,gbLake,gbPond,gbPaths,gbLawns,gbStation,subwayStops,
-  gbWoldae,gbHaetae,gbPhotoZone,gbRoyalPavilion,gbUijeongbu,gbBusIsland,gbCrossings,wallHalf,wallNorth,folkMuseumEastOpening,at
+  gbWoldae,gbHaetae,gbPhotoZone,gbRoyalPavilion,gbUijeongbu,gbBusIsland,gbCrossings,at
 } from "./gyeongbok-layout.js";
 import {solidAt} from "./layout.js";
+import {gbEastOpenings,gbEastWall,gbMuseumWestGate,gbOuterWallRuns,gbWallOutline,insideGbWall,clipGbGround} from "./gyeongbok-perimeter.js";
 import {buildGyeongbokCompounds,inGyeongbokCompound} from "./gyeongbok-compounds.js";
 
 // Survey models can replace these hand-built halls later: drop "<id>.glb" into public/ and
@@ -114,10 +115,13 @@ export function* buildGyeongbok(T,scene,kit,tools){
 
   // ---- Ground -------------------------------------------------------------------------
   const centre=world(0,410);
-  box(0x677253,centre.x,-.36,centre.z,900,.65,1280);
-  plot(rect(-wallHalf,wallHalf,0,wallNorth),materials.earth,.008);
+  box(0x677253,centre.x,-.36,centre.z,900,.65,1280).userData.flatBackground=true;
+  plot(gbWallOutline,materials.earth,.008);
   plot(rect(-92,92,-52,0),materials.paving,.02);
-  for(const {kind,west,east,south,north} of gbLawns)plot(rect(west,east,south,north),materials.garden[kind],.017);
+  for(const {kind,west,east,south,north} of gbLawns){
+    const grass=clipGbGround(west,east,south,north);
+    if(grass.length>=3)plot(grass,materials.garden[kind],.017);
+  }
   for(const court of [gbCourts.heungnye,gbCourts.geunjeong]){
     plot(rect(court.west+1,court.east-1,court.south+1,court.north-1),materials.court,.022);
   }
@@ -128,16 +132,31 @@ export function* buildGyeongbok(T,scene,kit,tools){
 
   // ---- Palace wall and its gates ---------------------------------------------------------
   const wallHeight=4.7;
-  const corner=(east,north)=>at(east,north);
-  wall(corner(-wallHalf,0),corner(-15.6,0),wallHeight,false,false);
-  wall(corner(15.6,0),corner(wallHalf,0),wallHeight,false,false);
-  wall(corner(-wallHalf,0),corner(-wallHalf,323),wallHeight,false,false);
-  wall(corner(-wallHalf,337),corner(-wallHalf,wallNorth),wallHeight,false,false);
-  wall(corner(wallHalf,0),corner(wallHalf,323),wallHeight,false,false);
-  wall(corner(wallHalf,337),corner(wallHalf,folkMuseumEastOpening.south),wallHeight,false,false);
-  wall(corner(wallHalf,folkMuseumEastOpening.north),corner(wallHalf,wallNorth),wallHeight,false,false);
-  wall(corner(-wallHalf,wallNorth),corner(-7,wallNorth),wallHeight,false,false);
-  wall(corner(7,wallNorth),corner(wallHalf,wallNorth),wallHeight,false,false);
+  for(const run of gbOuterWallRuns)for(let i=1;i<run.length;i++)wall(run[i-1],run[i],wallHeight,false,false);
+  const [westEntryNorth,westEntrySouth]=gbMuseumWestGate.jambs;
+  const westEntryAngle=-Math.atan2(westEntrySouth.y-westEntryNorth.y,westEntrySouth.x-westEntryNorth.x);
+  for(const {x,y} of gbMuseumWestGate.jambs){
+    box(stoneTint,wx(x),1.52,wz(y),.72,3.04,.86).rotation.y=westEntryAngle;
+    box(0x414b45,wx(x),3.15,wz(y),.92,.23,1.07).rotation.y=westEntryAngle;
+    block(wx(x),wz(y),.72,.86,westEntryAngle,3.27);
+  }
+  const gates=gbEastOpenings.map(({y,width})=>[y-width/2,y+width/2]).sort((a,b)=>a[0]-b[0]);
+  for(let i=1;i<gbEastWall.length;i++){
+    const a=gbEastWall[i-1],b=gbEastWall[i],dy=b.y-a.y;
+    if(!dy){
+      if(!gates.some(([low,high])=>a.y>low&&a.y<high))wall(a,b,wallHeight,false,false);
+      continue;
+    }
+    const point=y=>({x:a.x+(b.x-a.x)*(y-a.y)/dy,y});
+    const end=Math.max(a.y,b.y);
+    let start=Math.min(a.y,b.y);
+    for(const [low,high] of gates){
+      if(high<=start||low>=end)continue;
+      if(low-start>.35)wall(point(start),point(low),wallHeight,false,false);
+      start=Math.max(start,high);
+    }
+    if(end-start>.35)wall(point(start),point(end),wallHeight,false,false);
+  }
 
   // Gwanghwamun: a stone base with three arched passages carrying a two-storey gatehouse.
   const baseHeight=6.6,piers=[[-15.6,-10.6],[-6.2,-2.9],[2.9,6.2],[10.6,15.6]];
@@ -305,7 +324,9 @@ export function* buildGyeongbok(T,scene,kit,tools){
   for(const spec of gbSites){
     if(spec.kind==="gate")built({...spec,gate:true,raised:.12,h:spec.stories===2?spec.h*1.9:spec.h,rise:spec.stories===2?2.9:2.0});
     else if(spec.kind==="hall")built({...spec,raised:.55,rise:2.0+spec.w*.02,interior:rooms[spec.id]??"living"});
-    else if(spec.kind==="sideGate"){
+    else if(spec.kind==="sideGate"&&(spec.id==="geonchunmun"||spec.id==="yeongchumun")){
+      built({...spec,gate:true,raised:.16,rise:2.1});
+    }else if(spec.kind==="sideGate"){
       const g=built({...spec,raised:.3,rise:2.1,noCollision:true});
       const p=world(spec.east,spec.north);
       block(p.x,p.z,spec.w+1.6,spec.d+1.4,spec.angle);
@@ -691,7 +712,8 @@ export function* buildGyeongbok(T,scene,kit,tools){
   const awayFromRoads=(x,y)=>gbPaths.every(({points,width})=>pathClear(points,x,y,width/2+1.6));
   function plant(east,north,height,choice){
     const point=at(east,north),x=wx(point.x),z=wz(point.y);
-    if(inGyeongbokCompound(east,north)||solidAt(point.x,point.y)||!awayFromRoads(point.x,point.y)||!treeFits(x,z,height))return false;
+    if(north>=0&&!insideGbWall(point.x,point.y)||inGyeongbokCompound(east,north)||solidAt(point.x,point.y)||
+      !awayFromRoads(point.x,point.y)||!treeFits(x,z,height))return false;
     return Boolean(tree(x,z,height,choice));
   }
   for(const {kind,west,east,south,north} of gbLawns){

@@ -22,7 +22,7 @@ function stoneBasin(T,scene,x,z,radius){
   return pool;
 }
 
-export function addWater(T,scene,sources,{cylinder,rand}) {
+export function addWater(T,scene,sources,{cylinder,rand,terrain=()=>0}) {
   const state=[];
   const sprite=document.createElement("canvas");
   sprite.width=sprite.height=32;
@@ -32,11 +32,14 @@ export function addWater(T,scene,sources,{cylinder,rand}) {
   ctx.fillStyle=fade;ctx.fillRect(0,0,32,32);
   const dropTexture=new T.CanvasTexture(sprite);
   for(const {x,z,radius:r,scalloped=false} of sources) {
+    const source=new T.Group();
+    source.position.y=terrain({x:x+300,y:z+225});
+    scene.add(source);
     if(!scalloped){
-      cylinder(0x8e9087,x,.20,z,r,.41,36);
-      cylinder(0xaba89b,x,.44,z,r*1.012,.15,36);
+      cylinder(0x8e9087,x,.20,z,r,.41,36,source);
+      cylinder(0xaba89b,x,.44,z,r*1.012,.15,36,source);
     }
-    const poolShape=scalloped?stoneBasin(T,scene,x,z,r):new T.CircleGeometry(r*.91,42);
+    const poolShape=scalloped?stoneBasin(T,source,x,z,r):new T.CircleGeometry(r*.91,42);
     const pool = new T.Mesh(poolShape,new T.ShaderMaterial({
       uniforms:{clock:{value:0},night:{value:0},parterre:{value:Number(scalloped)}},
       vertexShader:`
@@ -58,12 +61,12 @@ export function addWater(T,scene,sources,{cylinder,rand}) {
         }
       `
     }));
-    pool.rotation.x=-Math.PI/2;pool.position.set(x,scalloped?.493:.531,z);scene.add(pool);
-    cylinder(scalloped?0x426658:0x939b94,x,.76,z,r*.095,.49,16);
-    cylinder(scalloped?0x567c68:0xb6b1a0,x,1.028,z,r*.136,.13,16);
+    pool.rotation.x=-Math.PI/2;pool.position.set(x,scalloped?.493:.531,z);source.add(pool);
+    cylinder(scalloped?0x426658:0x939b94,x,.76,z,r*.095,.49,16,source);
+    cylinder(scalloped?0x567c68:0xb6b1a0,x,1.028,z,r*.136,.13,16,source);
     if(scalloped)for(let i=0;i<4;i++){
       const angle=i*Math.PI/2;
-      cylinder(0x50766a,x+Math.cos(angle)*r*.61,.62,z+Math.sin(angle)*r*.61,r*.046,.24,10);
+      cylinder(0x50766a,x+Math.cos(angle)*r*.61,.62,z+Math.sin(angle)*r*.61,r*.046,.24,10,source);
     }
     // Short colliders follow the lip instead of blocking the surrounding walk.
     const edges=scalloped?20:14;
@@ -80,14 +83,14 @@ export function addWater(T,scene,sources,{cylinder,rand}) {
     for(let i=0;i<count;i++)seeds.push({phase:rand(),angle:rand()*Math.PI*2,amp:.65+rand()*.43,side:i%6!==0});
     const material=new T.PointsMaterial({color:0xdbf8ff,map:dropTexture,size:.19,transparent:true,opacity:.91,depthWrite:false,alphaTest:.035});
     const drops=new T.Points(geom,material);
-    drops.position.set(x,0,z);drops.frustumCulled=false;scene.add(drops);
+    drops.position.set(x,0,z);drops.frustumCulled=false;source.add(drops);
     const jets=9,segments=14,streams=new T.BufferGeometry();
     const streamData=new T.BufferAttribute(new Float32Array(jets*segments*6),3);
     streamData.setUsage(T.DynamicDrawUsage);streams.setAttribute("position",streamData);
     const plume=new T.LineSegments(streams,new T.LineBasicMaterial({
       color:0xd6f2fc,transparent:true,opacity:.72,depthWrite:false
     }));
-    plume.position.set(x,0,z);plume.frustumCulled=false;scene.add(plume);
+    plume.position.set(x,0,z);plume.frustumCulled=false;source.add(plume);
     state.push({pool,data,positions,seeds,r,material,streamData,jets,segments});
   }
   return (seconds,night)=>{

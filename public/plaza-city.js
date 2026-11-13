@@ -3,10 +3,14 @@ import {plazaAt} from "./plaza-layout.js";
 export function addPlazaCity(T,group,{wx,wz}){
   const stone=[],glass=[],screens=[],distant=[];
   const concrete=0xa6a6a0,granite=0xbeb8aa,shadow=0x535655;
+  let terrainAnchor;
+  const at=(east,north)=>{terrainAnchor=plazaAt(east,north);};
   const box=(color,east,level,north,width,height,length,batch=stone)=>
-    batch.push({color,east,level,north,width,height,length});
-  const slab=(color,east,north,width,length,bottom,height,batch=stone)=>
+    batch.push({color,east,level,north,width,height,length,terrainAnchor});
+  const slab=(color,east,north,width,length,bottom,height,batch=stone)=>{
     box(color,east,bottom+height/2,north,width,height,length,batch);
+    if(!bottom&&width>4&&length>4)box(color,east,-.5,north,width,1.0,length,batch);
+  };
   const pane=(color,east,level,north,width,height,length)=>
     box(color,east,level,north,width,height,length,glass);
 
@@ -26,6 +30,7 @@ export function addPlazaCity(T,group,{wx,wz}){
     const p=plazaAt(east,north);
     sign.position.set(wx(p.x),height,wz(p.y));
     sign.rotation.y=facesEast?Math.PI/2:-Math.PI/2;
+    sign.userData.terrainAnchor=terrainAnchor;
     group.add(sign);
   }
 
@@ -216,9 +221,13 @@ export function addPlazaCity(T,group,{wx,wz}){
     }
   }
 
-  sejongCenter();hyundai();government();kyobo();kt();
-  civicEast(291,false);
-  civicEast(385,true);
+  at(-96,204);sejongCenter();
+  at(-91,68);hyundai();
+  at(-146,470);government();
+  at(87,52);kyobo();
+  at(82,184);kt();
+  at(82,291);civicEast(291,false);
+  at(82,385);civicEast(385,true);
 
   // Secondary blocks sit behind the recognizable frontage and leave the gate's sightline open.
   for(const [east,north,width,length,height,color] of [
@@ -229,6 +238,7 @@ export function addPlazaCity(T,group,{wx,wz}){
     [188,188,66,49,103,0x81959c],[164,258,53,59,71,0x8a9ca0],
     [168,343,60,56,57,0x90a1a1],[171,419,48,57,52,0x96a49e],
   ]){
+    at(east,north);
     slab(color,east,north,width,length,0,height,distant);
     slab(0x8b9795,east,north,width*.68,length*.67,height,3.6,distant);
     for(let h=7;h<height-2;h+=6){
@@ -250,6 +260,7 @@ export function addPlazaCity(T,group,{wx,wz}){
       mesh.setColorAt(index,tint.setHex(part.color));
     }
     mesh.castShadow=shadows;mesh.receiveShadow=true;
+    mesh.userData.terrainAnchors=entries.map(part=>part.terrainAnchor);
     mesh.computeBoundingSphere();
     group.add(mesh);
   }

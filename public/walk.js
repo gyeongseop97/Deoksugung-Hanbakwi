@@ -3,7 +3,7 @@ import {
   middle,hall,stoneHall,stoneFountain,city,pavilions,estateOutline,nearest,distance as near,walkable,solidAt,clearSegment,wadeSegment,waterDepth,loftStep,loftHeight,loftStair,planWalk,platformAt
 } from "./layout.js";
 import {normalize,angleDelta,hexCoat,moving,receivePeople,smoothPeople,handPosition,handSide,pairFits} from "./people.js";
-import {ITEMS,PET_MS,FEED_MS,JUMP_MS,jumpLift} from "./activities.js";
+import {ITEMS,PET_MS,FEED_MS,jumpDuration,jumpLift} from "./activities.js";
 import {makeWishDrawing} from "./wish-drawing.js";
 import {WISH_FLIGHT_MS} from "./wish-art.js";
 import {isInsideMuseum,museumBounds,museumGalleries,museumGalleryAt,museumHall} from "./visit-layout.js";
@@ -14,16 +14,20 @@ import {bindNearbyControls} from "./nearby-controls.js";
 import {bindMapGestures} from "./map-gestures.js";
 import {makeSound} from "./sound.js";
 import {ceremonyAt} from "./palace-people.js";
-import {cityHallStation,gbSites,gbBounds,gbLake,gbPond,gbPaths,gbCourts,gbLawns,gbShortcuts,wishPond,gbPhotoZone,gbUijeongbu,gbCrossings,gbBusIsland,inGyeongbok,wallHalf,wallNorth,at as palaceAt} from "./gyeongbok-layout.js";
+import {cityHallStation,gbSites,gbBounds,gbLake,gbPond,gbPaths,gbCourts,gbLawns,gbShortcuts,wishPond,gbPhotoZone,gbUijeongbu,gbCrossings,gbBusIsland,inGyeongbok,nearWoldaeRailing,at as palaceAt} from "./gyeongbok-layout.js";
 import {inGwanghwamunPlaza,plazaAt,plazaBounds,plazaSites,plazaOutline,plazaPaths,plazaShortcuts,plazaBeds,plazaRoadProfile,plazaEastWalkSpine,eastRoadWidth,sajikRoad} from "./plaza-layout.js";
 import {corridorBounds,corridorLandmarks,corridorSidewalks,corridorCrossings,corridorWalkSpine,corridorEastWalkSpine,corridorMainRoad,inSejongCorridor,seoulPlazaApproach} from "./sejong-corridor-layout.js";
 import {transitRoutes,transitStops} from "./transit-routes.js";
 import {subwayAccessPaths} from "./subway-expansion.js";
 import {jeongdongExtensionLandmarks,jeongdongExtensionPaths} from "./jeongdong-extension-layout.js";
-import {bukchonBounds,bukchonPaths,bukchonLandmarks,bukchonWalkable,bukchonShortcuts} from "./bukchon-layout.js";
+import {bukchonBounds,bukchonPaths,bukchonLandmarks,bukchonWalkable,bukchonShortcuts,bukchonLawns} from "./bukchon-layout.js";
 import {hwangudanBounds,hwangudanGround,hwangudanPaths,hwangudanLandmarks,hwangudanBuildings,hwangudanWalkable} from "./seoul-hwangudan-layout.js";
-import {BUS_COUNT,BUS_SEATS,busAt,busSeatPose,busStopById,busStops,busStopTimes,nearBus} from "./sejong-bus.js";
+import {BUS_COUNT,BUS_SEATS,bukchonBusRoads,busAt,busSeatPose,busStopById,busStops,busStopTimes,nearBus} from "./sejong-bus.js";
 import {bikeDocks,bikeMountReach,bikeParkDuration,isCycling,nearBikeDock} from "./sejong-bike.js";
+import {canRideBikeSegment} from "./bike-movement.js";
+import {gbWallOutline,clipGbGround} from "./gyeongbok-perimeter.js";
+import {outsideGroundOffset} from "./gyeongbok-terrain.js";
+import {mmcaCourtyards,mmcaBuildings,mmcaLawns} from "./mmca-layout.js";
 import {plazaShowSpot,PLAZA_SHOW_REACH,PLAZA_SHOW_HEARING_METRES} from "./plaza-show.js";
 import {canClink,clinkItemSlot,CLINK_REACH,CLINK_LEAD_MS} from "./social-events.js";
 import {gameApiUrl,isGitHubPages} from "./hosting.js";
@@ -64,7 +68,7 @@ function initialAvatar(){
       if(choices.includes(saved?.[feature]))look[feature]=saved[feature];
     }
   }catch{}
-  return {x:ticketApproach.x+1,y:ticketApproach.y-2.4,heading:entranceHeading,vx:0,vy:0,wish:0,wishOrigin:null,wishHeading:0,wishArt:null,wave:0,jump:0,emote:null,chat:null,
+  return {x:ticketApproach.x+1,y:ticketApproach.y-2.4,heading:entranceHeading,vx:0,vy:0,wish:0,wishOrigin:null,wishHeading:0,wishArt:null,wave:0,jump:0,vaultBase:null,emote:null,chat:null,
     seat:null,seatSide:null,bus:null,bike:null,item:null,secondItem:null,itemUse:null,picnicClaim:null,umbrella:false,umbrellaReady:false,
     blushUntil:0,blushLevel:0,sickAt:0,gesture:null,pet:null,feed:null,running:false,blocked:false,up:false,character,look};
 }
@@ -314,7 +318,7 @@ function soundscape(time,travelled,wading,running=false){
     const show=!indoors&&!document.hidden&&distance<=PLAZA_SHOW_HEARING_METRES&&fountainShow?.endsAt>time;
     sound.plazaShow(show?{startAt:fountainShow.startedAt,clock:time,distance}:null);
   }
-  if(time-me.jump<JUMP_MS)strideLeft=Math.max(.9,strideLeft);
+  if(time-me.jump<jumpDuration(me))strideLeft=Math.max(.9,strideLeft);
   else if(travelled>0&&sound.enabled){
     strideLeft-=travelled;
     if(strideLeft<=0&&time>=nextStep){
@@ -441,7 +445,7 @@ const gestureButtons=[...document.querySelectorAll("[data-gesture]")];
 function gestureReady(time,kind){
   if(!session||riding||me.bus||isCycling(me)||queuedBus||queuedBike||myLink()?.active||
     photoMode.camera||minigames.active()||feedingLocked(time)||clinkLocked(time)||sickLocked(time)||
-    time-me.jump<JUMP_MS||ITEM_SLOTS.some(slot=>itemAnimating(me[slot],time)))return false;
+    time-me.jump<jumpDuration(me)||ITEM_SLOTS.some(slot=>itemAnimating(me[slot],time)))return false;
   if(!kind)return true;
   const held=ITEM_SLOTS.filter(slot=>me[slot]?.remaining).length;
   if(["clap","heart"].includes(kind)&&held)return false;
@@ -872,7 +876,7 @@ function walkPositionHeight(point){
 }
 function rememberWalkPosition(){
   if(!session||!world||riding||me.bus||isCycling(me)||me.seat!=null||
-    (me.jump&&gameTime()-me.jump<JUMP_MS))return;
+    (me.jump&&gameTime()-me.jump<jumpDuration(me)))return;
   const {x,y,heading}=me,up=Boolean(me.up),height=walkPositionHeight(me);
   if(height===null)return;
   const record=JSON.stringify({x,y,heading,up,height});
@@ -1108,11 +1112,12 @@ $("run").addEventListener("click",()=>{
 });
 function jump(){
   const time=gameTime();
-  if(!session||!world||riding||me.bus||isCycling(me)||queuedBus||queuedBike||sharingUmbrella()||feedingLocked(time)||clinkLocked(time)||sickLocked(time)||time-me.jump<JUMP_MS)return;
+  if(!session||!world||riding||me.bus||isCycling(me)||queuedBus||queuedBike||sharingUmbrella()||feedingLocked(time)||clinkLocked(time)||sickLocked(time)||time-me.jump<jumpDuration(me))return;
   if(pendingSeat)course=[];
   pendingSeat=seatClaim=null;stand();
   rememberWalkPosition();
   jumpBase=standingHeight();
+  me.vaultBase=jumpBase<.65&&nearWoldaeRailing(me)?jumpBase:null;
   me.jump=time;dirty=true;wakeSync();focusGame();
 }
 $("jump").addEventListener("click",jump);
@@ -1348,7 +1353,10 @@ const clearSceneTouch=bindSceneTouch($("game"),gameShell,{
 // Absolute height of my feet while airborne or perched on a low structure. On plain ground it
 // stays 0 so kerbs, benches and railings block as usual until I jump.
 const stepUp=.19;
-function standingHeight(){return Math.max(world?.groundHeight(me)??0,platformAt(me.x,me.y));}
+function standingHeight(){
+  const terrain=isInsideMuseum(me.x,me.y)?0:outsideGroundOffset(me);
+  return Math.max((world?.groundHeight(me)??terrain)-terrain,platformAt(me.x,me.y));
+}
 function feetHeight(time){
   const lift=jumpLift(me,time),platform=Math.max(platformAt(me.x,me.y),loftHeight(me));
   // A jump rises from where it started; landing on something lower or level ends it there.
@@ -1360,7 +1368,7 @@ function move(x,y){
   // Stairs and upper floors follow their own rules; everywhere else the ground decides.
   const loft=loftStep(me,x,y);
   if(isCycling(me)){
-    if(loft!==undefined||!clearSegment(me,{x,y},.28,.18))return false;
+    if(loft!==undefined||!canRideBikeSegment(me,{x,y}))return false;
   }else if(loft===null||loft===undefined&&!wadeSegment(me,{x,y},.36,feetHeight(gameTime())))return false;
   const aim=normalize(Math.atan2(x-me.x,me.y-y)*180/Math.PI);
   const link=myLink();
@@ -1396,7 +1404,7 @@ function canMovePhoto(point){
   const inside=isInsideMuseum(me.x,me.y);
   return isInsideMuseum(point.x,point.y)===inside&&(!inside||point.height<=4.4)&&
     near(me,point.x,point.y)<=PHOTO_REACH&&
-    !solidAt(point.x,point.y,(world?.floorHeight(point)??0)+point.height);
+    !solidAt(point.x,point.y,(world?.floorHeight(point)??0)-(inside?0:outsideGroundOffset(point))+point.height);
 }
 function nearbyPhotoPeople(){
   const indoors=isInsideMuseum(me.x,me.y);
@@ -1509,7 +1517,7 @@ function seatTaken(index,seat){
 }
 function transportReady(time){
   return Boolean(session&&world&&!riding&&!me.bus&&!queuedBus&&!queuedBike&&!myLink()&&!queuedHand&&
-    me.seat==null&&!me.up&&time-me.jump>=JUMP_MS&&!feedingLocked(time)&&time-(me.pet?.at??0)>=PET_MS&&
+    me.seat==null&&!me.up&&time-me.jump>=jumpDuration(me)&&!feedingLocked(time)&&time-(me.pet?.at??0)>=PET_MS&&
     !sickLocked(time)&&!ITEM_SLOTS.some(slot=>itemAnimating(me[slot],time)));
 }
 function travelTime(ms){
@@ -1613,7 +1621,7 @@ function confirmTransport(avatar,result,bus,bike){
   me.bus=avatar.bus??null;me.bike=avatar.bike??null;
   if(ridingBus?.index!==me.bus?.index||ridingBus?.seat!==me.bus?.seat){
     resetInput();
-    Object.assign(me,{x:avatar.x,y:avatar.y,heading:avatar.heading,vx:0,vy:0,jump:0,blocked:false,running:false,up:false});
+    Object.assign(me,{x:avatar.x,y:avatar.y,heading:avatar.heading,vx:0,vy:0,jump:0,vaultBase:null,blocked:false,running:false,up:false});
     lastBusHeading=me.bus?avatar.heading:null;
     ownView={...ownView,pan:avatar.heading,tilt:0};
     setText($("location"),me.bus?"세종대로 순환버스":placeName(me));
@@ -1792,7 +1800,7 @@ ITEM_SLOTS.forEach((slot,index)=>$(useItemButtons[index]).addEventListener("clic
 function movePlayerTo(destination,place){
   resetInput();stand();
   const heading=destination.heading??me.heading;
-  Object.assign(me,{x:destination.x,y:destination.y,heading,vx:0,vy:0,blocked:false,running:false,jump:0,up:false});
+  Object.assign(me,{x:destination.x,y:destination.y,heading,vx:0,vy:0,blocked:false,running:false,jump:0,vaultBase:null,up:false});
   ownView={...ownView,pan:heading,tilt:destination.tilt??0};
   $("location").textContent=place;dirty=true;wakeSync();
 }
@@ -1919,7 +1927,7 @@ function picnicInventoryBusy(){
 }
 function canPicnic(time){
   return Boolean(session&&world&&!riding&&!me.bus&&!isCycling(me)&&!queuedBus&&!queuedBike&&
-    me.seat==null&&!myLink()?.active&&!feedingLocked(time)&&!clinkLocked(time)&&!sickLocked(time)&&time-me.jump>=JUMP_MS);
+    me.seat==null&&!myLink()?.active&&!feedingLocked(time)&&!clinkLocked(time)&&!sickLocked(time)&&time-me.jump>=jumpDuration(me));
 }
 $("picnic").addEventListener("click",()=>{
   if(!canPicnic(gameTime()))return;
@@ -1946,7 +1954,7 @@ function updateActivities(time,guideNearby){
   const landmark=eligible&&nearbyPalaceGuide(me);
   setActivity("landmark-guide",landmark?"설명 읽기":null);
   if(landmark)attr($("landmark-guide"),"aria-label",landmark.title+" 설명 읽기");
-  $("jump").disabled=!eligible||riding||feeding||sharingUmbrella()||clinkLocked(time)||sickLocked(time)||time-me.jump<JUMP_MS;
+  $("jump").disabled=!eligible||riding||feeding||sharingUmbrella()||clinkLocked(time)||sickLocked(time)||time-me.jump<jumpDuration(me);
   const atFountain=nearWishFountain();
   if($("wish").hidden===Boolean(atFountain))$("wish").hidden=$("wish").disabled=!atFountain;
   const cat=eligible&&me.seat==null&&!myLink()?.active&&world.parkLife.nearestCat(me.x,me.y);
@@ -2235,7 +2243,11 @@ function drawMap(base,mini=false){
   }
   drawExtensionPaths(base,hwangudanPaths,hwangudanLandmarks,mini);
   for(const {outline:points,kind} of bukchonPaths){
-    svg(base,"polygon",{points:outline(points),fill:kind==="road"?"#4e5351":kind==="stairs"?"#c2b193":"#8c8067"});
+    svg(base,"polygon",{points:outline(points),fill:kind==="road"?"#4e5351":kind==="stairs"?"#c2b193":kind==="crosswalk"?"#d8d2bf":"#8c8067"});
+  }
+  for(const points of bukchonBusRoads)svg(base,"polygon",{points:outline(points),fill:"#4e5351"});
+  for(const [surfaces,fill] of [[bukchonLawns,"#647e54"],[mmcaCourtyards,"#aa9c84"],[mmcaLawns,"#647e54"],[mmcaBuildings,"#82776a"]]){
+    for(const {outline:points} of surfaces)svg(base,"polygon",{points:outline(points),fill,stroke:"#a99a7d","stroke-width":.65});
   }
   drawExtensionPaths(base,bukchonPaths.filter(path=>path.kind!=="road"),bukchonLandmarks,mini);
   svg(base,"polyline",{points:eastWalkRoute,fill:"none",stroke:"#ded2a9","stroke-width":mini?1.45:2.6,
@@ -2356,9 +2368,10 @@ function drawGyeongbok(base,mini){
     const label=palaceAt((gbUijeongbu.west+gbUijeongbu.east)/2,(gbUijeongbu.south+gbUijeongbu.north)/2);
     svg(base,"text",{x:label.x,y:label.y+4,class:"map-label gyeongbok-label","text-anchor":"middle"},"의정부지 광장");
   }
-  svg(base,"rect",{...box(-wallHalf,wallHalf,0,wallNorth),fill:"#465248",stroke:"#929283","stroke-width":2.6});
+  svg(base,"polygon",{points:outline(gbWallOutline),fill:"#465248",stroke:"#929283","stroke-width":2.6});
   for(const {kind,west,east,south,north} of gbLawns){
-    svg(base,"rect",{...box(west,east,south,north),fill:kind==="grove"?"#314938":"#607651",rx:3});
+    const grass=clipGbGround(west,east,south,north);
+    if(grass.length>=3)svg(base,"polygon",{points:outline(grass),fill:kind==="grove"?"#314938":"#607651"});
   }
   for(const court of Object.values(gbCourts)){
     svg(base,"rect",{...box(court.west,court.east,court.south,court.north),fill:"#766c5a",stroke:"#a07d62","stroke-width":1.6});

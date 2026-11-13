@@ -2,6 +2,8 @@ import {clearSegment,court,fountain,palacePond,pavilions,route,solidAt,stoneFoun
 import {isInsideMuseum} from "./visit-layout.js";
 import {gbBirdGrounds,gbBounds,inGyeongbok} from "./gyeongbok-layout.js";
 import {insidePlazaPolygon,plazaAt,plazaBounds,plazaGroundHeight,plazaOrigin,plazaOutline} from "./plaza-layout.js";
+import {expansionWildlife} from "./expansion-wildlife.js";
+import {outsideGroundOffset} from "./gyeongbok-terrain.js";
 
 const species={
   pigeon:{body:0x9296a4,belly:0xadb0bb,head:0x626b7a,neck:0x528076,throat:0x776481,
@@ -86,7 +88,7 @@ function flightClear(leg,length,outside){
   const steps=Math.max(12,Math.ceil(length/.4));
   for(let i=1;i<steps;i++){
     const {x,y,height}=flightPoint(leg,i/steps);
-    if(outside(x,y)||solidAt(x,y,height-.09))return false;
+    if(outside(x,y)||solidAt(x,y,height-.09-outsideGroundOffset({x,y})))return false;
   }
   return true;
 }
@@ -122,9 +124,9 @@ function sample(leg,t){
 
 function perchSites(T,parent,kit,trees,walls){
   const sites=[];
-  for(const {a,b,height} of walls)for(const t of [.28,.62]){
+  for(const {a,b,height,groundAt} of walls)for(const t of [.28,.62]){
     const x=mix(a.x,b.x,t),y=mix(a.y,b.y,t),top=height+.025;
-    if(!solidAt(x,y,top))sites.push({x,y,height:top,kind:"wall"});
+    if(!solidAt(x,y,top))sites.push({x,y,height:top+(groundAt?.({x,y})??0),kind:"wall"});
   }
   const crowns=new Map(),bucket=(col,row)=>col+row*1000;
   if(trees.some(tree=>!tree.top))parent.traverse(mesh=>{
@@ -293,7 +295,16 @@ export function addPalaceBirds(T,parent,kit,{trees=[],walls=[],seed,deferNorth=f
     return {body,bill,wings,batches:[body,bill,...wings]};
   }
   const palaces={members:[],spots,perches,area:palaceArea,meshes:flockMeshes(spots.length,"Bird")};
-  const plaza={members:[],spots:plazaSpots,perches:[],area:plazaArea,meshes:null};
+  const plaza={id:"plaza",members:[],spots:plazaSpots,perches:[],area:plazaArea,meshes:null};
+  const expanded=expansionWildlife.map(({id,bounds,trails,perches,birdCount,land})=>{
+    const points=trails.flat(),count=Math.ceil(birdCount/3);
+    const anchors=Array.from({length:count},(_,i)=>points[Math.floor(i*points.length/count)]);
+    const spots=flockSpots(anchors.map(anchor=>[anchor,[[0,0],[.8,1.1],[1.3,-1.5,"magpie"]]])).slice(0,birdCount);
+    const outside=(x,y)=>x<bounds.minX-12||x>bounds.maxX+12||y<bounds.minY-12||y>bounds.maxY+12;
+    return {id,bounds,perches,members:[],spots,anchors,meshes:null,
+      area:{land:(x,y)=>!outside(x,y)&&ground(x,y)&&(!land||land(x,y)),outside}};
+  });
+  const flocks=[palaces,plaza,...expanded];
   const part=new T.Object3D(),root=new T.Object3D(),joint=new T.Object3D();
   const matrix=new T.Matrix4(),attached=new T.Matrix4(),color=new T.Color();
   let roomSeed,checkAt=0,walkers=[],groundAt=-Infinity,groundSnapshot,sparse=false;
@@ -308,8 +319,8 @@ export function addPalaceBirds(T,parent,kit,{trees=[],walls=[],seed,deferNorth=f
         const x=anchor.x+dx+Math.cos(angle)*radius,y=anchor.y+dy+Math.sin(angle)*radius;
         if(!area.land(x,y)||members.some(bird=>distance(bird.home,{x,y})<.9))continue;
         const home={x,y,height:floor({x,y})},patrol=makePatrol(home,random,flock.perches,used,kind,floor,cruises,grounds,area);
-        const district=flock===plaza?"plaza":index>=deoksugungSpots?"gyeongbokgung":"deoksugung";
-        const bird={id:`${flock===plaza?"plaza-bird":"bird"}-${index}`,kind,home,patrol,district,offset:random()*patrol.time,
+        const district=flock.id??(index>=deoksugungSpots?"gyeongbokgung":"deoksugung");
+        const bird={id:`${flock.id?flock.id+"-bird":"bird"}-${index}`,kind,home,patrol,district,flock,offset:random()*patrol.time,
           size:species[kind].size*(.89+random()*.18),angle:null};
         members.push(bird);birdsById.set(bird.id,bird);
         break;
@@ -319,6 +330,12 @@ export function addPalaceBirds(T,parent,kit,{trees=[],walls=[],seed,deferNorth=f
   function resetPlaza(seed){
     plaza.members.length=0;
     plaza.population={random:rng(seed+":plaza birds"),used:new Set(),grounds:plazaFeedingGrounds(rng(seed+":plaza feeding grounds")),index:0};
+  }
+  function resetExpansion(flock,seed){
+    flock.members.length=0;
+    flock.population={random:rng(seed+":"+flock.id+" birds"),used:new Set(),
+      grounds:flock.anchors.filter(point=>flock.area.land(point.x,point.y))
+        .map(point=>({...point,height:floor(point),kind:"ground"})),index:0};
   }
   function setSeed(value){
     const next=String(value??"preview");
@@ -330,6 +347,10 @@ export function addPalaceBirds(T,parent,kit,{trees=[],walls=[],seed,deferNorth=f
     if(plaza.meshes){
       resetPlaza(next);
       if(plazaLoaded)buildBirds(plaza,plazaSpots.length);
+    }
+    for(const flock of expanded)if(flock.meshes){
+      resetExpansion(flock,next);
+      if(flock.ready)buildBirds(flock,flock.spots.length);
     }
   }
   function* loadNorth(){
@@ -357,6 +378,16 @@ export function addPalaceBirds(T,parent,kit,{trees=[],walls=[],seed,deferNorth=f
     }
     plazaLoaded=true;
   }
+  function* loadExpansion(id){
+    const flock=expanded.find(value=>value.id===id);
+    flock.meshes??=flockMeshes(flock.spots.length,id+" birds");
+    if(!flock.population)resetExpansion(flock,roomSeed);
+    while(flock.population.index<flock.spots.length){
+      buildBirds(flock,Math.min(flock.spots.length,flock.population.index+3));
+      yield;
+    }
+    flock.ready=true;
+  }
   setSeed(seed);
 
   function nearestWalker(position){
@@ -371,7 +402,7 @@ export function addPalaceBirds(T,parent,kit,{trees=[],walls=[],seed,deferNorth=f
     return threat;
   }
   function startEscape(bird,position,threat,clock,phase){
-    const flock=bird.district==="plaza"?plaza:palaces;
+    const {flock}=bird;
     const away=distance(position,threat)<.12?position.turn:heading(threat,position);
     const candidates=flock.perches.filter(site=>distance(position,site)>=14&&distance(position,site)<=45);
     const turns=[0,-.36,.36,-.72,.72,-1.08,1.08,-1.39,1.39];
@@ -401,7 +432,7 @@ export function addPalaceBirds(T,parent,kit,{trees=[],walls=[],seed,deferNorth=f
     if(!recentGround(clock))return emptyGround;
     if(!groundSnapshot){
       const targets=[];
-      for(const flock of [palaces,plaza])for(const bird of flock.members){
+      for(const flock of flocks)for(const bird of flock.members){
         if(!bird.onGround)continue;
         const {x,y}=bird.onGround;
         targets.push(Object.freeze({id:bird.id,x,y,kind:bird.kind}));
@@ -414,7 +445,7 @@ export function addPalaceBirds(T,parent,kit,{trees=[],walls=[],seed,deferNorth=f
     if(!parent.visible||!point||!Number.isFinite(maxDistance)||maxDistance<=0||isInsideMuseum(point.x,point.y))return null;
     const ear=point.height??(floor(point)+1.28);
     let nearest=null,best=maxDistance**2;
-    for(const flock of [palaces,plaza])for(const {soundPose:pose} of flock.members){
+    for(const flock of flocks)for(const {soundPose:pose} of flock.members){
       if(!pose)continue;
       const gap=(pose.x-point.x)**2+(pose.y-point.y)**2+(pose.height-ear)**2;
       if(gap<best){nearest=pose;best=gap;}
@@ -532,12 +563,15 @@ export function addPalaceBirds(T,parent,kit,{trees=[],walls=[],seed,deferNorth=f
     // Begin displaying nearby flocks while the walker approaches their district.
     const nearby={deoksugung:nearFlocks(viewer,deoksugungBounds),gyeongbokgung:nearFlocks(viewer,gbBounds),
       plaza:plaza.meshes&&nearFlocks(viewer,plazaBounds)};
+    for(const flock of expanded)if(flock.meshes)nearby[flock.id]=nearFlocks(viewer,flock.bounds);
     updateFlock(palaces,viewer,clock,seconds,check,nearby);
     if(plaza.meshes)updateFlock(plaza,viewer,clock,seconds,check,nearby);
+    for(const flock of expanded)if(flock.meshes)updateFlock(flock,viewer,clock,seconds,check,nearby);
   }
   const census=()=>({deoksugung:palaces.members.filter(bird=>bird.district==="deoksugung").length,
     gyeongbokgung:palaces.members.filter(bird=>bird.district==="gyeongbokgung").length,plaza:plaza.members.length,
-    touring:palaces.members.filter(bird=>bird.patrol.legs.some(leg=>leg.mode==="flight"&&distance(leg.from,leg.to)>20)).length});
+    touring:palaces.members.filter(bird=>bird.patrol.legs.some(leg=>leg.mode==="flight"&&distance(leg.from,leg.to)>20)).length,
+    ...Object.fromEntries(expanded.map(flock=>[flock.id,flock.members.length]))});
   const setSparse=value=>{sparse=Boolean(value);};
-  return {update,setSeed,groundTargets,soundSource,scare,census,setSparse,loadNorth,loadPlaza};
+  return {update,setSeed,groundTargets,soundSource,scare,census,setSparse,loadNorth,loadPlaza,loadExpansion};
 }

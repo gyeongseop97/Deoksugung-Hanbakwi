@@ -53,6 +53,7 @@ export function buildJeongdongExtension(T,root,{wx,wz,box,cylinder,matte}){
   const group=new T.Group();group.name="덕수궁 서·북쪽 돌담길";root.add(group);
   const ground=new T.Group(),boundaries=new T.Group(),park=new T.Group(),details=new T.Group();
   ground.name="돌담길 포장";boundaries.name="정동 돌담과 철제 격자";park.name="정동공원";details.name="돌담길 표지와 조명";
+  for(const wrapper of [group,ground,boundaries,park,details])wrapper.userData.gradeChildren=true;
   group.add(ground,boundaries,park,details);
   const surfaces={stone:tileMaterial(T,"stone"),brick:tileMaterial(T,"brick"),deck:tileMaterial(T,"deck")};
 
@@ -73,14 +74,15 @@ export function buildJeongdongExtension(T,root,{wx,wz,box,cylinder,matte}){
     geometry.setAttribute("uv",new T.Float32BufferAttribute(uv,2));
     geometry.setIndex(indices);geometry.computeVertexNormals();
     if(geometry.attributes.normal.getY(0)<0){geometry.setIndex(indices.reverse());geometry.computeVertexNormals();}
-    const mesh=new T.Mesh(geometry,material);mesh.receiveShadow=true;ground.add(mesh);
+    const mesh=new T.Mesh(geometry,material);mesh.receiveShadow=true;mesh.userData.followTerrain=true;ground.add(mesh);
   }
   function surface(outline,material,height,parent=ground){
     const footprint=new T.Shape(outline.map(p=>new T.Vector2(wx(p.x),-wz(p.y))));
     const geometry=new T.ShapeGeometry(footprint),uv=geometry.attributes.uv,positions=geometry.attributes.position;
     for(let index=0;index<uv.count;index++)uv.setXY(index,positions.getX(index)/4,positions.getY(index)/4);
     geometry.rotateX(-Math.PI/2);
-    const mesh=new T.Mesh(geometry,material);mesh.position.y=height;mesh.receiveShadow=true;parent.add(mesh);
+    const mesh=new T.Mesh(geometry,material);mesh.position.y=height;mesh.receiveShadow=true;
+    mesh.userData.followTerrain=true;parent.add(mesh);
   }
 
   for(const [index,path] of jeongdongExtensionPaths.entries()){
@@ -105,6 +107,7 @@ export function buildJeongdongExtension(T,root,{wx,wz,box,cylinder,matte}){
   function wallFrame(segment){
     const frame=new T.Group();
     frame.position.set(wx(segment.x),0,wz(segment.y));frame.rotation.y=segment.angle;
+    frame.userData.terrainWallSpan={a:segment.a,b:segment.b,length:segment.length};
     boundaries.add(frame);
     return frame;
   }
@@ -244,6 +247,7 @@ export function buildJeongdongExtension(T,root,{wx,wz,box,cylinder,matte}){
   let seed=46387;
   const rand=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};
   const greenery=new T.Group();greenery.name="정동 골목 가로수";group.add(greenery);
+  greenery.userData.gradeChildren=true;
   const {grow,shrub}=makeTreeBuilder(T,greenery,{rand,clearance:{meshFits:()=>true,trim:()=>true}});
   for(const [x,y,height,spread,palette,style] of [
     [158,237,10.2,6.9,"ginkgo","branchy"],[162,206,9.2,5.6,"maple","cloud"],[160,173,12.7,8.4,"russet","branchy"],
@@ -254,7 +258,11 @@ export function buildJeongdongExtension(T,root,{wx,wz,box,cylinder,matte}){
     [80,48,9.8,6.4,"russet","round"],[62,37,10.2,6.5,"ginkgo","cloud"],
     [31,18,8.5,5.3,"maple","round"],[4,22,11.6,6.8,"ginkgo","branchy"],[-23,12,8.1,5.2,"deep","cloud"],
     [-24,34,9.6,6.1,"russet","branchy"]
-  ])grow(wx(x),wz(y),{height,spread,palette,style});
+  ]){
+    const first=greenery.children.length;
+    grow(wx(x),wz(y),{height,spread,palette,style});
+    for(let index=first;index<greenery.children.length;index++)greenery.children[index].userData.terrainAnchor={x,y};
+  }
   for(const [x,y] of [[14,18],[9,19],[11,35],[14,38],[21,40],[25,38],[31,34],[32,23],[6,35],[-1,11],[-26,18],[-28,29]]){
     shrub(wx(x),wz(y),.37+rand()*.44,rand()<.5?"pine":"olive");
   }

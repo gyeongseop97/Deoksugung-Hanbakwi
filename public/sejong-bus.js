@@ -1,11 +1,9 @@
 import {at as palaceAt} from "./gyeongbok-layout.js";
 import {eastCurb, eastRoadWidth, plazaAt} from "./plaza-layout.js";
 
-export const BUS_COUNT=6;
+export const BUS_COUNT=10;
 export const BUS_SEATS=8;
-export const BUS_DWELL_MS=20_000;
-export const BUS_CYCLE_MS=360_000;
-export const BUS_DEPARTURE_MS=BUS_CYCLE_MS/BUS_COUNT;
+export const BUS_DWELL_MS=10_000;
 export const BUS_BOARD_REACH=4.2;
 export const BUS_FLOOR=.71;
 export const BUS_WIDTH=2.55;
@@ -19,6 +17,7 @@ const plazaWest=(north,margin=3.45)=>plazaAt(eastCurb(north)+margin,north);
 const midpoint=358;
 const north=plazaEast(midpoint,1.78),south=plazaWest(midpoint,1.78);
 const eastIsland=palaceAt(175,-76.1);
+const bukchonStop={x:762.7,y:-1429};
 
 // Shelter and passenger positions are on the pavement, offset from the front right door.
 // Opposite-direction plaza stops are separate berths on the two sides of the avenue.
@@ -30,36 +29,58 @@ export const busStops=[
   {id:"plaza-north",name:"세종문화회관 정류장 건너편",direction:"경복궁 방면",
     berth:pose(north.x,north.y,0),board:pose(north.x+3.7,north.y-3.25,270),
     exit:pose(north.x+5.7,north.y-3.7,90),shelter:pose(north.x+6.1,north.y+.7,270)},
-  {id:"gyeongbokgung",name:"경복궁 정류장",direction:"광화문광장 · 덕수궁 방면",
+  {id:"gyeongbokgung",name:"경복궁 정류장",direction:"삼청동 · 북촌 방면",
     berth:pose(eastIsland.x,eastIsland.y,90),board:pose(eastIsland.x+3.26,eastIsland.y+4.15,0),
     exit:pose(eastIsland.x+3.85,eastIsland.y+6.2,180),shelter:pose(eastIsland.x-.8,eastIsland.y+5.65,0)},
+  {id:"bukchon-upper",name:"삼청로 위쪽·북촌 정류장",direction:"광화문광장 · 덕수궁 방면",
+    berth:pose(bukchonStop.x,bukchonStop.y,17),board:pose(770.2,-1431.5,287),
+    exit:pose(771.9,-1431.9,107),shelter:pose(771.4,-1426.8,287)},
   {id:"plaza-south",name:"세종문화회관 정류장",direction:"덕수궁 방면",
     berth:pose(south.x,south.y,180),board:pose(south.x-3.5,south.y+3.25,90),
     exit:pose(south.x-5.6,south.y+3.7,270),shelter:pose(south.x-6.1,south.y-.7,90)}
 ];
-const [deoksugung,seoulPlaza,plazaNorth,gyeongbokgung,plazaSouth]=busStops;
+const [deoksugung,seoulPlaza,plazaNorth,gyeongbokgung,bukchon,plazaSouth]=busStops;
 const stopIndex=new Map(busStops.map(stop=>[stop.id,stop]));
 export const busStopById=id=>stopIndex.get(id)??null;
 
 // The south-end turn stays within the Sejong-daero lanes. The north-end turn uses the
 // Sajik-ro pullout by Dongsipjagak, leaving the pedestrian island on the bus's right.
 const itineraries=[
-  {travelMs:22_000,points:[deoksugung.berth,point(484,222),point(487.4,247),point(490.3,278),point(490.7,297),
+  {travelMs:21_000,points:[deoksugung.berth,point(484,222),point(487.4,247),point(490.3,278),point(490.7,297),
     point(493.4,305.2),point(502.8,309),point(511.6,306.6),point(516.3,299.1),point(516.1,285),point(516.5,259),seoulPlaza.berth]},
-  {travelMs:78_000,points:[seoulPlaza.berth,point(516.5,235),point(513.3,215),
+  {travelMs:73_000,points:[seoulPlaza.berth,point(516.5,235),point(513.3,215),
     point(513.3,135),point(512.5,-70),point(512.2,-240),point(513.6,-292),point(515.3,-301),plazaEast(16),plazaEast(131),
     plazaEast(239),plazaEast(290),plazaEast(335),point(north.x,north.y+10),plazaNorth.berth]},
-  {travelMs:41_000,points:[plazaNorth.berth,point(north.x,north.y-11),plazaEast(386),plazaEast(440),plazaEast(476,5.8),
+  {travelMs:39_000,points:[plazaNorth.berth,point(north.x,north.y-11),plazaEast(386),plazaEast(440),plazaEast(476,5.8),
     plazaEast(505,7.0),plazaEast(518,5.1),plazaEast(532),point(524,-832.3),point(536,-834.4),point(592,-834.4),
     point(625,-834),point(634,-829.2),point(639,eastIsland.y),gyeongbokgung.berth]},
-  {travelMs:40_000,points:[gyeongbokgung.berth,point(660,eastIsland.y),point(667.5,eastIsland.y-.9),point(672,-833),
-    point(671.7,-840.6),point(665.4,-844.4),point(652,-844.7),point(583,-844.7),point(528,-844.7),
+  {travelMs:88_000,points:[gyeongbokgung.berth,point(666,eastIsland.y),point(684,-828.1),point(699,-834),point(707,-844),
+    point(712,-860),point(713.5,-883),point(714.5,-904),point(716.2,-925),point(713,-950),point(710.1,-990),
+    point(710.1,-1075),point(710.8,-1149),point(713.4,-1203),point(716,-1242),point(718.9,-1270),
+    point(729,-1306),point(741.1,-1350),point(749.5,-1382),bukchon.berth]},
+  {travelMs:122_000,points:[bukchon.berth,point(770.7,-1455),point(775,-1472),point(777.2,-1493),
+    point(776,-1500),point(772.2,-1504),point(766.8,-1503),point(763.8,-1498),point(763.5,-1487),point(766.6,-1471),
+    point(764.4,-1455),point(743,-1382),point(734.8,-1350),point(722.8,-1306),point(712.7,-1270),
+    point(709.8,-1242),point(707.4,-1203),point(704.8,-1149),point(703.7,-1075),point(703.5,-995),
+    point(705.5,-955),point(709.2,-929),point(710.1,-912),point(706,-898),point(699.8,-886),point(693,-874),
+    point(685,-861),point(674,-851),point(661,-846.4),point(650,-844.7),point(583,-844.7),point(528,-844.7),
     point(511,-844.5),point(499.2,-842.9),point(495,-836.5),point(494.7,-827.4),
     plazaWest(513),plazaWest(481),plazaWest(441),plazaWest(397),point(south.x,south.y-11),plazaSouth.berth]},
-  {travelMs:79_000,points:[plazaSouth.berth,point(south.x,south.y+11),plazaWest(329),plazaWest(285),plazaWest(238),
+  {travelMs:77_000,points:[plazaSouth.berth,point(south.x,south.y+11),plazaWest(329),plazaWest(285),plazaWest(238),
     plazaWest(125),plazaWest(22),point(493.2,-286),point(486.9,-247),point(484.1,-176),point(484.4,-110),
     point(485.9,-34),point(488.7,61),point(489.6,113),point(488.3,150),point(484.8,180),point(484,194),deoksugung.berth]}
 ];
+export const BUS_CYCLE_MS=itineraries.reduce((total,{travelMs})=>total+travelMs+BUS_DWELL_MS,0);
+export const BUS_DEPARTURE_MS=BUS_CYCLE_MS/BUS_COUNT;
+
+// Connect Sajik-ro to the modeled Samcheong-ro asphalt and make room for the
+// bus to turn between the two roads at the upper fork.
+export const bukchonBusRoads=[
+  [[653,-820],[688,-820],[710,-829],[721,-850],[725,-885],[723,-912],[717,-918],
+    [704,-909],[693,-888],[677,-870],[665,-857],[653,-852]],
+  [[762,-1458],[777,-1458],[781,-1470],[785,-1486],[786,-1505],
+    [780,-1514],[762,-1514],[755,-1505],[755,-1489],[758,-1472]]
+].map(ring=>ring.map(([x,y])=>point(x,y)));
 
 const distance=(a,b)=>Math.hypot(b.x-a.x,b.y-a.y);
 const interpolate=(a,b,t)=>point(a.x+(b.x-a.x)*t,a.y+(b.y-a.y)*t);

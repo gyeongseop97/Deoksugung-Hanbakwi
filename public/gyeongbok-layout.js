@@ -1,5 +1,6 @@
 import {addLandmarks,addZone,addLoft,spawn} from "./layout.js";
 import {plazaSites,plazaAt,sajikRoad} from "./plaza-layout.js";
+import {gbEastOpenings,gbBoundaryGates,gbWestPaths,insideGbWall,onGbWestPath} from "./gyeongbok-perimeter.js";
 
 // Positions are metres east of the palace's central axis and north of Gwanghwamun,
 // which shares the same geographic projection as the square and Deoksugung.
@@ -11,13 +12,12 @@ const palaceFrontY=plazaAt(0,sajikRoad.north).y;
 export function inGyeongbok(x,y){
   if(!inGbBounds(x,y))return false;
   const east=x-gwanghwamun.x,north=gwanghwamun.y-y;
-  if(y<=palaceFrontY)return Math.abs(east)<(north>=0?wallHalf+18:92);
+  if(insideGbWall(x,y)||onGbWestPath(x,y))return true;
+  if(y<=palaceFrontY)return north<1.2&&Math.abs(east)<92;
   return inFrontAnnex(east,north);
 }
 
-export const wallHalf=250,wallNorth=875;
-// The public museum entrance is farther north than the historic east gate.
-export const folkMuseumEastOpening={south:594,north:602};
+const eastGate=gbEastOpenings.find(opening=>opening.id==="geonchunmun");
 
 // kind: gate (walk through the centre bay), hall, open (pillared pavilion), plain (side building)
 const site=(id,name,sign,east,north,w,d,h,bays,extra={})=>({id,name,sign,...at(east,north,name),east,north,w,d,h,bays,angle:0,...extra});
@@ -40,9 +40,9 @@ export const gbSites=[
   site("hyangwonjeong","향원정","香遠亭",12,706,8.4,8.4,6.4,6,{kind:"hexagon"}),
   site("geoncheonggung","건청궁","乾淸宮",33,776,48,10,3.2,8,{kind:"compound"}),
   site("jibokjae","집옥재","集玉齋",-56,824,18.6,13.2,5.2,5,{kind:"inner",finish:"library"}),
-  site("geonchunmun","건춘문","建春門",wallHalf,330,13.4,8.4,3.8,3,{kind:"sideGate",angle:Math.PI/2}),
-  site("yeongchumun","영추문","迎秋門",-wallHalf,330,13.4,8.4,3.8,3,{kind:"sideGate",angle:Math.PI/2}),
-  site("sinmumun","신무문","神武門",0,wallNorth,13.4,8.4,3.8,3,{kind:"sideGate"}),
+  site("geonchunmun","건춘문","建春門",eastGate.x-gwanghwamun.x,gwanghwamun.y-eastGate.y,13.4,8.4,3.8,3,{kind:"sideGate",angle:eastGate.angle}),
+  site("yeongchumun","영추문","迎秋門",gbBoundaryGates.yeongchumun.east,gbBoundaryGates.yeongchumun.north,15.8,8.4,3.8,3,{kind:"sideGate",angle:gbBoundaryGates.yeongchumun.angle}),
+  site("sinmumun","신무문","神武門",gbBoundaryGates.sinmumun.east,gbBoundaryGates.sinmumun.north,15.8,8.4,3.8,3,{kind:"sideGate",angle:gbBoundaryGates.sinmumun.angle}),
   site("palace-museum","국립고궁박물관","國立古宮博物館",-164,64,96,44,11.5,12,{kind:"museum"}),
   site("folk-museum","국립민속박물관","",168,566,74,46,13,10,{kind:"folkMuseum"}),
   // Existing-map metres are fitted to the 2025 visitor map and geographic footprints.
@@ -155,13 +155,14 @@ export const gbPaths=[
   {name:"취향교 북쪽 진입로",width:3.5,surface:"gravel",points:[at(12,746),at(12,753),at(12,762)]},
   {name:"함화당·집경당 앞길",width:4.3,surface:"gravel",points:[at(-24,579),at(3,589),at(29,590),at(54,579),at(83,545),at(122,529)]},
   {name:"함화당·집경당 출입길",width:3.6,surface:"gravel",points:[at(29,590),at(29,606),at(28,613)]},
-  {name:"건청궁에서 신무문까지",width:4.4,surface:"gravel",points:[at(12,762),at(-10,775),at(-14,797),at(-18,836),at(0,858),at(0,868)]},
+  {name:"건청궁에서 신무문까지",width:4.4,surface:"gravel",points:[at(12,762),at(-10,775),at(-14,797),at(-18,836),at(-49,839),at(-81,838),at(-109,836)]},
   {name:"건청궁 앞마당",width:4.4,surface:"gravel",points:[at(12,762),at(31,765),at(36,775),at(36,785)]},
   {name:"집옥재 앞마당",width:4.3,surface:"gravel",points:[at(-18,811),at(-42,806),at(-62,806),at(-91,811),at(-116,800),at(-125,753)]},
   {name:"장고와 태원전 숲길",width:5.1,surface:"gravel",points:[at(-56,470),at(-51,500),at(-61,529),at(-74,555),at(-100,593),at(-116,620),at(-146,649),at(-168,671),at(-194,689),at(-191,695)]},
   {name:"장고 앞길",width:3.5,surface:"gravel",points:[at(-100,593),at(-86,596),at(-75,604)]},
   {name:"경회루 서쪽 숲길",width:5.4,surface:"gravel",points:[at(-60,337),at(-111,340),at(-181,345),at(-207,380),at(-205,461),at(-195,500),at(-161,523),at(-118,550),at(-74,555)]},
-  {name:"자경전 서쪽 연결길",width:4.5,surface:"gravel",points:[at(88,460),at(79,460),at(73,498),at(63,532),at(54,579)]}
+  {name:"자경전 서쪽 연결길",width:4.5,surface:"gravel",points:[at(88,460),at(79,460),at(73,498),at(63,532),at(54,579)]},
+  ...gbWestPaths
 ];
 
 export const gbLawns=[
@@ -211,7 +212,7 @@ export const gbCatTrails=[
   [[-58,362],[-86,352],[-120,350],[-150,300],[-120,240]],
   [[26,430],[40,470],[34,493],[12,507],[-20,510],[-25,548],[-24,579],[-23,612],[-30,650],[-50,706],[-30,756],[12,762],[46,752],[62,706],[74,645],[73,604],[54,579],[29,590],[-24,579]],
   [[12,762],[12,735]],
-  [[12,762],[-10,775],[-14,797],[-18,836],[0,858]],
+  [[12,762],[-10,775],[-14,797],[-18,836],[-49,839],[-81,838],[-109,836]],
   [[46,752],[110,760],[150,700],[140,640],[100,610],[74,645]],
   [[-50,706],[-112,695],[-121,753],[-123,817],[-105,838],[-18,836]],
   [[-58,488],[-60,560],[-120,640],[-120,700]]
@@ -229,6 +230,14 @@ export const gbBirdGrounds=[
 ].map(([east,north])=>at(east,north));
 // Woldae: the ceremonial stone terrace that runs south from Gwanghwamun.
 export const gbWoldae={half:14.7,south:-50,north:-5.7,tier:.19};
+export function onWoldaeApproach({x,y}){
+  const {half,south,north}=gbWoldae,along=gwanghwamun.y-y;
+  return along>=south-.95&&along<=north+.95&&Math.abs(x-gwanghwamun.x)<=half+.65;
+}
+export function nearWoldaeRailing({x,y}){
+  const {half,south,north}=gbWoldae,along=gwanghwamun.y-y;
+  return along>south&&along<north&&Math.abs(Math.abs(x-gwanghwamun.x)-(half-.2))<2;
+}
 export const gbHaetae=[-1,1].map(side=>({side,east:side*19.6,north:-48}));
 // Standing here offers a souvenir photograph in front of the throne hall.
 export const gbPhotoZone={...at(0,263,"근정전 포토존"),heading:180,reach:3.4,
@@ -252,12 +261,8 @@ export const gbShortcuts=[
 
 export function gyeongbokWalkable(x,y){
   const east=x-gwanghwamun.x,north=gwanghwamun.y-y;
-  // The square in front of Gwanghwamun, then everything inside the palace wall.
-  if(north<1.2){
-    if(north>=-52&&Math.abs(east)<92)return true;
-    return inFrontAnnex(east,north);
-  }
-  if(north>wallNorth-1.6||Math.abs(east)>wallHalf-1.6)return false;
+  if(north>=-52&&north<1.2&&Math.abs(east)<92||inFrontAnnex(east,north)||onGbWestPath(x,y))return true;
+  if(!insideGbWall(x,y))return false;
   return !inLake(east,north)&&!inPond(east,north);
 }
 

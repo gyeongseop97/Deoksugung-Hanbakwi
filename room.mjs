@@ -39,6 +39,7 @@ const validAvatar = (a) => validPoint(a) &&
   (a.wave===undefined || finite(a.wave,0,9999999999999)) &&
   (a.gesture==null || Object.hasOwn(GESTURE_DURATIONS,a.gesture.kind)&&validTime(a.gesture.at)) &&
   (a.jump===undefined || validTime(a.jump)) &&
+  (a.vaultBase==null || a.jump>0 && finite(a.vaultBase,0,.65)) &&
   (a.emote==null || reactions.has(a.emote.emoji) && finite(a.emote.at,0,9999999999999)) &&
   (a.vx===undefined || finite(a.vx,-12,12)) && (a.vy===undefined || finite(a.vy,-12,12)) &&
   (a.blocked===undefined || typeof a.blocked==="boolean") &&

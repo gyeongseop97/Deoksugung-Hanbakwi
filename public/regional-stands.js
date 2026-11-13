@@ -20,7 +20,12 @@ const palaceShops=[
 const storefronts={
   coffee:{subtitle:"COFFEE ROASTERS",wall:0x9c9686,paint:0x3d564a,counter:0xa17b56,glass:0xc5d1a4,sign:"#344c42",ink:"#fff2d0"},
   cake:{subtitle:"CAKE & PATISSERIE",wall:0xd8c2ac,paint:0xaa696e,counter:0xdcaaa0,glass:0xf7d1b4,sign:"#f3d9c9",ink:"#723f4a"},
-  wine:{subtitle:"WINE BAR",wall:0x957973,paint:0x543b45,counter:0x80574f,glass:0xe0b490,sign:"#573a48",ink:"#f8dba1"}
+  wine:{subtitle:"WINE BAR",wall:0x957973,paint:0x543b45,counter:0x80574f,glass:0xe0b490,sign:"#573a48",ink:"#f8dba1"},
+  bingsu:{subtitle:"팥빙수",wall:0xc3c4b3,paint:0x537d83,counter:0xa1b6b5,glass:0xe8e3cb,sign:"#335860",ink:"#fff2d5"},
+  bungeoppang:{subtitle:"붕어빵",wall:0xcba283,paint:0x995337,counter:0xc88450,glass:0xf2d3a0,sign:"#733923",ink:"#fff1ca"},
+  riceCake:{subtitle:"꿀떡",paint:0x876477,sign:"#75445e",ink:"#fff0d4"},
+  fruitWine:{subtitle:"매실주",paint:0x55744b,sign:"#415d3c",ink:"#fff3cc"},
+  highball:{subtitle:"HIGHBALL",wall:0xa79786,paint:0x405761,counter:0x9f835f,glass:0xdbd6a9,sign:"#324753",ink:"#fae4af"}
 };
 const avenueShops=[
   ["coffee","세종로 로스터리",-58.6,109,11.2],
@@ -29,10 +34,10 @@ const avenueShops=[
   ["churu","광화문 편의점",-57.8,303],
   ["churu","세종로 편의점",51.2,340],
   ["coffee","광장 앞 커피",-58.6,348],
-  ["cake","정류장 디저트",-58.6,368],
-  ["wine","광장 와인",-58.6,388],
+  ["bungeoppang","정류장 붕어빵",-58.6,368],
+  ["highball","광장 하이볼",-58.6,388],
   ["coffee","의정부지 앞 카페",52.1,438],
-  ["cake","육조길 케이크",52.1,457],
+  ["bingsu","육조길 빙수",52.1,457],
   ["wine","육조길 와인",52.1,476]
 ].map(([kind,name,east,north,width])=>({
   ...(kind==="churu"?{w:7.8,d:5.7,h:3.62}:{w:width??15.94,d:7.2,h:8.4,...storefronts[kind]}),
@@ -41,8 +46,8 @@ const avenueShops=[
 const bukchonShops=[
   ["churu","삼청로 편의점",bukchonShopPlots.churu],
   ["coffee","화개길 커피",bukchonShopPlots.coffee],
-  ["cake","팔판길 디저트",bukchonShopPlots.crepe],
-  ["wine","가회동 와인",bukchonShopPlots.beer]
+  ["riceCake","팔판길 떡집",bukchonShopPlots.crepe],
+  ["fruitWine","가회동 매실주",bukchonShopPlots.beer]
 ].map(([kind,name,plot])=>({...storefronts[kind],...plot,kind,name,area:"bukchon",h:kind==="churu"?3.62:3.81}));
 const shops=[...palaceShops,...avenueShops,...bukchonShops];
 

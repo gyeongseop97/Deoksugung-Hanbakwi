@@ -1,5 +1,6 @@
 import {addLandmarks,addObstacle,addZone} from "./layout.js";
 import {insideCorridorPolygon} from "./sejong-corridor-layout.js";
+import {gradeAvenueMeshes} from "./avenue-terrain.js";
 
 const point=(x,y)=>({x,y});
 const walk=(name,width,points)=>({name,width,points:points.map(([x,y])=>point(x,y))});
@@ -66,22 +67,26 @@ export function registerExpandedSubway(){
   for(const stop of expandedSubwayStops)addObstacle(stop.x,stop.y,2.42,4.9,stop.angle);
 }
 
-export function* buildSubwayAccess(T,root,{wx,wz,box,matte},floorAt){
+export function* buildSubwayAccess(T,root,{wx,wz,box,matte},floorAt,{terrainHeight}={}){
+  const approaches=new T.Group();
+  root.add(approaches);
   for(const [index,outline] of pavement.entries()){
     const shape=new T.Shape(outline.map(p=>new T.Vector2(wx(p.x),-wz(p.y))));
     const geometry=new T.ShapeGeometry(shape);
     geometry.rotateX(-Math.PI/2);
     const crossing=crossingIndexes.includes(index),mesh=new T.Mesh(geometry,matte(crossing?0x62635d:0x9c9686));
-    mesh.position.y=crossing?.069:.052;mesh.receiveShadow=true;root.add(mesh);
+    mesh.position.y=crossing?.069:.052;mesh.receiveShadow=true;
+    mesh.userData.followTerrain=true;approaches.add(mesh);
     if(crossing){
       const {width,points:[a,b]}=subwayAccessPaths[index],dx=b.x-a.x,dy=b.y-a.y,length=Math.hypot(dx,dy);
       for(let offset=1;offset<length-.6;offset+=1.12){
-        const p=box(0xe3dfc9,wx(a.x+dx*offset/length),.082,wz(a.y+dy*offset/length),.47,.014,width-.24,root);
+        const p=box(0xe3dfc9,wx(a.x+dx*offset/length),.082,wz(a.y+dy*offset/length),.47,.014,width-.24,approaches);
         p.rotation.y=-Math.atan2(dy,dx);
       }
     }
     yield;
   }
+  if(terrainHeight)yield* gradeAvenueMeshes(T,approaches.children,terrainHeight);
   for(const stop of expandedSubwayStops){
     const group=new T.Group();group.name=stop.name;
     group.position.set(wx(stop.x),floorAt(stop),wz(stop.y));

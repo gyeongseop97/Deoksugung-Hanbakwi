@@ -1,14 +1,14 @@
-import {addLandmarks,addZone,project} from "./layout.js";
-import {at,gbSite,folkMuseumEastOpening} from "./gyeongbok-layout.js";
+import {addLandmarks,addObstacle,addZone,project} from "./layout.js";
+import {gbEastOpenings,gbEastWall,gbEastWallX} from "./gyeongbok-perimeter.js";
+import {gyeongbokTerrainHeight,samcheongLevel} from "./gyeongbok-terrain.js";
+import {mmcaGroundHeight,mmcaLandmarks,mmcaWalkable} from "./mmca-layout.js";
 
 // Read in the common map projection. The street bends and ridgeline follow the Seoul
 // Hanok Portal walking map and Google Earth. Individual residential lots are interpreted.
-export const bukchonBounds={minX:555,maxX:1160,minY:-1885,maxY:-844};
+export const bukchonBounds={minX:555,maxX:1160,minY:-1890,maxY:-844};
 const point=([x,y,level=0])=>({x,y,level});
-export const folkMuseumEastDoor=at(250,(folkMuseumEastOpening.south+folkMuseumEastOpening.north)/2,"국립민속박물관 동쪽 출입구");
+export const folkMuseumEastDoor=gbEastOpenings.find(({id})=>id==="folk-museum");
 export const dongsipjagak=project("동십자각",37.5761083333,126.9794222222);
-const museumY=folkMuseumEastDoor.y;
-const geonchunY=gbSite.geonchunmun.y+8;
 
 function makePath(name,kind,width,vertices){
   const points=vertices.map(point),half=width/2;
@@ -29,45 +29,109 @@ function makePath(name,kind,width,vertices){
     minY:Math.min(...points.map(p=>p.y))-half-3,maxY:Math.max(...points.map(p=>p.y))+half+3};
 }
 
-// The palace wall in the existing model is rectilinear. The west pavement follows that
-// wall and uses the same transition height at the public Folk Museum visitor opening.
-const avenue=[
-  [745,-897,0],[743,-933,.16],[741,-986,.35],[743,-1050,.65],[746,-1130,.82],
-  [748,geonchunY,.94],[752,-1300,1.19],[758,-1370,1.45],[767,-1455,1.75],
-  [774,museumY,2],[781,-1550,2.3],[795,-1612,2.7],[819,-1668,3.2],
-  [850,-1724,3.65],[891,-1767,4.25],[921,-1814,4.95],[929,-1839,5.2],[933,-1858,5.4]
+// Samcheong-ro and Cheongwadae-ro centre lines follow OSM. The smooth street
+// profile is relative to the palace forecourt and uses 30 m SRTM elevations.
+function atY(y,rows){
+  for(let i=1;i<rows.length;i++){
+    const [start,value]=rows[i-1],[end,next]=rows[i];
+    if(y>=end)return value+(next-value)*Math.max(0,(y-start)/(end-start));
+  }
+  return rows.at(-1)[1];
+}
+const mainAxis=[
+  [-891,708],[-925.36,712.94],[-954.6,708.92],[-979.65,707.87],[-1013.42,706.55],[-1075.38,706.99],
+  [-1148.96,707.87],[-1203.03,710.52],[-1241.63,712.9],[-1269.65,715.81],[-1306.47,725.87],
+  [-1349.54,737.88],[-1382.01,746.35],[-1452.92,768.24],[-1466.25,773.41],[-1490,810],
+  [-1511,840],[-1554,871.16],[-1590.63,891.01],[-1626.15,911.76],[-1679.43,911.23],
+  [-1731.60,917.41],[-1831.5,930.29],[-1887,937.88]
 ];
-const westPavement=avenue.map(([x,y,h],i)=>[x-(i<10?10.6:9.4),y,h+.14]);
-const eastPavement=avenue.map(([x,y,h])=>[x+10,y,h+.14]);
-const northLanding=[941,-1839,5.34],stoneStepsTop=[952,-1834,10.4];
+const northAxis=[[-1466.25,773.41],[-1492.95,773.68],[-1568,773.8],[-1611,771.7],[-1660,765.2],
+  [-1703,731.5],[-1724.9,714]];
+const crosswalkSurvey=[
+  ["동십자각 북쪽 횡단보도",-954.6,5.6,mainAxis],
+  ["건춘문 앞 횡단보도",-1148.96,5.8,mainAxis],
+  ["민속박물관 앞 횡단보도",-1349.54,5.6,mainAxis],
+  ["청와대로 초입 횡단보도",-1492.95,5.6,northAxis],
+  ["팔판길 입구 횡단보도",-1573,5.1,mainAxis],
+  ["삼청로 위쪽 횡단보도",-1839,5.1,mainAxis]
+];
+const mainRows=[...new Set([...mainAxis.map(([y])=>y),-1030,-1145,-1280,-1400,-1515,-1660,-1780])].sort((a,b)=>b-a);
+const section=(rows,offset=0)=>rows.map(y=>[atY(y,mainAxis)+offset,y,samcheongLevel(y)+(offset?.14:0)]);
+const avenue=section(mainRows);
+const eastPavement=section(mainRows,10);
+const oldWallSamples=gbEastWall.map(({y})=>y).filter(y=>y< -949&&y> -1595);
+const wallWalkRows=[...new Set([...oldWallSamples,...mainRows.filter(y=>y> -1467),
+  ...northAxis.map(([y])=>y).filter(y=>y< -1467&&y> -1595),-1595])].sort((a,b)=>b-a);
+function westEdges(y){
+  const curb=atY(y,y>=-1466.25?mainAxis:northAxis)-6.8;
+  const wall=y< -944?gbEastWallX(y):null;
+  return [wall!=null?Math.min(curb-2.7,wall+.22):curb-6.3,curb];
+}
+const westCentre=y=>westEdges(y).reduce((sum,x)=>sum+x,0)/2;
+function wallPavement(){
+  const level=y=>samcheongLevel(y)+.14;
+  const path=makePath("경복궁 동쪽 담장길","pavement",6.3,wallWalkRows.map(y=>[westCentre(y),y,level(y)]));
+  const left=wallWalkRows.map(y=>point([westEdges(y)[0],y,level(y)]));
+  const right=wallWalkRows.map(y=>point([westEdges(y)[1],y,level(y)]));
+  return {...path,left,right,outline:[...left,...right.slice().reverse()],
+    minX:Math.min(...left.map(({x})=>x))-3,maxX:Math.max(...right.map(({x})=>x))+3};
+}
+const northRoad=northAxis.map(([y,x])=>[x,y,samcheongLevel(y)]);
+const northEastWalk=northAxis.map(([y,x])=>[x+10,y,samcheongLevel(y)+.14]);
+const northWestWalk=[-1593,...northAxis.map(([y])=>y).filter(y=>y< -1593)].map(y=>[atY(y,northAxis)-10,y,samcheongLevel(y)+.14]);
+const northMainWest=section([-1464,...mainRows.filter(y=>y< -1464)],-10);
+const northLanding=[941,-1839,samcheongLevel(-1839)+.14],stoneStepsTop=[952,-1834,21.2];
+const crosswalks=crosswalkSurvey.map(([name,y,width,axis])=>{
+  const street=atY(y,axis),level=samcheongLevel(y);
+  const west=axis===northAxis||y> -1466?westEdges(y)[1]-1.6:street-10;
+  return makePath(name,"crosswalk",width,[[west,y,level+.14],[street,y,level],[street+11,y,level+.14]]);
+});
+const entrancePaths=gbEastOpenings.map(({id,name,x,y})=>{
+  const pavement=westCentre(y),level=samcheongLevel(y)+.14;
+  const west=x-(id==="palace-parking"?27:19);
+  const height=x=>gyeongbokTerrainHeight({x,y})+.025;
+  return makePath(name,"entrance",id==="palace-parking"?9.6:5.8,
+    [[west,y,height(west)],[x-5,y,height(x-5)],[x,y,height(x)],[pavement+.5,y,level]]);
+});
+const geonchunCross=crosswalks[1],museumCross=crosswalks[2];
+const crossingApproach=({points})=>points.at(-1);
 const ridgeNorth=[970,-1820,12.5],ridgeJunction=[1009,-1792,13.2];
 const ridgeSouth=[988,-1700,10.7],libraryNorth=[958,-1606,7.4];
-const westLink=[769,-1370,1.59],libraryLink=[881,-1465,4.9],gamgodangTop=[914,-1414,4.1];
+const westLink=[755,-1370,samcheongLevel(-1370)+.14],libraryLink=[881,-1465,4.9],gamgodangTop=[914,-1414,4.1];
 const angukJunction=[1059,-938,.35];
+const lawnGrade=y=>samcheongLevel(-1735)+.14+(-1735-y)*.026;
+const lawn=(name,vertices,height)=>({name,height,outline:vertices.map(([x,y])=>({x,y,level:height(y)}))});
+export const bukchonLawns=[
+  lawn("율곡로 쉼터",[[876,-948],[887,-944],[906,-944],[909,-938],[902,-930],[881,-931],[875,-938]],()=>.32),
+  lawn("삼청로 위쪽 쉼터",[[928,-1726],[938,-1724],[948,-1730],[948,-1742],[939,-1749],[928,-1747]],lawnGrade)
+];
+// Street trees at the outer edge of public lawns and alley shoulders.
+export const bukchonStreetTrees=[
+  [878,-932,5.2],[903,-931,6.1],[945,-1731,6.5],[943,-1745,5.6],[856,-1400,7.2],[1069,-1741,6.4]
+];
 
 export const bukchonPaths=[
   makePath("삼청로","road",13.8,avenue),
-  makePath("경복궁 동쪽 담장길","pavement",6.3,westPavement),
+  wallPavement(),
   makePath("삼청로 동편 인도","pavement",6.3,eastPavement),
   makePath("광화문 동편 인도","pavement",7.4,[
-    [555.2,-878,0],[592,-878,0],[624,-880,0],[669,-883,0],[701,-890,0],[718,-894,.06],[735,-897,.14]
+    [555.2,-878,0],[592,-878,0],[624,-880,0],[669,-883,0],[698,-892,0]
   ]),
   makePath("율곡로 북쪽 인도","pavement",8.1,[
-    [735,-896,.14],[753,-894,.14],[778,-915,.14],[807,-932,.22],[847,-946,.29],
+    [717,-898,.14],[733,-900,.14],[753,-894,.14],[778,-915,.14],[807,-932,.22],[847,-946,.29],
     [889,-952,.31],[937,-951,.34],[984,-948,.35],[1020,-943,.35],angukJunction,
     [1095,-929,.35],[1138,-925,.35],[1150,-925,.35]
   ]),
-  makePath("건춘문 앞 횡단보도","crosswalk",5.3,[[737.4,geonchunY,1.08],[748,geonchunY,.94],[758,geonchunY,1.08]]),
-  makePath("국립민속박물관 동쪽 출입구","entrance",6.6,[
-    [694,museumY,0],[712,museumY,0],[727,museumY,.66],[741,museumY,1.18],[763.4,museumY,2.14]
-  ]),
-  makePath("민속박물관 앞 횡단보도","crosswalk",5.1,[[763.4,museumY,2.14],[774,museumY,2],[784,museumY,2.14]]),
-  makePath("삼청로 위쪽 횡단보도","crosswalk",5.1,[[919.6,-1839,5.34],[929,-1839,5.2],northLanding]),
+  makePath("청와대로","road",12.2,northRoad),
+  makePath("청와대로 동편 인도","pavement",4.5,northEastWalk),
+  makePath("청와대로 서편 인도","pavement",4.5,northWestWalk),
+  makePath("삼청로 북쪽 서편 인도","pavement",5,northMainWest),
+  ...entrancePaths,...crosswalks,
   makePath("삼청동 돌계단길","stairs",3.3,[
-    [937,-1839,5.34],northLanding,[945,-1841,6.9],[947.2,-1840.1,6.9],[950,-1838,8.52],stoneStepsTop,[957,-1832,10.4]
+    [937,-1839,northLanding[2]],northLanding,[945,-1841,18.1],[947.2,-1840.1,18.1],[950,-1838,19.55],stoneStepsTop,[957,-1832,21.2]
   ]),
   makePath("북촌로5나길","alley",5.2,[
-    stoneStepsTop,[957,-1832,10.4],[963,-1825,11.6],ridgeNorth,[984,-1811,13],
+    stoneStepsTop,[957,-1832,21.2],[963,-1825,19.5],[970,-1820,17],[984,-1811,15],
     [997,-1804,13.3],ridgeJunction,[1007,-1765,13],[998,-1734,12],ridgeSouth,[980,-1660,9.1],libraryNorth,
     [936,-1583,6.5],[908,-1562,5.7],libraryLink
   ]),
@@ -83,11 +147,12 @@ export const bukchonPaths=[
     [1077,-1767,13.15],[1073,-1745,12.55],[1060,-1731,12.2],[1048,-1731,12.6]
   ]),
   makePath("화개길","lane",5.5,[
-    [767.5,-1370,1.59],westLink,[789,-1399,2.1],[819,-1430,2.9],[850,-1446,3.8],libraryLink,
+    westLink,[789,-1399,2.1],[819,-1430,2.9],[850,-1446,3.8],libraryLink,
     [903,-1478,5.2],[926,-1493,5.2],[944,-1507,5.2]
   ]),
   makePath("팔판길","lane",5.1,[
-    [860,-1724,3.79],[868,-1692,4],[865,-1658,3.8],[846,-1624,3.25],[821,-1589,2.9],[791,-1550,2.44]
+    [907,-1730,samcheongLevel(-1730)+.14],[888,-1727,9],[860,-1724,4.5],[868,-1692,4],[865,-1658,3.8],
+    [846,-1624,3.25],[821,-1589,2.9],[791,-1550,2.44],[775,-1530,4.9],[767,-1520,samcheongLevel(-1520)+.14]
   ]),
   makePath("감고당길","lane",6,[
     angukJunction,[1037,-987,.6],[1016,-1045,1],[996,-1102,1.5],[978,-1160,2.05],[959,-1221,2.55],
@@ -108,10 +173,20 @@ function inPath(x,y,path){
 export function inBukchon(x,y){
   return x>=bukchonBounds.minX&&x<=bukchonBounds.maxX&&y>=bukchonBounds.minY&&y<=bukchonBounds.maxY;
 }
+function lawnAt(x,y){
+  return bukchonLawns.find(({outline})=>{
+    let inside=false;
+    for(let i=0,j=outline.length-1;i<outline.length;j=i++){
+      const a=outline[i],b=outline[j];
+      if((a.y>y)!==(b.y>y)&&x<(b.x-a.x)*(y-a.y)/(b.y-a.y)+a.x)inside=!inside;
+    }
+    return inside;
+  });
+}
 // Broad Samcheong-ro is crossed at the marked crossings. Narrower mixed-use lanes are
 // continuous pedestrian space; stairs are a signed public link between the two levels.
 export function bukchonWalkable(x,y){
-  return bukchonPaths.some(path=>path.kind!=="road"&&inPath(x,y,path));
+  return bukchonPaths.some(path=>path.kind!=="road"&&inPath(x,y,path))||mmcaWalkable(x,y)||Boolean(lawnAt(x,y));
 }
 function samplePath(x,y,path){
   let nearest=Infinity,level=0;
@@ -133,7 +208,7 @@ export function bukchonGroundHeight({x,y}){
     if(gap>=nearest)continue;
     nearest=gap;height=sample.level;
   }
-  return height;
+  return height??mmcaGroundHeight(x,y)??lawnAt(x,y)?.height(y);
 }
 // The two edges turn together at landings. Sampling the same quadrilateral as the
 // renderer keeps the player's feet on its individual stone treads, even on a bend.
@@ -168,21 +243,25 @@ export function bukchonTerrain(x,y){
     if(sample.nearest>=nearest)continue;
     nearest=sample.nearest;height=sample.level;
   }
-  return height;
+  return mmcaGroundHeight(x,y)??lawnAt(x,y)?.height(y)??height;
 }
 export const bukchonLandmarks=[
-  {...point([701,-890]),name:"동십자각 앞"},
-  {...point([738.2,geonchunY]),name:"건춘문 앞 횡단보도"},
-  {...point([761,geonchunY]),name:"국립현대미술관 서울 앞"},
+  {...point([697,-891]),name:"동십자각 앞"},
+  {...geonchunCross.points[0],name:"건춘문 앞 횡단보도"},
+  {...crossingApproach(geonchunCross),name:"국립현대미술관 서울 앞"},
   {...folkMuseumEastDoor},
-  {...point([785,museumY]),name:"국립민속박물관 앞 삼청로"},
-  {...point([791,-1550]),name:"팔판길"},
+  {...crossingApproach(museumCross),name:"국립민속박물관 앞 삼청로"},
+  {...point([860,-1724]),name:"팔판길"},
   {...point([940,-1839]),name:"삼청동 돌계단길 아래"},
   {...point([955,-1832]),name:"삼청동 돌계단길 · 북촌 8경"},
   {...point([1009,-1791]),name:"북촌로5나길"},
   {...point([1050,-1746]),name:"가회동 한옥 골목"},
   {...point([914,-1414]),name:"감고당길"},
-  {...point([1136,-925]),name:"안국역 1번 출구 앞"}
+  {...point([1136,-925]),name:"안국역 1번 출구 앞"},
+  ...gbEastOpenings.filter(({id})=>id!=="folk-museum"),
+  ...crosswalks.filter(path=>path!==geonchunCross&&path!==museumCross).map(path=>({...crossingApproach(path),name:path.name})),
+  ...bukchonLawns.map(({name,outline})=>({name,x:outline.reduce((sum,p)=>sum+p.x,0)/outline.length,
+    y:outline.reduce((sum,p)=>sum+p.y,0)/outline.length}))
 ];
 export const bukchonShortcuts=[
   {label:"삼청로",aria:"삼청로로 순간이동",...bukchonLandmarks[4],heading:0},
@@ -191,11 +270,14 @@ export const bukchonShortcuts=[
 ];
 // These fronts are fictional shops. Their door thresholds are on the corresponding lane.
 export const bukchonShopPlots={
-  churu:{x:758.4354,y:-959.2121,w:7.8,d:5.7,angle:4.7501,level:.3931},
+  churu:{x:724.3,y:-970.3,w:7.8,d:5.7,angle:-Math.PI/2,level:.72},
   coffee:{x:799.7099,y:-1418.6517,w:7.8,d:5.6,angle:.8018,level:2.5},
   crepe:{x:872.1877,y:-1673.8129,w:7.8,d:5.6,angle:-1.6588,level:3.896},
   beer:{x:989.1470,y:-1676.0586,w:7.8,d:5.6,angle:-1.7682,level:9.788}
 };
 
 addZone({name:"삼청동 · 북촌",contains:inBukchon,walkable:bukchonWalkable});
-addLandmarks(bukchonLandmarks);
+addLandmarks([...bukchonLandmarks,...mmcaLandmarks]);
+export function registerBukchonTrees(){
+  for(const [x,y,height] of bukchonStreetTrees)addObstacle(x,y,height*.092,height*.092);
+}

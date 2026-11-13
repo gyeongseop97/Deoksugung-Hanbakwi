@@ -11,7 +11,7 @@ import { addStands, addRegionalStands, makeItemProps, regionalStations, register
 import { registerHanbokRental } from "./passport-data.js";
 import { addHanbokRental } from "./wearables-models.js";
 import { assembleMuseum, registerMuseumNavigation, isInsideMuseum, museumOutsideDoor, museumInsideDoor, museumInsideSpawn, stairHeight } from "./museum.js";
-import { PET_MS, FEED_MS, jumpLift } from "./activities.js";
+import { PET_MS, FEED_MS, jumpLift, renderedJumpLift } from "./activities.js";
 import { makeWalkerModels } from "./walker-model.js";
 import { addMinigameMarkers, registerMinigameProps } from "./minigame-markers.js";
 import { makeMinigameWorld } from "./minigame-world.js";
@@ -19,8 +19,11 @@ import { makeFirstPersonView } from "./first-person.js";
 import { plazaShowSpot } from "./plaza-show.js";
 import { gbSurveyModels, gbNightGlow } from "./gyeongbok.js";
 import { gbSite, gwanghwamun, gbBounds, inGyeongbok, gbLightSpots } from "./gyeongbok-layout.js";
+import { outsideGroundOffset,palaceGroundOffset,samcheongLevel,southWorldTerrainHeight } from "./gyeongbok-terrain.js";
+import { gradeAvenueMeshes } from "./avenue-terrain.js";
+import { gradeJeongdongMeshes } from "./jeongdong-terrain-render.js";
 import { assembleGwanghwamunPlaza, registerPlazaNavigation } from "./gwanghwamun-plaza.js";
-import { haechiBasin, inGwanghwamunPlaza, plazaBounds, plazaGroundHeight, plazaSites } from "./plaza-layout.js";
+import { inGwanghwamunPlaza, plazaBounds, plazaGroundHeight, plazaSites } from "./plaza-layout.js";
 import { buildSejongCorridor } from "./sejong-corridor.js";
 import { corridorBounds } from "./sejong-corridor-layout.js";
 import { buildBikeDocks, makeRidingBike, registerBikeDocks } from "./sejong-bike-model.js";
@@ -29,11 +32,12 @@ import { buildSejongBusModels } from "./sejong-bus-model.js";
 import { BUS_FLOOR, busAt, busSeatPose } from "./sejong-bus.js";
 import { addPalacePeople } from "./palace-people.js";
 import { addStreetPeople } from "./street-people.js";
+import { addBukchonPeople } from "./bukchon-people.js";
 import { makePicnicWorld } from "./picnic-world.js";
 import { buildSubwayAccess,registerExpandedSubway } from "./subway-expansion.js";
 import { jeongdongExtensionBounds,registerJeongdongExtension } from "./jeongdong-extension-layout.js";
 import { buildJeongdongExtension } from "./jeongdong-extension.js";
-import { bukchonBounds,bukchonWalkable,bukchonGroundHeight } from "./bukchon-layout.js";
+import { bukchonBounds,bukchonWalkable,bukchonGroundHeight,registerBukchonTrees } from "./bukchon-layout.js";
 import { buildBukchon } from "./bukchon.js";
 import { hwangudanBounds,hwangudanWalkable,hwangudanFloorHeight,registerHwangudanNavigation } from "./seoul-hwangudan-layout.js";
 import { assembleHwangudan } from "./seoul-hwangudan.js";
@@ -159,19 +163,26 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
   registerJeongdongExtension();
   registerHwangudanNavigation();
   buildJeongdongExtension(T,deoksRoot,makeKit(deoksRoot));
+  finishBuild(gradeJeongdongMeshes(T,deoksRoot,southWorldTerrainHeight,{trees,catWalls}));
+  finishBuild(gradeAvenueMeshes(T,corridorRoot.children,southWorldTerrainHeight));
   registerBikeDocks();
-  const addDocks=(root,where)=>buildBikeDocks(T,root,makeKit(root),{docks:bikeDocks.filter(where),register:false});
-  addDocks(deoksRoot,dock=>dock.y>=28);
-  addDocks(corridorRoot,dock=>dock.y<28&&dock.y>-280);
-  const buses=buildSejongBusModels(T,transportRoot,kit);
+  const addDocks=(root,where,height)=>buildBikeDocks(T,root,makeKit(root),{docks:bikeDocks.filter(where),register:false,height});
+  addDocks(deoksRoot,dock=>dock.y>=28,southWorldTerrainHeight);
+  addDocks(corridorRoot,dock=>dock.y<28&&dock.y>-280,southWorldTerrainHeight);
+  const busGround=point=>point.y<gwanghwamun.y&&point.x>=680?
+    bukchonGroundHeight(point)??samcheongLevel(point.y):southWorldTerrainHeight(point);
+  const buses=buildSejongBusModels(T,transportRoot,kit,busGround);
   registerPlazaNavigation(benches);
-  const drawWater=addWater(T,deoksRoot,fountains,makeKit(deoksRoot));
+  const drawWater=addWater(T,deoksRoot,fountains,{...makeKit(deoksRoot),terrain:southWorldTerrainHeight});
   registerRegionalStands();
+  registerBukchonTrees();
   registerExpandedSubway();
   registerHanbokRental();
   const minigameProps=registerMinigameProps(floorHeight);
   const minigameWorld=makeMinigameWorld(T,outdoors,kit,floorHeight);
+  const transportCount=transportRoot.children.length;
   const stations=[...addStands(T,transportRoot,makeKit(transportRoot)),...regionalStations];
+  finishBuild(gradeAvenueMeshes(T,transportRoot.children.slice(transportCount),southWorldTerrainHeight));
   outdoors.add(deoksRoot,corridorRoot,transportRoot);
   const createItemProp=makeItemProps(T,kit);
   const picnicWorld=makePicnicWorld(T,outdoors,kit,floorHeight,createItemProp);
@@ -179,7 +190,7 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
   let firstPersonView,firstPersonUmbrella;
   const spotLights=[gate,middle,stoneHall].map((point,i)=>{
     const light=new T.PointLight(0xffc47f,0,i===2?55:30,2);
-    light.position.set(wx(point.x)+(i===0?7:0),i===2?4.5:2.6,wz(point.y)+(i===0?2:i===2?22:9));
+    light.position.set(wx(point.x)+(i===0?7:0),(i===2?4.5:2.6)+outsideGroundOffset(point),wz(point.y)+(i===0?2:i===2?22:9));
     scene.add(light);
     return light;
   });
@@ -206,19 +217,20 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
       const nearest=mapped.map(spot=>({spot,gap:Math.hypot(spot.x-anchor.x,spot.y-anchor.y)})).sort((a,b)=>a.gap-b.gap);
       spotLights.forEach((light,i)=>{
         const {spot}=nearest[i];
-        light.position.set(wx(spot.x),spot.height,wz(spot.y));light.distance=spot.range;
+        light.position.set(wx(spot.x),spot.height+outsideGroundOffset(spot),wz(spot.y));light.distance=spot.range;
       });
       lightPower=nearest.slice(0,spotLights.length).map(({spot})=>spot.power);
     }
     const room=roomAt(anchor);
     if(room){
-      spotLights[0].position.set(wx(room.x),room.floor+room.height-.7,wz(room.y));
+      spotLights[0].position.set(wx(room.x),room.floor+room.height-.7+outsideGroundOffset(room),wz(room.y));
       spotLights[0].distance=Math.max(room.w,room.d)*.8+8;
       lightPower[0]=130;lightDay[0]=85;
     }
   }
   const palacePeople=addPalacePeople(T,scene,kit,walkerModels,{floorHeight:point=>floorHeight(point),labelSprite:(...args)=>labelSprite(...args),handheld});
   const streetPeople=addStreetPeople(T,scene,kit,walkerModels,{floorHeight,labelSprite,handheld});
+  const bukchonPeople=addBukchonPeople(walkerModels,{floorHeight,handheld});
   const nightSky=addNightSky(T,heavens,randomFrom(173408));
   const dayHorizon=new T.Color(0xcce4f0),nightHorizon=new T.Color(0x23384f);
   const dayZenith=new T.Color(0x367ec5),nightZenith=new T.Color(0x080e21);
@@ -249,9 +261,9 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
   const corridorChunks=finishBuild(consolidate(corridorRoot,new Set(),foliage.register));
   const transportChunks=finishBuild(consolidate(transportRoot,new Set()));
   const guideMarker=makeGuideMarker();
-  guideMarker.position.set(wx(ticketGuide.x),2.42,wz(ticketGuide.y));
+  guideMarker.position.set(wx(ticketGuide.x),2.42+outsideGroundOffset(ticketGuide),wz(ticketGuide.y));
   const showMarker=makeGuideMarker("♫");
-  showMarker.position.set(wx(plazaShowSpot.x),1.95,wz(plazaShowSpot.y));
+  showMarker.position.set(wx(plazaShowSpot.x),1.95+outsideGroundOffset(plazaShowSpot),wz(plazaShowSpot.y));
   showMarker.scale.setScalar(1.12);
   showMarker.visible=false;
   outdoors.add(guideMarker,showMarker);
@@ -259,7 +271,7 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
   const museum={outsideDoor:museumOutsideDoor,insideDoor:museumInsideDoor,insideSpawn:museumInsideSpawn,
     isInside:isInsideMuseum,floorAt:stairHeight,exhibits:[]};
   const birds=addPalaceBirds(T,outdoors,{...kit,floorHeight},{trees,walls:catWalls,seed:catSeed,deferNorth:true});
-  const parkLife=addParkLife(T,outdoors,{...kit,trees,floorHeight,catWalls,benches,onCatFlee,catSeed,birds,deferNorth:true});
+  const parkLife=addParkLife(T,outdoors,{...kit,trees,floorHeight,terrainHeight:outsideGroundOffset,catWalls,benches,onCatFlee,catSeed,birds,deferNorth:true});
   let landmarkLoaders,surveyLoading=false;
   const surveyQueue=[];
   // Doorways cut through the surveyed shells so the furnished rooms inside can be entered.
@@ -270,6 +282,7 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     seogeodang:{x:0,z:3.6,width:2.4,depth:2.2,floor:1.05,height:2.75}
   };
   function doorPlanes({x,z,width,depth,floor,height},point,angle){
+    floor+=outsideGroundOffset(point);
     const c=Math.cos(angle),s=Math.sin(angle),px=wx(point.x),pz=wz(point.y);
     const across=new T.Vector3(c,0,-s),front=new T.Vector3(s,0,c),up=new T.Vector3(0,1,0);
     const baseX=across.x*px+across.z*pz,baseZ=front.x*px+front.z*pz;
@@ -288,7 +301,7 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
       ]);
       const [{GLTFLoader},{MeshoptDecoder}]=await landmarkLoaders;
       const asset=await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(new URL(`./${name}.glb`,import.meta.url).href);
-      asset.scene.position.set(wx(point.x),0,wz(point.y));
+      asset.scene.position.set(wx(point.x),outsideGroundOffset(point),wz(point.y));
       asset.scene.rotation.y=angle;
       const anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());
       asset.scene.traverse(mesh=>{
@@ -329,11 +342,14 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
   const deoks={root:deoksRoot,bounds:deoksBounds,chunks:deoksChunks};
   const corridor={root:corridorRoot,bounds:corridorBounds,chunks:corridorChunks};
   let museumView,updatePlaza,updateHwangudan,northWildlife,plazaWildlife;
+  const wildlife=[["jeongdong",jeongdongExtensionBounds],["hwangudan",hwangudanBounds],["bukchon",bukchonBounds]]
+    .map(([id,bounds])=>({id,bounds,steps:null,ready:false}));
   const plaza={root:plazaRoot,bounds:plazaBounds,*build(){
     const birdPerches=[];
-    updatePlaza=yield* assembleGwanghwamunPlaza(T,plazaRoot,makeKit(plazaRoot),{birdPerches});
+    updatePlaza=yield* assembleGwanghwamunPlaza(T,plazaRoot,makeKit(plazaRoot),{birdPerches,terrainHeight:southWorldTerrainHeight});
     addRegionalStands(T,plazaRoot,makeKit(plazaRoot),"gwanghwamun");
     addDocks(plazaRoot,dock=>dock.y<=-280&&dock.y>-790);
+    yield* gradeAvenueMeshes(T,plazaRoot.children,southWorldTerrainHeight);
     addMinigameMarkers(T,plazaRoot,kit,["kite"],floorHeight);
     const chunks=yield* consolidate(plazaRoot,new Set(),foliage.register);
     plazaWildlife=birds.loadPlaza(birdPerches);
@@ -341,9 +357,12 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
   }};
   const palace={root:palaceRoot,bounds:gbBounds,*build(){
     const {groups}=yield* buildGyeongbokDistrict(palaceRoot);
-    addRegionalStands(T,palaceRoot,makeKit(palaceRoot),"gyeongbokgung");
+    const stands=addRegionalStands(T,palaceRoot,makeKit(palaceRoot),"gyeongbokgung");
+    for(const group of stands.children){
+      group.position.y+=palaceGroundOffset(group.position.x+300,group.position.z+225);
+    }
     addHanbokRental(T,palaceRoot,makeKit(palaceRoot));
-    addDocks(palaceRoot,dock=>dock.y<=-790);
+    addDocks(palaceRoot,dock=>dock.y<=-790&&dock.area!=="bukchon",dock=>palaceGroundOffset(dock.x,dock.y));
     addMinigameMarkers(T,palaceRoot,kit,["tuho","jegi"],floorHeight,minigameProps);
     const surveyed=gbSurveyModels.filter(id=>groups.has(id));
     const chunks=yield* consolidate(palaceRoot,new Set(surveyed.map(id=>groups.get(id))),foliage.register);
@@ -367,12 +386,14 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
   const bukchon=expansionDistrict(bukchonBounds,bukchonWalkable,function*(root,localKit){
     yield* buildBukchon(T,root,localKit);
     addRegionalStands(T,root,localKit,"bukchon");
+    addDocks(root,dock=>dock.area==="bukchon",dock=>bukchonGroundHeight(dock)??bukchonGroundHeight(dock.access)??0);
   });
   const hwangudan=expansionDistrict(hwangudanBounds,hwangudanWalkable,function*(root,localKit){
     updateHwangudan=(yield* assembleHwangudan(T,root,localKit))?.update;
+    yield* gradeAvenueMeshes(T,root.children,southWorldTerrainHeight);
   });
   const stationsDistrict=expansionDistrict({minX:55,maxX:1160,minY:-965,maxY:410},()=>false,function*(root,localKit){
-    yield* buildSubwayAccess(T,root,localKit,floorHeight);
+    yield* buildSubwayAccess(T,root,localKit,floorHeight,{terrainHeight:outsideGroundOffset});
   });
   const expansions=[bukchon,hwangudan,stationsDistrict];
   const districts=[deoks,corridor,plaza,palace,...expansions],loading=container.querySelector("#loading-game");
@@ -404,7 +425,15 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
         console.error("Could not assemble a walking district",error);
       }
     }else if(!indoors){
-      if(plazaWildlife&&distanceToDistrict(anchor,plazaBounds)<215){
+      const close=wildlife.filter(area=>!area.ready&&distanceToDistrict(anchor,area.bounds)<105)
+        .sort((a,b)=>distanceToDistrict(anchor,a.bounds)-distanceToDistrict(anchor,b.bounds))[0];
+      if(close){
+        const {id}=close;
+        close.steps??=(function*(){yield* birds.loadExpansion(id);yield* parkLife.loadExpansion(id);})();
+        do{
+          if(close.steps.next().done){close.ready=true;close.steps=null;break;}
+        }while(performance.now()<deadline);
+      }else if(plazaWildlife&&distanceToDistrict(anchor,plazaBounds)<215){
         do{if(plazaWildlife.next().done){plazaWildlife=null;break;}}while(performance.now()<deadline);
       }else if(northWildlife&&distanceToDistrict(anchor,gbBounds)<225){
         do{if(northWildlife.next().done){northWildlife=null;break;}}while(performance.now()<deadline);
@@ -523,12 +552,17 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     context.putImageData(preview.image,0,0);
   }
   function seatAt(position,clock){
-    const pose=position.bus&&busSeatPose(busAt(position.bus.index,clock),position.bus.seat);
-    return pose?{...pose,base:BUS_FLOOR}:benches[position.seat]?.slots[position.seatSide??0];
+    const bus=position.bus&&busAt(position.bus.index,clock),pose=bus&&busSeatPose(bus,position.bus.seat);
+    if(pose)return {...pose,base:BUS_FLOOR+.015+busGround(bus)};
+    const seat=benches[position.seat]?.slots[position.seatSide??0];
+    return seat?{...seat,base:(seat.base??0)+outsideGroundOffset(seat)}:null;
   }
   // Low kerbs, benches and ledges can be stood on after a jump, so they raise the floor too.
   function floorHeight(position){
-    return plazaGroundHeight(position)??Math.max(groundHeight(position),platformAt(position.x,position.y,true),loftHeight(position));
+    const terrain=isInsideMuseum(position.x,position.y)?0:outsideGroundOffset(position);
+    const basin=plazaGroundHeight(position);
+    if(basin!=null)return terrain+basin;
+    return Math.max(groundHeight(position),terrain+Math.max(platformAt(position.x,position.y,true),loftHeight(position)));
   }
   // Where a walker's feet are drawn: waist-deep below the surface while wading a pond.
   const footing=position=>floorHeight(position)-waterDepth(position.x,position.y);
@@ -549,27 +583,32 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     rings.forEach((ring,i)=>{
       const phase=(now*(busy?.0011:.00055)+i*.5)%1;
       ring.visible=true;
-      ring.position.set(wx(player.x),.062,wz(player.y));
+      ring.position.set(wx(player.x),groundHeight(player)+.062,wz(player.y));
       ring.scale.setScalar(.75+phase*(busy?1.9:1.2));
       ring.material.opacity=(1-phase)*(busy?.62:.34);
     });
   }
   function groundHeight(position) {
+    if(isInsideMuseum(position.x,position.y))return stairHeight(position)??0;
+    const terrain=outsideGroundOffset(position);
     const plazaLevel=plazaGroundHeight(position);
-    if(plazaLevel!=null)return plazaLevel;
-    const outside=bukchonGroundHeight(position)??hwangudanFloorHeight(position);
-    if(outside!=null)return outside;
+    if(plazaLevel!=null)return terrain+plazaLevel;
+    const bukchonLevel=bukchonGroundHeight(position);
+    if(bukchonLevel!=null)return bukchonLevel;
+    const hwangudanLevel=hwangudanFloorHeight(position);
+    if(hwangudanLevel!=null)return terrain+hwangudanLevel;
+    if(position.y<gwanghwamun.y)return terrain;
     const stair=stairHeight(position);
-    if(stair!=null)return stair;
-    if(Math.abs(position.y-bridge.y)<3.15&&Math.abs(position.x-bridge.x)<3.6)return Math.max(0,.23-(Math.abs(position.x-bridge.x)-2.70)*.34);
-    if(Math.abs(position.y-gate.y)<2.0&&Math.abs(position.x-gate.x)<4.1)return .265;
+    if(stair!=null)return terrain+stair;
+    if(Math.abs(position.y-bridge.y)<3.15&&Math.abs(position.x-bridge.x)<3.6)return terrain+Math.max(0,.23-(Math.abs(position.x-bridge.x)-2.70)*.34);
+    if(Math.abs(position.y-gate.y)<2.0&&Math.abs(position.x-gate.x)<4.1)return terrain+.265;
     const dx=position.x-middle.x,dy=position.y-middle.y;
     const localX=dx*Math.cos(courtAngle)-dy*Math.sin(courtAngle),localZ=dx*Math.sin(courtAngle)+dy*Math.cos(courtAngle);
     if(Math.abs(localX)<2.0&&Math.abs(localZ)<7.2){
-      if(!scannedMiddle)return Math.abs(localZ)<3.8?.24:0;
-      return .69*Math.max(0,Math.min(1,(7.2-Math.abs(localZ))/2.6));
+      if(!scannedMiddle)return terrain+(Math.abs(localZ)<3.8?.24:0);
+      return terrain+.69*Math.max(0,Math.min(1,(7.2-Math.abs(localZ))/2.6));
     }
-    return 0;
+    return terrain;
   }
   const ring=new T.Mesh(new T.RingGeometry(.18,.25,28),new T.MeshBasicMaterial({color:0xffcf70,side:T.DoubleSide}));
   ring.rotation.x=-Math.PI/2;ring.visible=false;scene.add(ring);
@@ -717,7 +756,7 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     const shadowed=quality.shadows&&!indoors&&sun.intensity>.24;
     if(sun.castShadow!==shadowed)sun.castShadow=shadowed;
     if(shadowed&&(renderer.shadowMap.autoUpdate||now>=shadowAt)){
-      aimShadow(wx(anchor.x),0,wz(anchor.y));renderer.shadowMap.needsUpdate=true;shadowAt=now+45;
+      aimShadow(wx(anchor.x),groundHeight(anchor),wz(anchor.y));renderer.shadowMap.needsUpdate=true;shadowAt=now+45;
     }
     govern(now);
     lampMaterial.emissiveIntensity=.03+night*2.15;
@@ -749,6 +788,7 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     parkLife.update(clock,indoors?null:anchor,roster,season==="autumn");
     palacePeople.update(clock,now,delta,indoors?null:anchor,roster,Boolean(quality.sparse));
     streetPeople.update(clock,now,delta,indoors?null:anchor,Boolean(quality.sparse));
+    bukchonPeople.update(clock,now,delta,indoors?null:anchor,Boolean(quality.sparse));
     for(const [id,model] of models){
       if(present.has(id))continue;
       minigameWorld.remove(model);
@@ -763,7 +803,8 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
       if(!visible){if(model){model.group.visible=false;walkerModels.clearChat(model);}drawRipples(player.id,player,now,false);return;}
       if(!model){model=walkerModels.create(player.coat??0xab5947,player.nickname,labelSprite);models.set(player.id,model);}
       drawRipples(player.id,player,now,waterDepth(player.x,player.y)>0&&jumpLift(player,clock)<.3);
-      walkerModels.update(model,player,{now,clock,delta,seat:seatAt(player,clock),floor:footing(player),jump:jumpLift(player,clock),emojiTexture,chatTexture,
+      const floor=footing(player);
+      walkerModels.update(model,player,{now,clock,delta,seat:seatAt(player,clock),floor,jump:renderedJumpLift(player,clock,floor),emojiTexture,chatTexture,
         turnEase:player===me?1-Math.exp(-delta*22):1});
       minigameWorld.pose(player,model,state.photoCapture);
       if(model.label)model.label.visible=!state.photoCapture;
@@ -771,8 +812,9 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     minigameWorld.live(models,indoors||state.photoCapture?null:state.minigameAimPreview);
     const seat=seatAt(anchor,clock),bus=anchor.bus&&busAt(anchor.bus.index,clock);
     const outsideBus=bus&&!firstPerson;
-    const eyeHeight=outsideBus?2.1:seat?(firstPerson?1.30:1.22)+(seat.base??0):
-      (firstPerson?1.28:1.20)+footing(anchor)+jumpLift(anchor,clock)+(isCycling(anchor)?.12:0);
+    const floor=seat?0:footing(anchor);
+    const eyeHeight=outsideBus?2.115+busGround(bus):seat?(firstPerson?1.30:1.22)+(seat.base??0):
+      (firstPerson?1.28:1.20)+floor+renderedJumpLift(anchor,clock,floor)+(isCycling(anchor)?.12:0);
     const cameraPoint=outsideBus?bus:seat??anchor;
     anchorPoint.set(wx(cameraPoint.x),eyeHeight,wz(cameraPoint.y));
     const anchorKey=bus?`${anchor.id}-${bus.index}-${firstPerson}`:anchor.id;
@@ -801,7 +843,9 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
       // Shorten the orbit arm at walls and let it ease back out as space opens.
       for(let sample=1,count=Math.ceil(distance/.20);sample<=count;sample++){
         const step=distance*sample/count;
-        if(solidAt(pivot.x+300+arm.x*step,pivot.z+225+arm.z*step,pivot.y+arm.y*step-.17)){
+        const point={x:pivot.x+300+arm.x*step,y:pivot.z+225+arm.z*step};
+        const terrain=indoors?0:outsideGroundOffset(point);
+        if(solidAt(point.x,point.y,pivot.y+arm.y*step-.17-terrain)){
           available=Math.max(.34,step-.24);break;
         }
       }
@@ -904,7 +948,7 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
       firstPersonView.render(renderer,camera,me,{now,clock,delta,seat,clink:me.clink,night});
     }
   }
-  const ray=new T.Raycaster(),ground=new T.Plane(new T.Vector3(0,1,0),0),hit=new T.Vector3(),sample=new T.Vector3();
+  const ray=new T.Raycaster(),sample=new T.Vector3();
   function pick(clientX,clientY){
     const rect=renderer.domElement.getBoundingClientRect();
     if(cameraAnchor==null||!rect.width||!rect.height||
@@ -912,17 +956,12 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     ray.setFromCamera(new T.Vector2((clientX-rect.left)/rect.width*2-1,-(clientY-rect.top)/rect.height*2+1),camera);
     if(guideMarker.visible&&ray.intersectObject(guideMarker,false).length)return {...ticketGuide.approach,guide:true};
     if(showMarker.visible&&ray.intersectObject(showMarker,false).length)return {x:plazaShowSpot.x,y:plazaShowSpot.y};
-    const flat=ray.ray.intersectPlane(ground,hit);
-    let distance=flat?Math.min(105,hit.distanceTo(ray.ray.origin)):105;
-    if(flat&&plazaGroundHeight({x:hit.x+300,y:hit.z+225})<0){
-      distance=Math.min(105,distance+haechiBasin.depth/Math.max(.02,-ray.ray.direction.y)+.25);
-    }
-    for(let step=.25;step<distance;step+=.25){
+    for(let step=.25;step<=105;step+=.25){
       ray.ray.at(step,sample);
       if(sample.y>floorHeight({x:sample.x+300,y:sample.z+225}))continue;
       return {x:sample.x+300,y:sample.z+225};
     }
-    return flat&&hit.distanceTo(camera.position)<=105?{x:hit.x+300,y:hit.z+225}:null;
+    return null;
   }
   function clearChat(){
     for(const model of models.values())walkerModels.clearChat(model);
@@ -933,8 +972,8 @@ export function makeWorld(container,{onCatFlee,catSeed}={}) {
     render(state,performance.now());
     const previous=camera.fov,marker=guideMarker.visible,musicMarker=showMarker.visible;
     camera.fov=fov;camera.updateProjectionMatrix();
-    camera.position.set(wx(from.x),from.height,wz(from.y));
-    camera.lookAt(wx(to.x),to.height,wz(to.y));
+    camera.position.set(wx(from.x),groundHeight(from)+from.height,wz(from.y));
+    camera.lookAt(wx(to.x),groundHeight(to)+to.height,wz(to.y));
     guideMarker.visible=false;
     showMarker.visible=false;
     renderer.render(scene,camera);

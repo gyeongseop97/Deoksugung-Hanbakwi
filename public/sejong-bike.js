@@ -10,7 +10,12 @@ export const bikeDocks=[
   {id:"culture-shelter",name:"문화쉼터 옆 따릉이",x:436,y:-504,heading:90,access:{x:439.35,y:-504}},
   {id:"plaza-east",name:"광화문광장 동편 따릉이",x:529,y:-570,heading:270,access:{x:525.65,y:-570}},
   {id:"palace-museum",name:"국립고궁박물관 앞 따릉이",x:360,y:-957,heading:270,access:{x:356.65,y:-957}},
-  {id:"folk-museum",name:"국립민속박물관 앞 따릉이",x:588,y:-1470,heading:90,access:{x:591.35,y:-1470}}
+  {id:"folk-museum",name:"국립민속박물관 앞 따릉이",x:588,y:-1470,heading:90,access:{x:591.35,y:-1470}},
+  {id:"bukchon-dongsip",name:"동십자각 북쪽 따릉이",area:"bukchon",x:719.5,y:-1008,heading:270,access:{x:716.5,y:-1008}},
+  {id:"bukchon-mmca",name:"국립현대미술관 서울 앞 따릉이",area:"bukchon",x:729.8,y:-1263,heading:270,access:{x:726.8,y:-1263}},
+  {id:"bukchon-folk",name:"삼청로 민속박물관 쪽 따릉이",area:"bukchon",x:707.8,y:-1330,heading:90,access:{x:710.8,y:-1330}},
+  {id:"bukchon-samcheong",name:"삼청동 위쪽 따릉이",area:"bukchon",x:936,y:-1770,heading:270,access:{x:933,y:-1770}},
+  {id:"bukchon-anguk",name:"안국역 쪽 따릉이",area:"bukchon",x:1100,y:-923.2,heading:180,access:{x:1100,y:-926.2}}
 ];
 
 export const bikeDockReach=3.2;

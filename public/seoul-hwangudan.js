@@ -83,7 +83,7 @@ export function* assembleHwangudan(T,root,kit){
     for(let i=0;i<uv.count;i++)uv.setXY(i,p.getX(i)/uvTile,p.getY(i)/uvTile);
     geometry.rotateX(-Math.PI/2);
     const object=new T.Mesh(geometry,material);
-    object.position.y=level;object.receiveShadow=true;
+    object.position.y=level;object.receiveShadow=true;object.userData.followTerrain=true;
     parent.add(object);
     return object;
   }
@@ -145,7 +145,7 @@ export function* assembleHwangudan(T,root,kit){
   yield;
 
   const instanceBox=new T.BoxGeometry(1,1,1),sample=new T.Object3D();
-  function batch(entries,material){
+  function batch(entries,material,parent=group){
     if(!entries.length)return;
     const node=new T.InstancedMesh(instanceBox,material,entries.length);
     node.receiveShadow=true;
@@ -153,7 +153,7 @@ export function* assembleHwangudan(T,root,kit){
       sample.position.set(x,y,z);sample.rotation.y=angle;sample.scale.set(width,height,depth);
       sample.updateMatrix();node.setMatrixAt(index,sample.matrix);
     });
-    group.add(node);
+    parent.add(node);
   }
   function sign(parent,caption,x,y,z,width,height,{color="#ede4c4",background="#432e22",angle=0}={}){
     const canvas=document.createElement("canvas");
@@ -176,14 +176,17 @@ export function* assembleHwangudan(T,root,kit){
   };
   function tower(spec){
     const {id,outline,height,levels}=spec,[baseTone,wallTone,blue,lightBlue,bandTone]=hotelColors[id];
+    const towerGroup=new T.Group();
+    towerGroup.name=spec.name||id;group.add(towerGroup);
     const border=localPoints(outline);
     const center=border.reduce(([x,z],[nx,nz])=>[x+nx/border.length,z+nz/border.length],[0,0]);
+    towerGroup.userData.terrainAnchor={x:center[0]-wx(0),y:center[1]-wz(0)};
     const inset=id==="westin"?.84:id==="plaza-hotel"?.82:id==="lotte-hotel"?.76:levels>3?.91:.96;
     const topRing=border.map(([x,z])=>[center[0]+(x-center[0])*inset,center[1]+(z-center[1])*inset]);
     const podium=Math.min(height*.37,levels>4?6.6:3.3);
-    prism(group,border,.05,podium,matte(baseTone));
-    prism(group,topRing,podium,height-podium,matte(wallTone));
-    prism(group,topRing,height,.36,matte(bandTone));
+    prism(towerGroup,border,-1.20,podium+1.25,matte(baseTone));
+    prism(towerGroup,topRing,podium+.05,height-podium,matte(wallTone));
+    prism(towerGroup,topRing,height+.05,.36,matte(bandTone));
     const windows=[[],[],[]],trim=[];
     for(const [ring,floors,bottom,top] of [[border,1,.7,podium-.52],[topRing,Math.max(1,levels-1),podium+.25,height-.57]]){
       const winding=ring.reduce((sum,[x,z],i)=>{const [nx,nz]=ring[(i+1)%ring.length];return sum+x*nz-z*nx;},0);
@@ -206,11 +209,12 @@ export function* assembleHwangudan(T,root,kit){
         }
       }
     }
-    batch(windows[0],matte(blue));batch(windows[1],matte(lightBlue));batch(windows[2],lighting);batch(trim,matte(bandTone));
-    if(levels>4)block(group,baseTone,center[0],center[1],8.6,5.2,1.1,height+.35);
+    batch(windows[0],matte(blue),towerGroup);batch(windows[1],matte(lightBlue),towerGroup);
+    batch(windows[2],lighting,towerGroup);batch(trim,matte(bandTone),towerGroup);
+    if(levels>4)block(towerGroup,baseTone,center[0],center[1],8.6,5.2,1.1,height+.35);
     if(captions[id]){
       const [caption,x,y,z,angle]=captions[id];
-      sign(group,caption,wx(x),y,wz(z),id==="westin"?11:13,id==="westin"?1.05:1.65,{angle,background:"#495350"});
+      sign(towerGroup,caption,wx(x),y,wz(z),id==="westin"?11:13,id==="westin"?1.05:1.65,{angle,background:"#495350"});
     }
   }
   for(const building of hwangudanBuildings){

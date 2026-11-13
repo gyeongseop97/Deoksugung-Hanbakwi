@@ -1,3 +1,4 @@
+import {gradePalaceMeshes} from "./gyeongbok-terrain.js";
 import {
   route,entranceWalk,pavilions,city,estateOutline,stonewallVerge,palacePaths,palaceCourts,palaceGardens,palacePlantings,palacePond,palaceWalls,
   gate,ticket,ticketGuide,bridge,middle,hall,stoneHall,stoneFountain,court,courtAngle,fountain,garden,spawn,addObstacle,solidAt,withObstacleScope
@@ -140,9 +141,11 @@ export function buildJeongdong(T,scene,kit,{deferGyeongbok=false}={}) {
     const surface=flat(new T.PlaneGeometry(w,d),material,x,y,z);
     surface.rotation.order="YXZ";surface.rotation.set(-Math.PI/2,angle,0);
     uvScale(surface,w/6,d/2.5);
+    surface.userData.followTerrain=true;
     return surface;
   }
   const floor=box(0x677253,0,-.36,0,1320,.65,1140);
+  floor.userData.flatBackground=true;
   floor.receiveShadow=true;
   function plot(points,material,height){
     const footprint=new T.Shape(points.map(point=>new T.Vector2(wx(point.x),-wz(point.y))));
@@ -150,6 +153,7 @@ export function buildJeongdong(T,scene,kit,{deferGyeongbok=false}={}) {
     uvScale({geometry},.19,.19);
     const surface=flat(geometry,material,0,height,0);
     surface.rotation.x=-Math.PI/2;
+    surface.userData.followTerrain=true;
     return surface;
   }
   function ribbon(points,min,max,material,height){
@@ -170,7 +174,9 @@ export function buildJeongdong(T,scene,kit,{deferGyeongbok=false}={}) {
     geo.setAttribute("position",new T.Float32BufferAttribute(coords,3));
     geo.setAttribute("uv",new T.Float32BufferAttribute(uv,2));geo.setIndex(indices);geo.computeVertexNormals();
     if(geo.attributes.normal.getY(0)<0){geo.setIndex(indices.reverse());geo.computeVertexNormals();}
-    return flat(geo,material,0,0,0);
+    const surface=flat(geo,material,0,0,0);
+    surface.userData.followTerrain=true;
+    return surface;
   }
   const curb=matte(0xc5bcaa), gold=matte(0xc5a35a);
   ribbon(route,-2.85,2.85,roadMaterial,.012);
@@ -209,9 +215,12 @@ export function buildJeongdong(T,scene,kit,{deferGyeongbok=false}={}) {
     const wallMesh=flat(new T.BoxGeometry(width,height,.55),stoneMaterial,mid.x,height/2,mid.z);
     uvScale(wallMesh,segment.len/5.1,height/2.55);
     orient(wallMesh,segment.angle);
-    orient(box(0x898678,mid.x,.18,mid.z,width+.08,.35,.72),segment.angle);
-    orient(box(0x39413d,mid.x,height+.08,mid.z,width+.06,.20,.85),segment.angle);
-    orient(box(0x4e5554,mid.x,height+.22,mid.z,width+.07,.13,.62),segment.angle);
+    wallMesh.userData.followTerrain=true;
+    for(const [color,y,w,h,d] of [[0x898678,.18,width+.08,.35,.72],
+      [0x39413d,height+.08,width+.06,.20,.85],[0x4e5554,height+.22,width+.07,.13,.62]]){
+      const course=orient(box(color,mid.x,y,mid.z,w,h,d),segment.angle);
+      course.userData.followTerrain=true;course.userData.sharedTerrainGeometry=true;
+    }
     const capHeight=height+(tiles?.382:.285);
     block(mid.x,mid.z,width,.62,segment.angle,capHeight);
     if(catAccess&&segment.len>4){
@@ -231,10 +240,14 @@ export function buildJeongdong(T,scene,kit,{deferGyeongbok=false}={}) {
     const segment=line(a,b),mid=segment.at(.5),width=segment.len+.08;
     const support=flat(new T.BoxGeometry(width,.64,.63),stoneMaterial,mid.x,.32,mid.z);
     orient(uvScale(support,width/5.1,.28),segment.angle);
-    orient(box(0x967458,mid.x,height/2+.23,mid.z,width,height-.43,.34),segment.angle);
-    orient(box(0x80513c,mid.x,height-.30,mid.z,width,.19,.48),segment.angle);
-    orient(box(0x485250,mid.x,height+.04,mid.z,width,.25,.92),segment.angle);
-    orient(box(0x52615d,mid.x,height+.21,mid.z,width,.17,.51),segment.angle);
+    support.userData.followTerrain=true;
+    for(const [color,y,h,d] of [
+      [0x967458,height/2+.23,height-.43,.34],[0x80513c,height-.30,.19,.48],
+      [0x485250,height+.04,.25,.92],[0x52615d,height+.21,.17,.51]
+    ]){
+      const beam=orient(box(color,mid.x,y,mid.z,width,h,d),segment.angle);
+      beam.userData.followTerrain=true;beam.userData.sharedTerrainGeometry=true;
+    }
     const count=Math.max(2,Math.ceil(segment.len/2.6));
     for(let i=0;i<=count;i++){
       const {x,z}=segment.at(i/count);
@@ -257,6 +270,7 @@ export function buildJeongdong(T,scene,kit,{deferGyeongbok=false}={}) {
     if(!shade.material)shade.material=new T.MeshBasicMaterial({map:new T.CanvasTexture(canvas),transparent:true,depthWrite:false});
     const shadow=flat(new T.PlaneGeometry(rx*2,rz*2),shade.material,x+rx*.38,.081,z+rz*.34);
     shadow.rotation.x=-Math.PI/2;
+    shadow.userData.followTerrain=true;
   }
   function buildingClear(x,z,radius,base=0){
     return buildingPlots.every(plot=>{
@@ -314,8 +328,12 @@ export function buildJeongdong(T,scene,kit,{deferGyeongbok=false}={}) {
     }
   }
   function tree(x,z,height,choice=treeMix.garden(),spread=height*(.52+rand()*.2)){
+    const firstPart=target.children.length;
     const grown=treeKit.grow(x,z,{height,spread,...choice});
     if(!grown)return 0;
+    if(target===scene)for(let index=firstPart;index<target.children.length;index++){
+      target.children[index].userData.terrainAnchor={x:x+300,y:z+225};
+    }
     trees.push({x,z,height,top:grown.top});
     block(x,z,grown.radius*2.2,grown.radius*2.2,0,height*.5);
     shade(x,z,grown.reach*1.05,grown.reach*.92);
@@ -434,7 +452,9 @@ export function buildJeongdong(T,scene,kit,{deferGyeongbok=false}={}) {
         }
       `
     });
-    plot(outline,waterMaterial,.043);
+    const lake=plot(outline,waterMaterial,.043);
+    lake.userData.followTerrain=false;
+    lake.userData.terrainAnchor={x,y};
     for(let i=0;i<bank.length;i++){
       const edge=line(bank[i],bank[(i+1)%bank.length]),count=Math.ceil(edge.len/.76);
       for(let j=0;j<count;j++){
@@ -962,7 +982,10 @@ export function buildJeongdong(T,scene,kit,{deferGyeongbok=false}={}) {
       let step;
       try{step=scope?withObstacleScope(scope,()=>steps.next()):steps.next();}
       finally{target=scene;activeRand=kit.rand;drawBenchesOnly=false;}
-      if(step.done)return step.value;
+      if(step.done){
+        if(deferGyeongbok)yield* gradePalaceMeshes(T,root.children);
+        return step.value;
+      }
       yield;
     }
   }

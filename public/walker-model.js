@@ -712,7 +712,7 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
     const smoothPose = wasVisible ? 1 - Math.exp(-delta*15) : 1;
     const riding = !seat && isCycling(position);
     const lift = riding ? 0 : jump;
-    const airborne = lift/JUMP_HEIGHT;
+    const airborne = Math.min(1,lift/JUMP_HEIGHT);
     const walking = Boolean(position.stepping && !seat && !riding && jump<.06);
     const running = walking && Boolean(position.running);
     const hands=avatarHands(position,clock,{riding,seated:Boolean(seat),walking});
@@ -733,7 +733,8 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
     const turn = facing - group.rotation.y;
     group.rotation.y += Math.atan2(Math.sin(turn),Math.cos(turn)) * (wasVisible && !seat && !claspSide ? turnEase : 1);
     // Stepping onto or off a ledge eases the floor so the body does not pop.
-    model.floorY = wasVisible && model.floorY !== null && Math.abs(floor-model.floorY) < 1.6
+    const vaulting=position.vaultBase!=null&&lift>0;
+    model.floorY = !vaulting && wasVisible && model.floorY !== null && Math.abs(floor-model.floorY) < 1.6
       ? mix(model.floorY,floor,1-Math.exp(-delta*17)) : floor;
     group.position.set(wx(seat?.x ?? position.x),seat ? (seat.base ?? 0) : model.floorY+lift,wz(seat?.y ?? position.y));
     const travel = model.lastX === null ? 0 : Math.hypot(position.x-model.lastX,position.y-model.lastY);

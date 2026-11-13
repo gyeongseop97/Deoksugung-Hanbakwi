@@ -47,6 +47,12 @@
 
 지하철 출입구 위치는 [OpenStreetMap](https://www.openstreetmap.org/copyright)을 참고해 게임 보도 폭에 맞췄습니다. 역과 출구 사이 이동은 게임 안의 편의 기능입니다.
 
+경복궁 담장과 외곽 길은 [네이버 위성지도와 거리뷰](https://map.naver.com/p/entry/place/11571707), [궁능유적본부 관람지도](https://royal.khs.go.kr/ROYAL/contents/R305000000.do?id=20250224155252790627&page=1&schBdcode=gbg&schGroupCode=gbg&schM=view&viewCount=10), [OpenStreetMap 담장 좌표](https://www.openstreetmap.org/relation/5501517)를 대조했습니다. 건춘문을 비롯한 게임 내 통행 범위는 실제 관람 동선과 차이가 있습니다.
+
+국립현대미술관 서울 건물과 바깥 마당은 [미술관 공식 안내도](https://www.mmca.go.kr/visitingInfo/seoulInfo.do), [열린마당 사진](https://www.mmca.go.kr/artResearch/newsLetterInfo.do?nlId=202302150000886)과 [네이버 지도](https://map.naver.com/p/entry/place/19691123)를 참고했습니다.
+
+덕수궁에서 북촌까지의 주요 경사는 공개 NASA SRTM 30m 표고 자료에서 도로와 지형의 큰 높이 차를 뽑아 평활화했습니다. 건물 기단과 연못, 보도 접속부는 게임에 맞게 보정했습니다. [NASA SRTM](https://www.earthdata.nasa.gov/data/instruments/srtm) · [Mapzen Terrain Tiles 및 제공처](https://registry.opendata.aws/terrain-tiles/) · [자료별 출처](https://github.com/tilezen/joerd/blob/master/docs/attribution.md)
+
 ## 전시품과 렌더링
 
 `public/art/`의 이미지와 확대 재현한 유물의 원본 URL 및 이용 조건은 [기본 전시 목록](public/museum-catalog.js), [삼국·고려 추가 목록](public/museum-more-early.js), [조선·근대 추가 목록](public/museum-more-late.js)에 있습니다. 이미지들은 게임에서 빠르게 열리도록 크기를 줄여 WebP로 변환했습니다.

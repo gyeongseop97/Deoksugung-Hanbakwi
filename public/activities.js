@@ -2,11 +2,20 @@ export const PET_MS=1450;
 export const FEED_MS=5000;
 export const JUMP_MS=740;
 export const JUMP_HEIGHT=.88;
+export const WOLDAE_VAULT_HEIGHT=1.80;
+export const jumpDuration=avatar=>avatar.vaultBase==null?JUMP_MS:1150;
 export function jumpLift(avatar,clock){
   const age=clock-avatar.jump;
-  if(!avatar.jump||age<=0||age>=JUMP_MS)return 0;
-  const phase=age/JUMP_MS;
-  return JUMP_HEIGHT*4*phase*(1-phase);
+  const duration=jumpDuration(avatar);
+  if(!avatar.jump||age<=0||age>=duration)return 0;
+  const phase=age/duration;
+  const height=avatar.vaultBase==null?JUMP_HEIGHT:WOLDAE_VAULT_HEIGHT;
+  return height*4*phase*(1-phase);
+}
+export function renderedJumpLift(avatar,clock,floor){
+  const lift=jumpLift(avatar,clock);
+  if(!lift||avatar.vaultBase==null)return lift;
+  return Math.max(0,avatar.vaultBase+lift-floor);
 }
 const crepe={name:"크레페",verb:"먹기",uses:3,duration:1300};
 export const ITEMS={
@@ -16,8 +25,13 @@ export const ITEMS={
   beer:{name:"맥주",verb:"마시기",uses:3,duration:1350,alcohol:true},
   yakgwa:{name:"약과",verb:"먹기",uses:3,duration:1300},
   cake:{name:"조각 케이크",verb:"먹기",uses:3,duration:1300},
+  bingsu:{name:"팥빙수",verb:"먹기",uses:3,duration:1300},
+  bungeoppang:{name:"붕어빵",verb:"먹기",uses:3,duration:1300},
+  riceCake:{name:"꿀떡",verb:"먹기",uses:3,duration:1300},
   makgeolli:{name:"막걸리",verb:"마시기",uses:3,duration:1350,alcohol:true},
   wine:{name:"와인",verb:"마시기",uses:3,duration:1350,alcohol:true},
+  fruitWine:{name:"매실주",verb:"마시기",uses:3,duration:1350,alcohol:true},
+  highball:{name:"하이볼",verb:"마시기",uses:3,duration:1350,alcohol:true},
   churu:{name:"츄르",verb:"간식 주기",uses:3,duration:FEED_MS}
 };
 
