@@ -152,7 +152,11 @@
             <div class="game-command">
               <div class="social-actions" role="group" aria-label="교류">
                 <button id="emote-open" type="button" class="quiet" aria-controls="emote-menu" aria-expanded="false"><span aria-hidden="true">☺</span> 감정</button>
-                <button id="wave" type="button" class="quiet">인사하기</button>
+                <button id="gesture-open" type="button" class="quiet" aria-controls="gesture-menu" aria-expanded="false">행동</button>
+              </div>
+              <div class="held-actions" role="group" aria-label="손에 든 물건">
+                <button id="use-item" type="button" class="primary" data-native-touch hidden><small></small><span></span></button>
+                <button id="use-second-item" type="button" class="primary" data-native-touch hidden><small></small><span></span></button>
               </div>
               <div class="nearby-controls" id="nearby-controls">
                 <button id="nearby-primary" type="button" class="primary" hidden><span></span></button>
@@ -166,18 +170,13 @@
                   <button id="museum-door" type="button" class="quiet activity-button" hidden>입장하기</button>
                   <button id="fountain-show" type="button" class="quiet activity-button" hidden>분수쇼 시작</button>
                   <button id="picnic" type="button" class="quiet activity-button" aria-haspopup="dialog" hidden>돗자리 펴기</button>
-                  <button id="photo-join" type="button" class="quiet activity-button" hidden>단체 사진 함께 찍기</button>
                   <button id="minigame" type="button" class="quiet activity-button" hidden>민속놀이</button>
                   <button id="hanbok-rental" type="button" class="quiet activity-button" aria-haspopup="dialog" hidden>한복 대여소</button>
                   <button id="take-item" type="button" class="quiet activity-button" hidden>받기</button>
                   <button id="pet-cat" type="button" class="quiet activity-button" hidden>쓰다듬기</button>
-                  <button id="hand" type="button" class="quiet" hidden>손잡기</button>
-                  <button id="share-umbrella" type="button" class="quiet activity-button" hidden>우산 같이 쓰기</button>
-                  <button id="clink" type="button" class="quiet activity-button" hidden>건배하기</button>
                   <button id="sit" type="button" class="quiet" hidden>앉기</button>
                   <button id="wish" type="button" class="quiet" aria-haspopup="dialog" aria-controls="wish-drawing" hidden disabled>소원등 <kbd>E</kbd></button>
                   <button id="museum-exhibit" type="button" class="quiet activity-button" aria-haspopup="dialog" aria-controls="exhibit-dialog" hidden>작품 설명</button>
-                  <button id="use-item" type="button" class="quiet activity-button" hidden>사용하기</button>
                   <button id="umbrella" type="button" class="quiet activity-button" hidden>우산 쓰기</button>
                   <button id="photo" type="button" class="quiet activity-button" hidden>사진 찍기</button>
                   <button id="landmark-guide" type="button" class="quiet activity-button" aria-haspopup="dialog" aria-controls="landmark-guide-dialog" hidden>설명 읽기</button>
@@ -194,6 +193,24 @@
               <button type="button" data-key="ArrowDown" aria-label="뒤로">↓</button>
               <button type="button" data-key="ArrowRight" aria-label="오른쪽으로">→</button>
             </div>
+          </div>
+          <div class="peer-hud" id="peer-controls" role="group" aria-label="동행 행동">
+            <button id="peer-primary" type="button" class="quiet" hidden><span></span></button>
+            <button id="peer-toggle" type="button" class="quiet" aria-expanded="false" aria-controls="peer-actions" hidden>동행 행동</button>
+            <div id="peer-actions" class="nearby-actions" role="group" aria-label="동행 행동" tabindex="-1" data-scroll-actions hidden>
+              <button id="hand" type="button" class="quiet" hidden>손잡기</button>
+              <button id="share-umbrella" type="button" class="quiet" hidden>우산 같이 쓰기</button>
+              <button id="clink" type="button" class="quiet" hidden>건배하기</button>
+              <button id="photo-join" type="button" class="quiet" hidden>단체 사진 함께 찍기</button>
+            </div>
+          </div>
+          <div id="gesture-menu" class="gesture-menu nearby-actions" role="group" aria-label="행동" data-scroll-actions hidden>
+            <button id="wave" type="button" class="quiet" data-gesture="wave">인사</button>
+            <button type="button" class="quiet" data-gesture="clap">박수</button>
+            <button type="button" class="quiet" data-gesture="punch">주먹질</button>
+            <button type="button" class="quiet" data-gesture="dance">댄스</button>
+            <button type="button" class="quiet" data-gesture="heart">하트</button>
+            <button type="button" class="quiet" data-gesture="cheer">환호</button>
           </div>
           <section class="photo-controls" id="photo-controls" aria-label="사진 모드" hidden>
             <div class="photo-toolbar">
@@ -437,7 +454,7 @@
     <p class="guide-intro">대한문 매표소에서 출발해 세종대로와 광화문광장을 거쳐 경복궁까지 걸어갈 수 있어요. 대한문 앞 횡단보도를 건너 <strong>서울광장 쪽 인도</strong>를 따라 광화문으로 갈 수도 있어요. <strong>전체 지도</strong>에서 장소 이름을 누르면 그곳으로 걸어갑니다.</p>
     <button id="tutorial-replay" type="button" class="quiet">처음 조작 안내 다시 보기</button>
     <div class="visitor-guide-list">
-      <section><h3>걷고 둘러보기</h3><p>길을 터치하거나 조이스틱으로 걸어요. PC에서는 방향키나 WASD를 쓸 수 있어요. 화면을 드래그해 둘러보고, 마우스 휠이나 두 손가락으로 시야와 펼친 지도를 확대·축소할 수 있어요. 여러 행동이 가능할 때는 오른쪽 아래 <strong>주변 행동</strong>에서 고를 수 있어요.</p></section>
+      <section><h3>걷고 둘러보기</h3><p>길을 터치하거나 조이스틱으로 걸어요. PC에서는 방향키나 WASD를 쓸 수 있어요. 마우스 휠이나 두 손가락으로 시야와 지도를 확대·축소할 수 있어요. 오른쪽 아래에서 손에 든 물건을 골라 쓰거나 <strong>행동</strong>에서 인사·댄스를 할 수 있어요. 손잡기와 건배는 왼쪽의 <strong>동행 행동</strong>에 있어요.</p></section>
       <section><h3>세종대로 순환버스</h3><p>시청앞·덕수궁, 세종문화회관, 경복궁 정류장에서 도착·출발 시간을 확인하세요. 정차 중 <strong>버스 타기</strong>로 빈 좌석을 고르고, 원하는 정류장에 도착하면 <strong>버스 내리기</strong>를 누르세요. 세종문화회관에서는 도로 양쪽의 경복궁 방면과 덕수궁 방면을 확인하세요.</p></section>
       <section><h3>지하철과 따릉이</h3><p>시청역·광화문역·경복궁역 출구에서는 <strong>지하철 타기</strong>로 목적지를 골라 빠르게 이동해요. 따릉이는 대여소에서 <strong>따릉이 빌리기</strong>와 <strong>따릉이 반납하기</strong>를 이용하세요. 도중에 <strong>따릉이에서 내리기</strong>로 세우면 10분 안에 다시 탈 수 있어요.</p></section>
       <section><h3>공연과 기념사진</h3><p>광화문광장 명량분수 서쪽에서 <strong>분수쇼 시작</strong>을 누르면 같은 방에서 음악분수 공연을 함께 볼 수 있어요. 경복궁 광화문에서는 수문장 교대식이 열리고, 근정전 포토존에서는 <strong>사진 찍기</strong>를 할 수 있어요.</p></section>

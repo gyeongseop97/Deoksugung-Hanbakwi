@@ -1,6 +1,7 @@
 import {FEED_MS,avatarHands,jumpLift} from "./activities.js";
 import {isCycling} from "./sejong-bike.js";
 import {CLINK_DURATION_MS} from "./social-events.js";
+import {gestureHands} from "./avatar-gestures.js";
 
 const clamp=(value,min=0,max=1)=>Math.max(min,Math.min(max,value));
 const ease=value=>{const t=clamp(value);return t*t*(3-2*t);};
@@ -34,8 +35,10 @@ export function makeFirstPersonView(T,createItemProp){
   const handlebar=new T.Group();handlebar.name="Bicycle handlebars";scene.add(handlebar);
   const grips=sides.map(()=>make(handlebar,tube,rubber)),bars=sides.map(()=>make(handlebar,tube,metal));
   const stem=make(handlebar,tube,bikePaint),bell=oval(handlebar,metal,0,0,0,.029,.020,.029);
-  const itemPivot=new T.Group();itemPivot.name="First-person held item";scene.add(itemPivot);
-  const showItem=createItemProp(itemPivot);
+  const props=sides.map(side=>{
+    const pivot=new T.Group();pivot.name=side<0?"First-person primary item":"First-person secondary item";scene.add(pivot);
+    return {pivot,show:createItemProp(pivot)};
+  });
   const up=new T.Vector3(0,1,0),direction=new T.Vector3(),joint=new T.Vector3(),tip=new T.Vector3();
   let phase=0,stride=0,lookKey="";
   const sand=new T.Color(0xe1cab4);
@@ -68,42 +71,46 @@ export function makeFirstPersonView(T,createItemProp){
     const motion=walking?(position.blocked?.40:1):0;
     stride=mix(stride,motion,1-Math.exp(-delta*11));
     phase+=delta*(position.running?16:10.4);
-    const {claspSide,item,spec,itemAge,carrying,feedAge,feeding,petAge,petting,itemSide,waveSide,umbrellaHand}=
-      avatarHands(position,clock,{riding,seated,walking});
-    const spark=carrying&&item.kind==="sparkler";
-    const use=carrying&&!spark&&item.kind!=="churu"?ease(Math.min(itemAge/235,(spec.duration-itemAge)/300)):0;
-    const drink=spec?.verb==="마시기";
+    const hands=avatarHands(position,clock,{riding,seated,walking});
+    const {claspSide,feedAge,petAge,petting,petSide,itemFor,feedingSide}=hands;
     const cheersEvent=clink??position.clink,clinkAge=clock-cheersEvent?.startedAt;
-    const cheers=carrying&&drink&&!seated&&!claspSide&&clinkAge>=0&&clinkAge<CLINK_DURATION_MS
+    const clinkSide=cheersEvent?.slot==="secondItem"?-1:1;
+    const cheers=itemFor(clinkSide)?.spec.verb==="마시기"&&!seated&&!claspSide&&clinkAge>=0&&clinkAge<CLINK_DURATION_MS
       ?ease(Math.min(clinkAge/280,(CLINK_DURATION_MS-clinkAge)/420)):0;
     let toastDirection=0;
     if(cheers&&Number.isFinite(cheersEvent.heading)){
       worldCamera.getWorldDirection(direction);
       toastDirection=Math.sin(cheersEvent.heading*Math.PI/180-Math.atan2(direction.x,-direction.z));
     }
-    const waveAge=clock-position.wave;
-    const waving=!umbrellaHand&&!cheers&&!riding&&waveAge>=0&&waveAge<2450&&!petting&&!feeding&&!(claspSide&&carrying);
-    const wave=waving?ease(Math.min(waveAge/270,(2450-waveAge)/360)):0;
-    lap.visible=seated;handlebar.visible=riding;itemPivot.visible=carrying;
+    const performance=gestureHands(position,clock,hands,{riding,busy:Boolean(cheers)});
+    const {pose:acting,umbrellaSide}=performance;
+    lap.visible=seated;handlebar.visible=riding;
     for(const [i,arm] of forearms.entries()){
       const {side,palm,wrist,elbow,shoulder,sleeve,lower,cuff,ribs,fingers}=arm;
       const step=Math.sin(phase+side*Math.PI/2)*stride,bob=seated||riding?0:Math.sin(phase*2)*stride;
       // The camera faces -Z, so its horizontal axis is the reverse of the avatar's.
       const avatarSide=-side;
-      const holding=carrying&&avatarSide===itemSide,waveHand=waving&&avatarSide===waveSide,holdingUmbrella=avatarSide===umbrellaHand;
+      const prop=itemFor(avatarSide),item=prop?.item,spec=prop?.spec,itemAge=prop?.itemAge;
+      const holding=Boolean(prop),holdingUmbrella=avatarSide===umbrellaSide;
+      const spark=item?.kind==="sparkler",drink=spec?.verb==="마시기";
+      const use=holding&&!spark&&item.kind!=="churu"?ease(Math.min(itemAge/235,(spec.duration-itemAge)/300)):0;
+      const toasting=avatarSide===clinkSide?cheers:0,serving=avatarSide===feedingSide?ease(Math.min(feedAge/270,(FEED_MS-feedAge)/290)):0;
+      const performanceHand=performance.hand(avatarSide,true);
+      const weight=performanceHand?acting.weight:0;
       let x=side*(seated?.48:.70),y=seated?-.80:-.73,z=seated?.74:.72;
       if(riding){x=side*.62;y=-.63+Math.sin(now*.010)*.014;z=.83;}
-      else if(holding){
-        const lift=Math.max(use,cheers),feedingPose=feeding?ease(Math.min(feedAge/270,(FEED_MS-feedAge)/290)):0;
-        x=side*mix(.54,.28,lift)+.14*cheers*toastDirection;
-        y=mix(-.67,-.39,lift)-.18*feedingPose;z=mix(.76,.62,use)+.13*cheers+.12*feedingPose;
-      }else if(holdingUmbrella){x=side*.58;y=-.53;z=.76;}
-      else if(waveHand){x=side*mix(.68,.57,wave);y=mix(-.73,-.05,wave);z=.74;}
-      else if(petting&&avatarSide===1){x=side*.36;y=-.68+Math.sin(petAge*.017)*.06;z=.93;}
       else if(avatarSide===claspSide){x=side*.83;y=-.68;z=.83;}
+      else if(holding){
+        const lift=Math.max(use,toasting);
+        x=side*mix(.54,.28,lift)+.14*toasting*toastDirection;
+        y=mix(-.67,-.39,lift)-.18*serving;z=mix(.76,.62,use)+.13*toasting+.12*serving;
+      }else if(holdingUmbrella){x=side*.58;y=-.53;z=.76;}
+      else if(petting&&avatarSide===petSide){x=side*.36;y=-.68+Math.sin(petAge*.017)*.06;z=.93;}
+      else if(performanceHand){x=mix(x,performanceHand.x,weight);y=mix(y,performanceHand.y,weight);z=mix(z,performanceHand.z,weight);}
       else if(walking){y+=step*(position.running?.15:.095);z+=step*.048;}
+      if(acting?.kind==="dance"&&!performanceHand)y+=Math.sin(acting.time*Math.PI*5.44)*.048*acting.weight;
       frame(shoulder,side*1.16,-1.56,.55);
-      frame(elbow,side*(riding?.86:.93),-1.13,.68);
+      frame(elbow,side*(riding?.86:.93),-1.13+(performanceHand?Math.max(0,y+.55)*.46*weight:0),.68);
       frame(wrist,x,y+bob*.020,z);
       const short=outfit==="tee",padded=outfit==="puffer";
       lower.material=short?skin:fabric;cuff.material=outfit==="hanbok"?ivory:trim;cuff.visible=!short;
@@ -115,15 +122,18 @@ export function makeFirstPersonView(T,createItemProp){
         if(padded){joint.copy(elbow).lerp(wrist,.37+index*.28);tip.copy(elbow).lerp(wrist,.395+index*.28);segment(rib,joint,tip,.067*size,.010);}
       }
       palm.position.copy(wrist);palm.scale.setScalar(size);
-      palm.rotation.set(riding?-.93:holding?-.28:waveHand?-.09:-.55,
-        side*(holding?.39:.21),side*(riding?.08:.32)+(waveHand?Math.sin(waveAge*.017)*wave*.40:0));
-      for(const finger of fingers)finger.rotation.x=riding||holding||holdingUmbrella?-1.07:waveHand?-.16:-.52;
+      palm.rotation.set(riding?-.93:holding?-.28:mix(-.55,performanceHand?.bend??-.55,weight),
+        side*(holding?.39:.21),mix(side*(riding?.08:.32),performanceHand?.roll??side*.32,weight));
+      for(const finger of fingers)finger.rotation.x=riding||holding||holdingUmbrella?-1.07:mix(-.52,performanceHand?.curl??-.52,weight);
+      const {pivot:itemPivot,show}=props[i];
+      itemPivot.visible=holding;
       if(holding){
         itemPivot.position.copy(wrist);itemPivot.position.x-=side*.050*size;
         itemPivot.position.y+=.002*size;itemPivot.position.z-=.036*size;
         itemPivot.scale.setScalar(size*(spark?.76:.85));
         itemPivot.rotation.set(spark?.12:drink?-.76*use:.26*use,side*.09,.05*side);
       }
+      show(item?.kind??null,serving?feedAge/1000:spark&&item.started?itemAge/1000:-1);
       if(seated){frame(knees[i].position,side*.44,-1.12,.89);knees[i].scale.set(.125*size,.094*size,.142*size);}
     }
     if(riding){
@@ -134,7 +144,6 @@ export function makeFirstPersonView(T,createItemProp){
       }
       bell.position.copy(forearms[0].wrist);bell.position.x+=.068*size;bell.position.y+=.028*size;
     }
-    showItem(carrying?item.kind:null,feeding?feedAge/1000:spark&&item.started?itemAge/1000:-1);
   }
 
   function render(renderer,worldCamera,position,options){

@@ -1,5 +1,6 @@
 import {isCycling} from "../public/sejong-bike.js";
 import {JUMP_MS} from "../public/activities.js";
+import {ITEM_SLOTS} from "../public/held-items.js";
 import {museumBounds} from "../public/visit-layout.js";
 import {CLINK_DRINKS,CLINK_DURATION_MS,CLINK_INVITE_MS,CLINK_LEAD_MS,CLINK_REACH} from "../public/social-events.js";
 import {plazaShowSpot,PLAZA_SHOW_DURATION_MS,PLAZA_SHOW_LEAD_MS,PLAZA_SHOW_REACH} from "../public/plaza-show.js";
@@ -23,8 +24,9 @@ export function startFountainShow(db,{room,id,key,now,online,show}){
 }
 
 const drinkDurations=JSON.stringify(CLINK_DRINKS);
-const readyDrink=field=>`json_extract(${field},'$.item.remaining')>0
-  AND json_extract(${field},'$.item.started')<=? - json_extract(?, '$.' || json_extract(${field},'$.item.kind'))
+const drinkSlot=(field,slot)=>`(json_extract(${field},'$.${slot}.remaining')>0
+  AND json_extract(${field},'$.${slot}.started')<=? - json_extract(?, '$.' || json_extract(${field},'$.${slot}.kind')))`;
+const readyDrink=field=>`(${ITEM_SLOTS.map(slot=>drinkSlot(field,slot)).join(" OR ")})
   AND json_extract(${field},'$.seat') IS NULL
   AND COALESCE(json_extract(${field},'$.jump'),0)<=? - ${JUMP_MS}
   AND ${onFoot(field)}`;
@@ -45,7 +47,8 @@ const readyClinkPair=`
   )`;
 
 export function clinkStatement(db,{room,id,key,now,online,clink}){
-  const pairArguments=[online,online,now,drinkDurations,now,now,drinkDurations,now,online,online];
+  const drinkArguments=[...ITEM_SLOTS.flatMap(()=>[now,drinkDurations]),now];
+  const pairArguments=[online,online,...drinkArguments,...drinkArguments,online,online];
   if(clink.action==="invite")return db.prepare(`
     INSERT INTO clink_requests (room,id,sender,recipient,state,created,expires)
     SELECT ?,?,?,?,'pending',?,? FROM walkers a JOIN walkers b ON b.room=a.room

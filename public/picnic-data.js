@@ -1,4 +1,3 @@
-import {ITEMS} from "./activities.js";
 import {inKiteLawn} from "./plaza-layout.js";
 
 export const PICNIC_WIDTH=2.64;
@@ -29,9 +28,4 @@ export function nearestPicnic(point,mats){
     if(gap<=distance){nearest=mat;distance=gap;}
   }
   return nearest;
-}
-
-export function picnicHandReady(avatar,time){
-  const item=avatar?.item;
-  return !item||item.remaining<=0&&time-(item.started??0)>=(ITEMS[item.kind]?.duration??0);
 }

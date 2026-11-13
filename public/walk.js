@@ -21,7 +21,7 @@ import {transitRoutes,transitStops} from "./transit-routes.js";
 import {BUS_COUNT,BUS_SEATS,busAt,busSeatPose,busStopById,busStops,busStopTimes,nearBus} from "./sejong-bus.js";
 import {bikeDocks,bikeMountReach,bikeParkDuration,isCycling,nearBikeDock} from "./sejong-bike.js";
 import {plazaShowSpot,PLAZA_SHOW_REACH,PLAZA_SHOW_HEARING_METRES} from "./plaza-show.js";
-import {canClink,CLINK_REACH} from "./social-events.js";
+import {canClink,clinkItemSlot,CLINK_REACH,CLINK_LEAD_MS} from "./social-events.js";
 import {gameApiUrl,isGitHubPages} from "./hosting.js";
 import {resolveSeoulEnvironment} from "./seoul-environment.js";
 import {HEADWEAR,KEEPSAKES} from "./wearable-options.js";
@@ -35,6 +35,8 @@ import {bindPhotoAlbum,downloadPhoto,importPhotos,listPhotos,makePhotoCard} from
 import {bindTutorial} from "./tutorial.js";
 import {makePicnic} from "./picnic-client.js";
 import {isPicnicItem} from "./picnic-data.js";
+import {ITEM_SLOTS,handLabel,itemAnimating,freeItemSlot} from "./held-items.js";
+import {GESTURE_DURATIONS,MAX_ALCOHOL_LEVEL,SICK_DURATION_MS} from "./avatar-gestures.js";
 
 const $=id=>document.getElementById(id);
 const token=()=>Array.from(crypto.getRandomValues(new Uint8Array(16)),byte=>byte.toString(16).padStart(2,"0")).join("");
@@ -59,7 +61,8 @@ function initialAvatar(){
     }
   }catch{}
   return {x:ticketApproach.x+1,y:ticketApproach.y-2.4,heading:entranceHeading,vx:0,vy:0,wish:0,wishOrigin:null,wishHeading:0,wishArt:null,wave:0,jump:0,emote:null,chat:null,
-    seat:null,seatSide:null,bus:null,bike:null,item:null,picnicClaim:null,umbrella:false,umbrellaReady:false,blushUntil:0,blushLevel:0,pet:null,feed:null,running:false,blocked:false,up:false,character,look};
+    seat:null,seatSide:null,bus:null,bike:null,item:null,secondItem:null,itemUse:null,picnicClaim:null,umbrella:false,umbrellaReady:false,
+    blushUntil:0,blushLevel:0,sickAt:0,gesture:null,pet:null,feed:null,running:false,blocked:false,up:false,character,look};
 }
 const me=initialAvatar(),people=new Map(),markers=new Map(),seenSignals=new Map(),lookPings=new Map(),formations=new Map();
 let ownView=initialView(),trackedPersonId=null,world,worldLoading,worldFailed=false;
@@ -85,6 +88,10 @@ const fragments=new URLSearchParams(location.hash.slice(1));
 const suppliedCode=(fragments.get("code")||"").toUpperCase();
 const entryFlow=$("entry-flow"),profileStep=$("profile-step"),serverStep=$("server-step"),gameShell=$("game-shell");
 const nearbyControls=bindNearbyControls($("nearby-controls"),focusGame);
+const peerControls=bindNearbyControls($("peer-controls"),focusGame,"peer");
+function closeActionMenus(){
+  nearbyControls.close();peerControls.close();setEmotes(false);setGestures(false);
+}
 const sceneWrap=$("game").closest(".scene-wrap"),mobileSettings=$("mobile-settings");
 const nickname=$("nickname"),joinCode=$("join-code");
 const chatInput=$("chat-input"),chatSend=$("chat-send");
@@ -125,7 +132,7 @@ const minigames=makeMinigames({
 const photoMode=bindPhotoMode($("photo-controls"),{
   getAvatar:()=>me,getView:()=>ownView,getClock:gameTime,getRoster:nearbyPhotoPeople,canMove:canMovePhoto,
   onOpen(){
-    resetInput();nearbyControls.close();setEmotes(false);setMap(false);mobileSettings.open=false;
+    resetInput();closeActionMenus();setMap(false);mobileSettings.open=false;
     sceneWrap.classList.add("photo-active");focusGame();
   },
   onClose(){sceneWrap.classList.remove("photo-active");if(session){resetInput();focusGame();}},
@@ -179,13 +186,19 @@ function placeViewControls(){
 mobileHeader.addEventListener("change",placeViewControls);
 placeViewControls();
 gameShell.addEventListener("pointerdown",event=>{
-  if(!event.target.closest("#nearby-controls,#joystick"))nearbyControls.close();
+  const target=event.target;
+  if(!target.closest("#nearby-controls,#joystick"))nearbyControls.close();
+  if(!target.closest("#peer-controls,#joystick"))peerControls.close();
+  if(!target.closest("#gesture-menu,#gesture-open,#joystick"))setGestures(false);
+  if(!target.closest("#emote-menu,#emote-open,#joystick"))setEmotes(false);
   if(mobileSettings.open&&!mobileSettings.contains(event.target))mobileSettings.open=false;
 });
 mobileSettings.addEventListener("toggle",()=>{
-  if(mobileSettings.open){nearbyControls.close();setEmotes(false);}
+  if(mobileSettings.open)closeActionMenus();
 });
-$("nearby-toggle").addEventListener("click",()=>setEmotes(false));
+for(const [id,other] of [["nearby-toggle",peerControls],["peer-toggle",nearbyControls]]){
+  $(id).addEventListener("click",()=>{other.close();setEmotes(false);setGestures(false);});
+}
 
 let composingChat=false;
 function chatText(){return chatInput.value.normalize("NFC").replace(/\s+/gu," ").replace(/[\p{Cc}\p{Bidi_Control}]/gu,"").trim();}
@@ -410,16 +423,39 @@ appearanceOptions.forEach(option=>option.addEventListener("click",()=>{
   if(me.look[feature]===choice)return;
   me.look={...me.look,[feature]:choice};saveAppearance();
 }));
-$("wave").addEventListener("click",()=>{
-  const time=gameTime();
-  if(time-me.wave<600)return;
-  me.wave=time;dirty=true;$("game").focus({preventScroll:true});
-});
 function setEmotes(open){
-  if(open)nearbyControls.close();
+  if(open){nearbyControls.close();peerControls.close();setGestures(false);}
   $("emote-menu").hidden=!open;$("emote-open").setAttribute("aria-expanded",String(open));
 }
 $("emote-open").addEventListener("click",()=>setEmotes($("emote-menu").hidden));
+function setGestures(open){
+  if(open){nearbyControls.close();peerControls.close();setEmotes(false);}
+  $("gesture-menu").hidden=!open;
+  attr($("gesture-open"),"aria-expanded",String(open));
+}
+const gestureButtons=[...document.querySelectorAll("[data-gesture]")];
+function gestureReady(time,kind){
+  if(!session||riding||me.bus||isCycling(me)||queuedBus||queuedBike||myLink()?.active||
+    photoMode.camera||minigames.active()||feedingLocked(time)||clinkLocked(time)||sickLocked(time)||
+    time-me.jump<JUMP_MS||ITEM_SLOTS.some(slot=>itemAnimating(me[slot],time)))return false;
+  if(!kind)return true;
+  const held=ITEM_SLOTS.filter(slot=>me[slot]?.remaining).length;
+  if(["clap","heart"].includes(kind)&&held)return false;
+  return kind==="dance"||held<2;
+}
+$("gesture-open").addEventListener("click",event=>{
+  const open=$("gesture-menu").hidden;
+  setGestures(open);
+  if(open&&event.detail===0)gestureButtons.find(button=>!button.disabled)?.focus();
+});
+for(const button of gestureButtons)button.addEventListener("click",()=>{
+  const time=gameTime(),kind=button.dataset.gesture;
+  if(!Object.hasOwn(GESTURE_DURATIONS,kind)||!gestureReady(time,kind)||time-(me.gesture?.at??0)<450)return;
+  resetInput();
+  me.gesture={kind,at:time};
+  me.wave=kind==="wave"?time:0;
+  dirty=true;wakeSync();setGestures(false);focusGame();
+});
 document.querySelectorAll("[data-emoji]").forEach(button=>button.addEventListener("click",()=>{
   me.emote={emoji:button.dataset.emoji,at:gameTime()};dirty=true;
   wakeSync();
@@ -577,7 +613,8 @@ function resetLocationGuides(){
 }
 
 function handCandidates(kind){
-  if(!world||!session||me.seat!=null||me.bus||isCycling(me)||myLink()||feedingLocked(gameTime()))return [];
+  const time=gameTime();
+  if(!world||!session||riding||me.seat!=null||me.bus||isCycling(me)||myLink()||feedingLocked(time)||sickLocked(time))return [];
   const umbrella=kind==="umbrella";
   if(umbrella&&(!me.umbrella||!me.umbrellaReady||queuedBus||queuedBike))return [];
   const busy=new Set(links.flatMap(link=>[link.leader,link.follower]));
@@ -646,7 +683,8 @@ $("hand-decline").addEventListener("click",()=>{
 });
 $("hand-accept").addEventListener("click",()=>{
   const link=myLink(),leader=link&&people.get(link.leader);
-  if(!leader||link.active||link.follower!==session.id||queuedHand||feedingLocked(gameTime()))return;
+  const time=gameTime();
+  if(!leader||link.active||link.follower!==session.id||queuedHand||feedingLocked(time)||sickLocked(time))return;
   const side=handSide(leader.avatar,me);
   const umbrella=isUmbrellaLink(link);
   if(!side||umbrella&&!me.umbrellaReady){toast(umbrella?"우산을 든 친구에게 조금 더 가까이 가 주세요.":"서로 가까운, 걸을 수 있는 곳에서 손을 잡아 주세요.");return;}
@@ -757,10 +795,13 @@ async function sync(){
       updateChatSend();
     }
     if(confirmed?.feed&&confirmed.feed.claim!==me.feed?.claim){
-      me.feed=confirmed.feed;me.item=confirmed.item??null;
+      me.feed=confirmed.feed;me.itemUse=confirmed.feed.slot??"item";
+      for(const slot of ITEM_SLOTS)me[slot]=confirmed[slot]??null;
+      me.gesture=null;me.wave=0;dirty=true;
     }
     if(confirmed?.picnicClaim&&confirmed.picnicClaim!==me.picnicClaim){
-      me.picnicClaim=confirmed.picnicClaim;me.item=confirmed.item??null;
+      me.picnicClaim=confirmed.picnicClaim;
+      for(const slot of ITEM_SLOTS)me[slot]=confirmed[slot]??null;
     }
     if(feed&&queuedFeed===feed){
       queuedFeed=null;
@@ -878,7 +919,7 @@ function returnToLobby(message=""){
   $("invite").disabled=$("look").disabled=$("look-target").disabled=true;
   world?.clearChat();
   clearTransit();
-  nearbyControls.close();setEmotes(false);mobileSettings.open=false;clearMapRoute();setMap(false);
+  closeActionMenus();mobileSettings.open=false;clearMapRoute();setMap(false);
   $("lobby-status").textContent=message;
   sessionStorage.removeItem("jeongdong-room-mode");
   sessionStorage.removeItem("jeongdong-room-code");
@@ -1061,7 +1102,7 @@ $("run").addEventListener("click",()=>{
 });
 function jump(){
   const time=gameTime();
-  if(!session||!world||riding||me.bus||isCycling(me)||queuedBus||queuedBike||sharingUmbrella()||feedingLocked(time)||clinkLocked(time)||time-me.jump<JUMP_MS)return;
+  if(!session||!world||riding||me.bus||isCycling(me)||queuedBus||queuedBike||sharingUmbrella()||feedingLocked(time)||clinkLocked(time)||sickLocked(time)||time-me.jump<JUMP_MS)return;
   if(pendingSeat)course=[];
   pendingSeat=seatClaim=null;stand();
   rememberWalkPosition();
@@ -1106,7 +1147,7 @@ function interactBench(){
 }
 $("sit").addEventListener("click",interactBench);
 function setMap(open){
-  if(open){mobileSettings.open=false;nearbyControls.close();setEmotes(false);}
+  if(open){mobileSettings.open=false;closeActionMenus();}
   $("map-panel").classList.toggle("expanded",open);
   $("map-toggle").setAttribute("aria-expanded",String(open));
   if(!open){clearMapGestures();if(!mapRoute)setOverview(false);}
@@ -1125,7 +1166,8 @@ function walkingSteps(target){
   return steps;
 }
 function canWalkTo(){
-  return Boolean(session&&!riding&&!me.bus&&!queuedBus&&!queuedBike&&!amFollowingHands()&&!clinkLocked(gameTime())&&(world||worldFailed));
+  const time=gameTime();
+  return Boolean(session&&!riding&&!me.bus&&!queuedBus&&!queuedBike&&!amFollowingHands()&&!clinkLocked(time)&&!sickLocked(time)&&(world||worldFailed));
 }
 function walkTo(target,seat=null){
   if(!target||!canWalkTo())return;
@@ -1226,10 +1268,11 @@ window.addEventListener("keydown",event=>{
     if(mobileSettings.open){
       mobileSettings.open=false;mobileSettings.querySelector("summary").focus();return;
     }
-    if(nearbyControls.close(true))return;
+    if(!$("gesture-menu").hidden){setGestures(false);$("gesture-open").focus();return;}
+    if(nearbyControls.close(true)||peerControls.close(true))return;
     setMap(false);setEmotes(false);
   }
-  if(!session||riding||nearbyControls.ownsFocus()||event.target.closest("input,#mobile-settings"))return;
+  if(!session||riding||nearbyControls.ownsFocus()||peerControls.ownsFocus()||event.target.closest("input,#mobile-settings,#gesture-menu"))return;
   if(event.code==="Space"&&!photoMode.camera&&!event.target.closest("button,a")&&!event.ctrlKey&&!event.metaKey&&!event.altKey){
     event.preventDefault();if(!event.repeat)jump();return;
   }
@@ -1413,14 +1456,19 @@ function nearbyStation(){
   }
   return best;
 }
-function canUseItem(time){
-  return Boolean(!me.bus&&!isCycling(me)&&!picnicInventoryBusy()&&!clinkLocked(time)&&me.item?.remaining&&time-me.item.started>=ITEMS[me.item.kind].duration);
+function sickLocked(time){
+  return Boolean(me.sickAt&&time<me.sickAt+SICK_DURATION_MS);
+}
+function canUseItem(time,slot){
+  return Boolean(!me.bus&&!riding&&!isCycling(me)&&!queuedBus&&!queuedBike&&!picnicInventoryBusy()&&
+    !clinkLocked(time)&&!sickLocked(time)&&!feedingLocked(time)&&me[slot]?.remaining&&
+    !ITEM_SLOTS.some(slot=>itemAnimating(me[slot],time)));
 }
 function feedingLocked(time){
   return Boolean(queuedFeed&&time-queuedFeed.at<FEED_MS||me.feed&&time-me.feed.at<FEED_MS);
 }
 function feedCatNearby(){
-  if(!session||me.seat!=null||myLink()?.active||me.running||me.item?.kind!=="churu")return null;
+  if(!session||me.seat!=null||myLink()?.active||me.running||!ITEM_SLOTS.some(slot=>me[slot]?.kind==="churu"&&me[slot].remaining))return null;
   return world?.parkLife.nearestFeedCat(me.x,me.y,session.id);
 }
 function portalNearby(){
@@ -1449,10 +1497,9 @@ function seatTaken(index,seat){
   return [...people.values()].some(({avatar})=>avatar.bus?.index===index&&avatar.bus.seat===seat);
 }
 function transportReady(time){
-  const item=me.item&&ITEMS[me.item.kind];
   return Boolean(session&&world&&!riding&&!me.bus&&!queuedBus&&!queuedBike&&!myLink()&&!queuedHand&&
     me.seat==null&&!me.up&&time-me.jump>=JUMP_MS&&!feedingLocked(time)&&time-(me.pet?.at??0)>=PET_MS&&
-    (!item||time-me.item.started>=item.duration));
+    !sickLocked(time)&&!ITEM_SLOTS.some(slot=>itemAnimating(me[slot],time)));
 }
 function travelTime(ms){
   const seconds=Math.max(0,Math.ceil(ms/1000)),minutes=Math.floor(seconds/60);
@@ -1671,42 +1718,58 @@ $("landmark-guide").addEventListener("click",()=>{
 $("pet-cat").addEventListener("click",()=>{
   if(!session||myLink()?.active||me.seat!=null)return;
   const time=gameTime(),cat=world?.parkLife.nearestCat(me.x,me.y);
-  if(!cat||time-(me.pet?.at??0)<PET_MS||feedingLocked(time))return;
+  if(!cat||time-(me.pet?.at??0)<PET_MS||feedingLocked(time)||!freeItemSlot(me,time))return;
   resetInput();
   me.heading=normalize(Math.atan2(cat.x-me.x,me.y-cat.y)*180/Math.PI);
   me.pet={id:cat.id,at:time};passport.petCat(cat.id,cat.name,time);
   dirty=true;nextCat=time+9000;sound.meow();focusGame();
 });
 $("take-item").addEventListener("click",()=>{
-  if(!session||me.seat!=null||picnicInventoryBusy())return;
+  if(!session||riding||me.seat!=null||picnicInventoryBusy())return;
   const station=nearbyStation(),time=gameTime();
-  if(!station||station.kind===me.item?.kind||queuedFeed||clinkLocked(time)||me.item&&time-me.item.started<ITEMS[me.item.kind].duration)return;
+  const slot=freeItemSlot(me,time);
+  if(!station||!slot||feedingLocked(time)||clinkLocked(time)||sickLocked(time))return;
   const spec=ITEMS[station.kind];
-  me.item={kind:station.kind,remaining:spec.uses,started:0};dirty=true;
+  me[slot]={kind:station.kind,remaining:spec.uses,started:0};dirty=true;wakeSync();
   toast(station.kind==="churu"?"츄르를 샀어요. 고양이 가까이에서 잠시 기다려 보세요.":spec.name+" 받았어요.");
   focusGame();
 });
-$("use-item").addEventListener("click",()=>{
+const useItemButtons=["use-item","use-second-item"];
+function disableHeldActions(){
+  for(const id of useItemButtons)$(id).disabled=true;
+}
+function useHeldItem(slot){
   if(!session)return;
   const time=gameTime();
-  if(!canUseItem(time))return;
-  if(me.item.kind==="churu"){
+  if(!canUseItem(time,slot))return;
+  const item=me[slot],spec=ITEMS[item.kind];
+  if(item.kind==="churu"){
     const cat=feedCatNearby();
     if(!cat||queuedFeed||feedingLocked(time)||time-(me.pet?.at??0)<PET_MS)return;
     resetInput();
     me.heading=normalize(Math.atan2(cat.x-me.x,me.y-cat.y)*180/Math.PI);
-    queuedFeed={id:cat.id,name:cat.name,claim:token(),at:time};
+    queuedFeed={id:cat.id,name:cat.name,claim:token(),at:time,slot};
+    disableHeldActions();
     Object.assign(me,{vx:0,vy:0,running:false,blocked:false});dirty=true;wakeSync();focusGame();
     return;
   }
-  me.item={...me.item,remaining:me.item.remaining-1,started:time};
-  if(ITEMS[me.item.kind].alcohol){
+  me[slot]={...item,remaining:item.remaining-1,started:time};
+  disableHeldActions();
+  me.itemUse=slot;me.gesture=null;me.wave=0;
+  if(spec.alcohol){
     const previous=time<me.blushUntil?me.blushLevel||1:0;
-    me.blushLevel=Math.min(3,previous+1);
+    me.blushLevel=Math.min(MAX_ALCOHOL_LEVEL,previous+1);
     me.blushUntil=time+120000;
+    if(me.blushLevel>=5){
+      me.sickAt=time+spec.duration;
+      const link=myLink();
+      if(link?.active)releasePair(link);
+      resetInput();
+    }
   }
-  dirty=true;focusGame();
-});
+  dirty=true;wakeSync();focusGame();
+}
+ITEM_SLOTS.forEach((slot,index)=>$(useItemButtons[index]).addEventListener("click",()=>useHeldItem(slot)));
 function movePlayerTo(destination,place){
   resetInput();stand();
   Object.assign(me,{x:destination.x,y:destination.y,heading:destination.heading,vx:0,vy:0,blocked:false,running:false,jump:0,up:false});
@@ -1754,7 +1817,7 @@ function clinkLocked(time){
   return Boolean(clink?.startedAt&&clink.endsAt>time);
 }
 function clinkCandidate(time){
-  if(!canClink(me,time)||myLink()||queuedHand||picnicInventoryBusy()||feedingLocked(time)||riding||jumpLift(me,time)>0)return null;
+  if(!canClink(me,time)||myLink()||queuedHand||picnicInventoryBusy()||feedingLocked(time)||sickLocked(time)||riding||jumpLift(me,time)>0)return null;
   let best=null,closest=CLINK_REACH;
   const indoors=isInsideMuseum(me.x,me.y);
   for(const person of people.values()){
@@ -1836,16 +1899,19 @@ function picnicInventoryBusy(){
 }
 function canPicnic(time){
   return Boolean(session&&world&&!riding&&!me.bus&&!isCycling(me)&&!queuedBus&&!queuedBike&&
-    me.seat==null&&!myLink()?.active&&!feedingLocked(time)&&!clinkLocked(time)&&time-me.jump>=JUMP_MS);
+    me.seat==null&&!myLink()?.active&&!feedingLocked(time)&&!clinkLocked(time)&&!sickLocked(time)&&time-me.jump>=JUMP_MS);
 }
 $("picnic").addEventListener("click",()=>{
   if(!canPicnic(gameTime()))return;
   resetInput();picnic.open(me);
 });
 function updateActivities(time,guideNearby){
-  if(me.item&&me.item.remaining===0&&time-me.item.started>=ITEMS[me.item.kind].duration){
-    me.item=null;dirty=true;
+  for(const slot of ITEM_SLOTS)if(me[slot]?.remaining===0&&!itemAnimating(me[slot],time)){
+    me[slot]=null;dirty=true;
   }
+  if(me.blushLevel&&time>=me.blushUntil){me.blushLevel=0;me.blushUntil=0;me.sickAt=0;dirty=true;}
+  $("gesture-open").disabled=!gestureReady(time);
+  if(!$("gesture-menu").hidden)for(const button of gestureButtons)button.disabled=!gestureReady(time,button.dataset.gesture);
   const eligible=world&&session&&!me.bus&&!isCycling(me)&&!queuedBus&&!queuedBike;
   updateSocial(time,eligible);
   setActivity("picnic",canPicnic(time)?picnic.label(me):null,Boolean(queuedPicnic));
@@ -1860,25 +1926,35 @@ function updateActivities(time,guideNearby){
   const landmark=eligible&&nearbyPalaceGuide(me);
   setActivity("landmark-guide",landmark?"설명 읽기":null);
   if(landmark)attr($("landmark-guide"),"aria-label",landmark.title+" 설명 읽기");
-  $("jump").disabled=!eligible||riding||feeding||sharingUmbrella()||clinkLocked(time)||time-me.jump<JUMP_MS;
+  $("jump").disabled=!eligible||riding||feeding||sharingUmbrella()||clinkLocked(time)||sickLocked(time)||time-me.jump<JUMP_MS;
   const atFountain=nearWishFountain();
   if($("wish").hidden===Boolean(atFountain))$("wish").hidden=$("wish").disabled=!atFountain;
   const cat=eligible&&me.seat==null&&!myLink()?.active&&world.parkLife.nearestCat(me.x,me.y);
-  setActivity("pet-cat",cat?"쓰다듬기":null,feeding||time-(me.pet?.at??0)<PET_MS);
+  setActivity("pet-cat",cat?"쓰다듬기":null,feeding||!freeItemSlot(me,time)||time-(me.pet?.at??0)<PET_MS);
   if(cat)attr($("pet-cat"),"title",cat.name+" 쓰다듬기");
   const station=eligible&&me.seat==null&&nearbyStation();
-  const busy=Boolean(queuedFeed||clinkLocked(time)||me.item&&time-me.item.started<ITEMS[me.item.kind].duration);
-  const pickup=station&&station.kind!==me.item?.kind?(station.kind==="churu"?"츄르 사기":ITEMS[station.kind].name+" 받기"):null;
-  setActivity("take-item",pickup,busy);
+  const busy=Boolean(riding||picnicInventoryBusy()||feeding||clinkLocked(time)||sickLocked(time));
+  const free=freeItemSlot(me,time);
+  const pickup=station&&(free?(station.kind==="churu"?"츄르 사기":ITEMS[station.kind].name+" 받기"):"두 손이 가득 찼어요");
+  setActivity("take-item",pickup,busy||!free);
   setActivity("photo",eligible&&nearPhotoZone()?"사진 찍기":null,photoBusy);
-  const spec=eligible&&me.item&&ITEMS[me.item.kind];
-  if(spec&&me.item.kind==="churu"){
-    const cat=feedCatNearby();
-    const label=feeding?(queuedFeed?"간식 주는 중":"간식 먹는 중"):cat?spec.verb+" · "+me.item.remaining+"회":null;
-    setActivity("use-item",label,feeding||Boolean(queuedFeed)||!canUseItem(time)||time-(me.pet?.at??0)<PET_MS);
-  }else{
-    setActivity("use-item",spec?(me.item.kind==="sparkler"?spec.verb:spec.verb+" · "+me.item.remaining+"회"):null,!canUseItem(time));
-  }
+  const feedSlot=queuedFeed?.slot??me.feed?.slot??"item";
+  const nearbyFeedCat=eligible&&feedCatNearby();
+  ITEM_SLOTS.forEach((slot,index)=>{
+    const item=eligible&&me[slot],spec=item&&ITEMS[item.kind],churu=item?.kind==="churu";
+    const feedingHere=feeding&&slot===feedSlot;
+    const button=$(useItemButtons[index]),hand=handLabel(slot);
+    const action=feedingHere?(queuedFeed?"주는 중":"먹는 중"):
+      churu&&!nearbyFeedCat?"고양이 찾기":spec?.verb;
+    button.hidden=!spec;
+    button.disabled=!canUseItem(time,slot)||churu&&(!nearbyFeedCat||time-(me.pet?.at??0)<PET_MS);
+    if(spec){
+      const itemLabel=spec.name+(item.remaining&&!feedingHere?` · ${item.remaining}회`:"");
+      setText(button.firstElementChild,itemLabel);
+      setText(button.lastElementChild,action);
+      attr(button,"aria-label",`${hand} · ${itemLabel} · ${action}`);
+    }
+  });
   const stop=eligible&&nearbyTransit();
   setActivity("subway",stop?"지하철 타기":null,riding||feeding||Boolean(myLink()?.active));
   const portal=eligible&&portalNearby();
@@ -1943,7 +2019,7 @@ function motion(now,elapsed){
     if(me.heading!==next.heading){me.heading=next.heading;dirty=true;}
     if(next.x!==me.x||next.y!==me.y){me.x=next.x;me.y=next.y;dirty=true;}
     blocked=Boolean(leader.avatar.blocked);
-  }else if(session&&elapsed>0&&!queuedBus&&!queuedBike&&!feedingLocked(gameTime(now))&&!clinkLocked(gameTime(now))){
+  }else if(session&&elapsed>0&&!queuedBus&&!queuedBike&&!feedingLocked(gameTime(now))&&!clinkLocked(gameTime(now))&&!sickLocked(gameTime(now))){
     if(keys.size||thumbId!==undefined){
       const [dx,dy]=Array.from(keys,key=>vectors[key]).reduce(([x,y],[vx,vy])=>[x+vx,y+vy],thumb);
       blocked=moveWithInput(dx,dy,speed,link,!worldFailed&&(thumbId!==undefined||document.activeElement!==$("world")));
@@ -1998,7 +2074,7 @@ function actors(now,stepping){
     if(!first||!second)continue;
     for(const [person,peer] of [[first,second],[second,first]]){
       const heading=normalize(Math.atan2(peer.x-person.x,person.y-peer.y)*180/Math.PI);
-      person.clink={startedAt:clink.startedAt,heading};
+      person.clink={startedAt:clink.startedAt,heading,slot:clinkItemSlot(person,clink.startedAt-CLINK_LEAD_MS)??"item"};
     }
   }
   return {self,others};
@@ -2010,13 +2086,16 @@ function preferredNearbyAction(time){
   if(!bike.hidden&&!bike.disabled)return "bike-action";
   if(isCycling(me)&&!park.hidden&&!park.disabled)return "bike-park";
   if(me.seat!=null)return "sit";
+  if(!$("picnic").hidden&&(picnic.nearby(me)||ITEM_SLOTS.some(slot=>me[slot]?.remaining&&isPicnicItem(me[slot].kind))))return "picnic";
+  if(!$("minigame").hidden)return "minigame";
+  if(fountainShow?.endsAt>time&&atShowControls())return "fountain-show";
+}
+function preferredPeerAction(time){
   const link=myLink();
   if(link?.active)return isUmbrellaLink(link)?"share-umbrella":"hand";
-  if(!$("picnic").hidden&&(picnic.nearby(me)||me.item?.remaining&&isPicnicItem(me.item.kind)))return "picnic";
-  if(!$("share-umbrella").hidden&&!$("share-umbrella").disabled)return "share-umbrella";
-  if(!$("minigame").hidden)return "minigame";
   if(joinablePhoto(time))return "photo-join";
-  if(fountainShow?.endsAt>time&&atShowControls())return "fountain-show";
+  if(!$("share-umbrella").hidden)return "share-umbrella";
+  if(!$("clink").hidden&&!$("clink").disabled)return "clink";
 }
 function frame(now){
   const elapsed=Math.max(0,Math.min(56,now-lastFrame))/1000;lastFrame=now;
@@ -2057,7 +2136,8 @@ function frame(now){
     setText($("game-season"),(jeongdong?"정동":area)+"의 "+seasonNames[currentEnvironment.season]);
     setText(sceneTitle,jeongdong?"덕수궁 돌담길":area);
     refreshShortcuts();
-    updateHandControls();nearbyControls.refresh(preferredNearbyAction(time));
+    updateHandControls();
+    nearbyControls.refresh(preferredNearbyAction(time));peerControls.refresh(preferredPeerAction(time));
     updateLocationGuides(time);updateMaps(self,others);
   }
   lastScene={me:self,peers:[...others.values()],parkedBikes,view:ownView,firstPerson:firstPerson&&!photoMode.camera,

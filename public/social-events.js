@@ -1,5 +1,6 @@
 import {ITEMS,JUMP_MS} from "./activities.js";
 import {isCycling} from "./sejong-bike.js";
+import {ITEM_SLOTS,itemAnimating} from "./held-items.js";
 
 export const CLINK_REACH=1.35;
 export const CLINK_INVITE_MS=15_000;
@@ -9,9 +10,9 @@ export const CLINK_DURATION_MS=2_200;
 export const CLINK_DRINKS=Object.fromEntries(Object.entries(ITEMS)
   .filter(([,item])=>item.verb==="마시기").map(([kind,item])=>[kind,item.duration]));
 
-export function canClink(avatar,time){
-  const item=avatar?.item;
-  return Boolean(item?.remaining>0&&Object.hasOwn(CLINK_DRINKS,item.kind)&&
-    time-item.started>=CLINK_DRINKS[item.kind]&&avatar.seat==null&&
-    time-(avatar.jump??0)>=JUMP_MS&&!avatar.bus&&!isCycling(avatar));
+export function clinkItemSlot(avatar,time){
+  if(!avatar||avatar.seat!=null||time-(avatar.jump??0)<JUMP_MS||avatar.bus||isCycling(avatar)||
+    ITEM_SLOTS.some(slot=>itemAnimating(avatar[slot],time)))return null;
+  return ITEM_SLOTS.find(slot=>avatar[slot]?.remaining>0&&Object.hasOwn(CLINK_DRINKS,avatar[slot].kind))??null;
 }
+export const canClink=(avatar,time)=>Boolean(clinkItemSlot(avatar,time));

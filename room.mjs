@@ -1,5 +1,7 @@
 import {validWishArt, WISH_FLIGHT_MS} from "./public/wish-art.js";
 import {FEED_MS, ITEMS} from "./public/activities.js";
+import {validItemSlot} from "./public/held-items.js";
+import {GESTURE_DURATIONS,MAX_ALCOHOL_LEVEL} from "./public/avatar-gestures.js";
 import {isInsideMuseum} from "./public/visit-layout.js";
 import {BUS_COUNT,BUS_SEATS,BUS_BOARD_REACH,busAt,busStopById,busSeatPose} from "./public/sejong-bus.js";
 import {bikeDockReach,bikeDocks,bikeMountReach,bikeParkDuration} from "./public/sejong-bike.js";
@@ -29,10 +31,13 @@ const validLook = (look) => look==null ||
   hairStyles.has(look.hair) && eyeStyles.has(look.eyes) && outfitStyles.has(look.outfit) &&
   (look.headwear===undefined||HEADWEAR.includes(look.headwear)) &&
   (look.keepsake===undefined||KEEPSAKES.includes(look.keepsake));
+const validItem=item=>item==null||typeof item.kind==="string"&&Object.hasOwn(ITEMS,item.kind)&&
+  Number.isInteger(item.remaining)&&finite(item.remaining,0,ITEMS[item.kind].uses)&&validTime(item.started);
 const validAvatar = (a) => validPoint(a) &&
   (a.character===undefined || a.character==="man" || a.character==="woman") &&
   validLook(a.look) &&
   (a.wave===undefined || finite(a.wave,0,9999999999999)) &&
+  (a.gesture==null || Object.hasOwn(GESTURE_DURATIONS,a.gesture.kind)&&validTime(a.gesture.at)) &&
   (a.jump===undefined || validTime(a.jump)) &&
   (a.emote==null || reactions.has(a.emote.emoji) && finite(a.emote.at,0,9999999999999)) &&
   (a.vx===undefined || finite(a.vx,-12,12)) && (a.vy===undefined || finite(a.vy,-12,12)) &&
@@ -51,10 +56,10 @@ const validAvatar = (a) => validPoint(a) &&
   (a.wishOrigin==null || validPoint(a.wishOrigin)) &&
   (a.wishHeading===undefined || finite(a.wishHeading,0,360)) &&
   (a.wishArt==null || a.wish>0 && validPoint(a.wishOrigin) && validWishArt(a.wishArt)) &&
-  (a.item==null || typeof a.item.kind==="string" && Object.hasOwn(ITEMS,a.item.kind) && Number.isInteger(a.item.remaining) &&
-    finite(a.item.remaining,0,ITEMS[a.item.kind].uses) && validTime(a.item.started)) &&
+  validItem(a.item) && validItem(a.secondItem) && (a.itemUse==null||validItemSlot(a.itemUse)) &&
   (a.blushUntil===undefined || validTime(a.blushUntil)) &&
-  (a.blushLevel===undefined || Number.isInteger(a.blushLevel) && finite(a.blushLevel,0,3)) &&
+  (a.blushLevel===undefined || Number.isInteger(a.blushLevel) && finite(a.blushLevel,0,MAX_ALCOHOL_LEVEL)) &&
+  (a.sickAt===undefined || validTime(a.sickAt)) &&
   (a.pet==null || typeof a.pet.id==="string" && /^[a-z0-9-]{1,32}$/.test(a.pet.id) && validTime(a.pet.at));
 const validView = (v) => v && finite(v.pan,-720,720) && finite(v.tilt,-90,90) &&
   finite(v.zoom,-3,3) && (v.night===undefined || typeof v.night==="boolean");
@@ -68,6 +73,7 @@ const validShow=show=>validId(show?.id)&&show.fountain==="myeongnyang";
 const validClink=(clink,id)=>validId(clink?.id)&&(clink.action==="invite"?
   validId(clink.target)&&clink.target!==id:clink.action==="accept"||clink.action==="decline"||clink.action==="cancel");
 const validFeed = (feed) => feed && validId(feed.claim) && validTime(feed.at) &&
+  (feed.slot===undefined||validItemSlot(feed.slot)) &&
   typeof feed.id==="string" && /^[a-z0-9-]{1,32}$/.test(feed.id);
 const busIndex = index => Number.isInteger(index)&&index>=0&&index<BUS_COUNT;
 const busSeat = seat => Number.isInteger(seat)&&seat>=0&&seat<BUS_SEATS;
@@ -186,20 +192,22 @@ function avatarUpdate(db,room,id,key,avatar,view,now,active,pendingFeed="",bikeA
     json_patch(
       CASE WHEN json_extract(avatar,'$.wish')=? AND json_type(avatar,'$.wishArt')='array'
         THEN json_object('wishArt',json_extract(avatar,'$.wishArt')) ELSE '{}' END,
-      CASE WHEN json_type(avatar,'$.feed')='object' THEN
-        CASE WHEN json_extract(avatar,'$.feed.claim') IS NOT ?
-          THEN json_object('feed',json_extract(avatar,'$.feed'),'item',json_extract(avatar,'$.item'))
-          ELSE json_object('feed',json_extract(avatar,'$.feed')) END
+      CASE WHEN json_type(avatar,'$.feed')='object'
+        THEN json_object('feed',json_extract(avatar,'$.feed'))
         ELSE '{}' END),
     CASE WHEN json_type(avatar,'$.chat')='object' THEN json_object('chat',json(
       CASE WHEN json_extract(avatar,'$.chat.at')>? THEN json_extract(avatar,'$.chat')
         ELSE json_remove(json_extract(avatar,'$.chat'),'$.text') END))
       ELSE '{}' END),
-    CASE WHEN json_type(avatar,'$.picnicClaim')='text' THEN
-      CASE WHEN json_extract(avatar,'$.picnicClaim') IS NOT ?
-        THEN json_object('picnicClaim',json_extract(avatar,'$.picnicClaim'),'item',json_extract(avatar,'$.item'))
-        ELSE json_object('picnicClaim',json_extract(avatar,'$.picnicClaim')) END
+    CASE WHEN json_type(avatar,'$.picnicClaim')='text'
+      THEN json_object('picnicClaim',json_extract(avatar,'$.picnicClaim'))
       ELSE '{}' END)`;
+  const inventoryPatch=`CASE WHEN
+      (json_type(avatar,'$.feed')='object' AND json_extract(avatar,'$.feed.claim') IS NOT ?)
+      OR (json_type(avatar,'$.picnicClaim')='text' AND json_extract(avatar,'$.picnicClaim') IS NOT ?)
+    THEN json_object('item',json_extract(avatar,'$.item'),'secondItem',json_extract(avatar,'$.secondItem'))
+    ELSE '{}' END`;
+  const applySnapshot=base=>`json_patch(json_patch(json_patch(${base},${snapshotPatch}),${inventoryPatch}),${transportPatch})`;
   // A regular avatar packet cannot reserve or release a vehicle. A lease that
   // expired while the player was disconnected must not reclaim its old seat.
   const vehiclePose=`'x',json_extract(avatar,'$.x'),'y',json_extract(avatar,'$.y'),
@@ -219,15 +227,14 @@ function avatarUpdate(db,room,id,key,avatar,view,now,active,pendingFeed="",bikeA
   const picnicArgs=pendingPicnic?[pendingPicnic]:[];
   if(avatar.seat==null){
     return db.prepare(`
-      UPDATE walkers SET updated=MAX(updated,?), avatar=json_patch(json_patch(?, ${snapshotPatch}), ${transportPatch}), view=?
+      UPDATE walkers SET updated=MAX(updated,?), avatar=${applySnapshot("?")}, view=?
       WHERE room=? AND id=? AND player_key IS ?
         AND json_extract(avatar,'$.feed.claim') IS NOT ? ${picnicGuard}
-    `).bind(now,snapshot,inheritWish,acknowledgedFeed,now-chatLifetime,picnicClaim??null,
+    `).bind(now,snapshot,inheritWish,now-chatLifetime,acknowledgedFeed,picnicClaim??null,
       bikeCutoff,active,JSON.stringify(view),room,id,key,pendingFeed,...picnicArgs);
   }
   const preferred=avatar.seatSide??0;
-  return db.prepare(`
-    UPDATE walkers SET updated=MAX(updated,?), avatar=json_patch(json_patch(COALESCE((
+  const seatSnapshot=`COALESCE((
       SELECT json_set(?, '$.seatSide', slot) FROM (SELECT ? AS slot UNION ALL SELECT ?)
       WHERE NOT EXISTS (
         SELECT 1 FROM walkers peer
@@ -235,12 +242,14 @@ function avatarUpdate(db,room,id,key,avatar,view,now,active,pendingFeed="",bikeA
         AND json_extract(peer.avatar,'$.seat')=?
         AND COALESCE(json_extract(peer.avatar,'$.seatSide'),0)=slot
       ) ORDER BY slot=? DESC LIMIT 1
-    ), json_set(?, '$.seat', NULL, '$.seatSide', NULL)), ${snapshotPatch}), ${transportPatch}),
+    ), json_set(?, '$.seat', NULL, '$.seatSide', NULL))`;
+  return db.prepare(`
+    UPDATE walkers SET updated=MAX(updated,?), avatar=${applySnapshot(seatSnapshot)},
     view=?
     WHERE room=? AND id=? AND player_key IS ?
       AND json_extract(avatar,'$.feed.claim') IS NOT ? ${picnicGuard}
-  `).bind(now,snapshot,preferred,1-preferred,room,id,active,avatar.seat,preferred,snapshot,inheritWish,acknowledgedFeed,
-    now-chatLifetime,picnicClaim??null,bikeCutoff,active,JSON.stringify(view),room,id,key,pendingFeed,...picnicArgs);
+  `).bind(now,snapshot,preferred,1-preferred,room,id,active,avatar.seat,preferred,snapshot,inheritWish,now-chatLifetime,
+    acknowledgedFeed,picnicClaim??null,bikeCutoff,active,JSON.stringify(view),room,id,key,pendingFeed,...picnicArgs);
 }
 
 function chatUpdate(db,room,id,key,chat,now,active){
@@ -285,25 +294,26 @@ function visibleSignal(row,avatar,receiver,lookPings,room,now){
 }
 
 function feedUpdate(db,room,id,key,feed,now){
-  const accepted=JSON.stringify({id:feed.id,claim:feed.claim,at:now});
+  const slot=feed.slot??"item",path="$."+slot;
+  const accepted=JSON.stringify({id:feed.id,claim:feed.claim,at:now,slot});
   const cutoff=now-FEED_MS;
   return db.prepare(`
     UPDATE walkers SET avatar=json_set(avatar,'$.feed',json(?),
-      '$.item.remaining',json_extract(avatar,'$.item.remaining')-1,'$.item.started',?)
+      '${path}.remaining',json_extract(avatar,'${path}.remaining')-1,'${path}.started',?,'$.itemUse',?)
     WHERE room=? AND id=? AND player_key=?
       AND json_extract(avatar,'$.seat') IS NULL
       AND json_extract(avatar,'$.bus') IS NULL AND NOT ${mountedBike()}
       AND COALESCE(json_extract(avatar,'$.running'),0)=0
-      AND json_extract(avatar,'$.item.kind')='churu'
-      AND json_extract(avatar,'$.item.remaining')>0
-      AND json_extract(avatar,'$.item.started')<=?
+      AND json_extract(avatar,'${path}.kind')='churu'
+      AND json_extract(avatar,'${path}.remaining')>0
+      AND json_extract(avatar,'${path}.started')<=?
       AND json_extract(avatar,'$.feed.claim') IS NOT ?
       AND NOT EXISTS (
         SELECT 1 FROM walkers peer
         WHERE peer.room=? AND json_extract(peer.avatar,'$.feed.id')=?
           AND json_extract(peer.avatar,'$.feed.at')>?
       )
-  `).bind(accepted,now,room,id,key,cutoff,feed.claim,room,feed.id,cutoff);
+  `).bind(accepted,now,slot,room,id,key,cutoff,feed.claim,room,feed.id,cutoff);
 }
 
 const nearVehicleAccess=`

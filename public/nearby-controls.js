@@ -1,8 +1,8 @@
-export function bindNearbyControls(root,focusGame){
-  const primary=root.querySelector("#nearby-primary");
+export function bindNearbyControls(root,focusGame,prefix="nearby"){
+  const primary=root.querySelector("#"+prefix+"-primary");
   const label=primary.firstElementChild;
-  const toggle=root.querySelector("#nearby-toggle");
-  const panel=root.querySelector("#nearby-actions");
+  const toggle=root.querySelector("#"+prefix+"-toggle");
+  const panel=root.querySelector("#"+prefix+"-actions");
   const buttons=[...panel.querySelectorAll("button")];
   const doc=root.ownerDocument;
   let action=null,press=null,lastPanelFocus=null;

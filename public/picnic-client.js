@@ -1,5 +1,6 @@
 import {ITEMS} from "./activities.js";
-import {isPicnicItem,nearestPicnic,picnicBlanketFits,picnicGap,picnicHandReady,PICNIC_OFFER_MS,PICNIC_REACH,PICNIC_SLOTS} from "./picnic-data.js";
+import {freeItemSlot,handLabel,itemAnimating,ITEM_SLOTS} from "./held-items.js";
+import {isPicnicItem,nearestPicnic,picnicBlanketFits,picnicGap,PICNIC_OFFER_MS,PICNIC_REACH,PICNIC_SLOTS} from "./picnic-data.js";
 
 const token=()=>crypto.randomUUID().replaceAll("-","");
 const notices={
@@ -23,7 +24,8 @@ export function makePicnic({send,self,getAvatar,getPeople,focusGame,onOffer,now=
       <button type="button" class="quiet picnic-close" data-close aria-label="닫기">×</button>
     </header>
     <p class="picnic-status" role="status" data-status hidden></p>
-    <button type="button" class="primary picnic-place" data-place-item hidden></button>
+    <button type="button" class="primary picnic-place" data-place-item="item" hidden></button>
+    <button type="button" class="primary picnic-place" data-place-item="secondItem" hidden></button>
     <p class="picnic-hint" data-hint></p>
     <ul class="picnic-food" data-food aria-label="돗자리에 올린 음식"></ul>
     <form class="picnic-share" data-share hidden>
@@ -36,7 +38,7 @@ export function makePicnic({send,self,getAvatar,getPeople,focusGame,onOffer,now=
     <button type="button" class="quiet picnic-pack" data-pack hidden>돗자리 접기</button>`;
   document.body.append(dialog);
   const find=selector=>dialog.querySelector(selector);
-  const place=find("[data-place]"),status=find("[data-status]"),hint=find("[data-hint]"),add=find("[data-place-item]"),
+  const place=find("[data-place]"),status=find("[data-status]"),hint=find("[data-hint]"),add=[...dialog.querySelectorAll("[data-place-item]")],
     food=find("[data-food]"),pack=find("[data-pack]"),share=find("[data-share]"),friend=find("#picnic-friend"),close=find("[data-close]");
   let mats=[],selected=null,pending=null,offering=null,notice="",foodsKey="",friendsKey="";
   const seenOffers=new Map();
@@ -86,21 +88,30 @@ export function makePicnic({send,self,getAvatar,getPeople,focusGame,onOffer,now=
 
   function render(){
     if(!dialog.open)return;
-    const mat=current(),avatar=getAvatar(),item=avatar?.item,peers=peersAt(avatar,mat),time=now();
+    const mat=current(),avatar=getAvatar(),peers=peersAt(avatar,mat),time=now();
     const reachable=Boolean(avatar&&mat&&picnicGap(avatar,mat)<=PICNIC_REACH),busy=Boolean(pending||!online());
-    const own=mat?.owner===self(),hasFood=isPicnicItem(item?.kind)&&item.remaining>0;
-    const hasRoom=(mat?.items.length??0)<PICNIC_SLOTS.length,ready=picnicHandReady(avatar,time);
+    const own=mat?.owner===self(),held=ITEM_SLOTS.map(slot=>avatar?.[slot]);
+    const foodInHand=held.map(item=>isPicnicItem(item?.kind)&&item.remaining>0);
+    const hasFood=foodInHand.includes(true),duplicate=foodInHand.every(Boolean)&&ITEMS[held[0].kind]===ITEMS[held[1].kind];
+    const hasRoom=(mat?.items.length??0)<PICNIC_SLOTS.length,ready=Boolean(avatar&&freeItemSlot(avatar,time));
     const activeOffer=mat?.items.some(row=>row.id===offering&&row.owner===self())&&peers.length>0;
     if(!activeOffer)offering=null;
     place.textContent=mat?mat.nickname+"님의 돗자리 · 육조마당":"육조마당";
     const message=!online()?"연결이 돌아오면 다시 사용할 수 있어요.":
       pending?pending.action==="open"?"돗자리를 펴는 중이에요.":"친구와 동기화하고 있어요.":notice;
     status.textContent=message;status.hidden=!message;
-    add.hidden=!mat||!hasFood||!hasRoom;
-    if(!add.hidden)add.textContent=ITEMS[item.kind].name+" 한 몫 올리기";
-    add.disabled=busy||!reachable||!hasFood||time-(item?.started??0)<(ITEMS[item?.kind]?.duration??0);
+    for(const [index,button] of add.entries()){
+      const item=held[index],available=foodInHand[index];
+      button.hidden=!mat||!available||!hasRoom;
+      if(!button.hidden){
+        const hand=duplicate?" ("+handLabel(ITEM_SLOTS[index])+")":"";
+        const label=ITEMS[item.kind].name+hand+" 한 몫 올리기";
+        if(button.textContent!==label)button.textContent=label;
+      }
+      button.disabled=busy||!reachable||!available||itemAnimating(item,time);
+    }
     hint.textContent=!mat?"":!reachable?"돗자리 가까이에서 음식을 나눌 수 있어요.":!hasRoom?"돗자리에 음식이 가득해요.":
-      !ready&&mat.items.length?"받으려면 손에 든 음식을 먼저 사용해 주세요.":
+      !ready&&mat.items.length?"한 몫을 받으려면 한 손을 비워 주세요.":
       hasFood?"음식을 올리면 친구가 한 몫을 받을 수 있어요.":"음식이나 음료를 들고 오면 함께 나눌 수 있어요.";
     hint.hidden=!hint.textContent;
     foodRows(mat,reachable&&ready&&!busy,reachable&&peers.length>0&&!busy);
@@ -172,14 +183,19 @@ export function makePicnic({send,self,getAvatar,getPeople,focusGame,onOffer,now=
     if(dialog.open)dialog.close();
   }
 
-  add.addEventListener("click",()=>{
-    if(current()&&!add.disabled)submit("place",{mat:selected,kind:getAvatar().item?.kind});
+  for(const [index,button] of add.entries())button.addEventListener("click",()=>{
+    if(!current()||button.disabled)return;
+    const slot=ITEM_SLOTS[index],kind=getAvatar()?.[slot]?.kind;
+    if(isPicnicItem(kind))submit("place",{mat:selected,kind,slot});
   });
   pack.addEventListener("click",()=>{if(current()&&!pack.disabled)submit("close",{mat:selected});});
   food.addEventListener("click",event=>{
     const button=event.target.closest("button");
     if(!button||button.disabled||!current())return;
-    if(button.dataset.take)submit("take",{mat:selected,item:button.dataset.take});
+    if(button.dataset.take){
+      const avatar=getAvatar(),slot=avatar&&freeItemSlot(avatar,now());
+      if(slot)submit("take",{mat:selected,item:button.dataset.take,slot});
+    }
     if(button.dataset.offer){
       offering=offering===button.dataset.offer?null:button.dataset.offer;
       render();if(offering)friend.focus();

@@ -363,6 +363,8 @@ function nearbyChuru(point,holders){
   return nearest;
 }
 
+const holdsChuru=item=>item?.kind==="churu"&&item.remaining>0;
+
 function beginLure(pose,holder){
   const point={x:pose.x,y:pose.y,heading:pose.heading};
   return {point,trail:[point],playerId:holder.id,returning:false,distance:0};
@@ -653,7 +655,7 @@ export function addParkLife(T,scene,kit){
     const runners=walkers.filter(actor=>actor.running&&actor.stepping&&actor.seat==null&&
       (actor.blocked||Math.hypot(actor.vx,actor.vy)>2.65));
     const holders=walkers.filter(actor=>!actor.running&&actor.seat==null&&
-      actor.item?.kind==="churu"&&actor.item.remaining>0);
+      (holdsChuru(actor.item)||holdsChuru(actor.secondItem)));
     // Faraway groups pick their shared routes up from the clock when a walker approaches.
     const viewer=anchor??walkers[0];
     const deoksugungNearby=!viewer||viewer.y>=30-sight&&viewer.y<=420+sight;

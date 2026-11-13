@@ -3,6 +3,7 @@ import {bikeFit,bikePedal,makeRidingBike} from "./sejong-bike-model.js";
 import {isCycling} from "./sejong-bike.js";
 import {CLINK_DURATION_MS} from "./social-events.js";
 import {makeUmbrella,makeWearables} from "./wearables-models.js";
+import {alcoholLevel,gestureBody,gestureHands,MAX_ALCOHOL_LEVEL} from "./avatar-gestures.js";
 
 const TAU = Math.PI * 2;
 const HAIR = ["short", "bob", "long", "bun"];
@@ -25,7 +26,12 @@ const FACE_TONES = [
   {top:"#f8d1ad", middle:"#f5c8a3", chin:"#edb892", light:"#fff1d55d", cheek:"#e88e897a", radius:14},
   {top:"#f8c1aa", middle:"#f4b198", chin:"#e39b86", light:"#ffe2ce50", cheek:"#e57678a6", radius:18},
   {top:"#f8ae9e", middle:"#f09788", chin:"#df887b", light:"#ffd4c148", cheek:"#df636bc2", radius:22},
-  {top:"#f69e96", middle:"#ef8078", chin:"#d76d68", light:"#ffc3b842", cheek:"#d54d59d2", radius:26}
+  {top:"#f69e96", middle:"#ef8078", chin:"#d76d68", light:"#ffc3b842", cheek:"#d54d59d2", radius:26},
+  {top:"#f69a91", middle:"#ee7a74", chin:"#d96a64", light:"#ffc3b838", cheek:"#d74c56d8", radius:27},
+  {top:"#f5958d", middle:"#ee746e", chin:"#d6655e", light:"#ffc3b838", cheek:"#d34a54dc", radius:28},
+  {top:"#f39189", middle:"#eb6e68", chin:"#d4615a", light:"#ffc3b835", cheek:"#d14a52df", radius:29},
+  {top:"#f28d85", middle:"#ea6965", chin:"#d05b55", light:"#ffc3b832", cheek:"#cf474ee0", radius:30},
+  {top:"#f08983", middle:"#e96561", chin:"#cd5752", light:"#ffc3b830", cheek:"#ca444ce3", radius:31}
 ];
 const clamp = (n, low = 0, high = 1) => Math.min(high, Math.max(low, n));
 const smooth = n => { n = clamp(n); return n * n * (3 - 2 * n); };
@@ -79,7 +85,18 @@ function faceTexture(T, eyes, blink, blushLevel) {
       ctx.moveTo(x - 9, 116 + side * .6);
       ctx.quadraticCurveTo(x, eyes === "soft" ? 112 : 110, x + 9, 116 - side * .6);
       ctx.stroke();
-      if (blink || eyes === "soft") {
+      if (eyes === "sick") {
+        ctx.strokeStyle="#412723";ctx.lineWidth=4;
+        ctx.beginPath();ctx.moveTo(x-10,eyeY-3);ctx.quadraticCurveTo(x-3,eyeY+5,x+1,eyeY+3);
+        ctx.quadraticCurveTo(x+6,eyeY+2,x+11,eyeY-2);ctx.stroke();
+      } else if (eyes === "woozy") {
+        const y=eyeY+side*3;
+        oval(ctx,x,y,11,8.7,"#ffddd1",side*.15);
+        oval(ctx,x-side*2,y+1,5.4,5.1,"#4d302c");
+        oval(ctx,x-side*2-1.4,y-.6,1.6,1.4,"#fff0df");
+        ctx.strokeStyle="#694033";ctx.lineWidth=2.6;
+        ctx.beginPath();ctx.moveTo(x-11,y-1);ctx.quadraticCurveTo(x,y-9+side*2,x+11,y+1);ctx.stroke();
+      } else if (blink || eyes === "soft") {
         ctx.strokeStyle = "#3d2a26";
         ctx.lineWidth = blink ? 3.2 : 4.2;
         ctx.beginPath();
@@ -103,6 +120,7 @@ function faceTexture(T, eyes, blink, blushLevel) {
       }
     }
     oval(ctx, 128, 154.5, 2.1, 1.3, "#d99577");
+    if(eyes==="sick"){oval(ctx,128,165,4.3,5.2,"#6e3a35");return;}
     ctx.lineWidth = 2.4;
     ctx.strokeStyle = "#8a4a40";
     ctx.beginPath();
@@ -410,8 +428,9 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
   const faces = new Map(), clothes = new Map();
   const matte = (color, roughness = .84) => new T.MeshStandardMaterial({color,roughness});
   const skin = matte(0xf0bc99), details = new T.MeshStandardMaterial({vertexColors:true,roughness:.86});
-  const earMaterials = [0xffffff,0xffe0ee,0xffc4d9,0xffa6c5].map(color =>
-    new T.MeshStandardMaterial({color,vertexColors:true,roughness:.86}));
+  const earMaterials=Array.from({length:MAX_ALCOHOL_LEVEL+1},(_,level)=>new T.MeshStandardMaterial({
+    color:new T.Color(0xffffff).lerp(new T.Color(0xff8f9c),level/MAX_ALCOHOL_LEVEL),vertexColors:true,roughness:.86
+  }));
   const hanbokPants = matte(0xb9b295);
   const trousers = {coat:matte(0x3f4452),puffer:matte(0x4d6787),tee:matte(0xc7b089),hanbok:hanbokPants};
   const pants = trousers.coat;
@@ -431,6 +450,9 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
   scarfGeometry.rotateX(Math.PI/2);
   const handGeometry = SIDE.map(side => modeledDetails(T,sphere,[
     [0xf2bd98,0,-.046,.012,.088,.094,.080],[0xf2bd98,-side*.060,-.034,.044,.034,.046,.035]
+  ]));
+  const fistGeometry=SIDE.map(side=>modeledDetails(T,sphere,[
+    [0xf2bd98,0,-.044,.024,.083,.077,.077],[0xe9aa83,-side*.055,-.042,.071,.033,.044,.029]
   ]));
   const knotGeometry = modeledDetails(T,sphere,[
     [0xc97c66,0,0,0,.048,.036,.027],[0xc97c66,-.045,-.017,.007,.062,.023,.016,-.36],
@@ -542,12 +564,13 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
       const arm = chain(chest,side*.300,.405,ARM,[.110,.098],palette.sleeve);
       arm.cuff = part(arm.lower,sphere,palette.trim,0,-.204,0,.102,.046,.100);
       arm.shortSleeve = part(arm.upper,shortSleeve,palette.sleeve,0,0,0,.114,.165,.114);
-      part(arm.end,handGeometry[i],details,0,0,0,1,1,1);
+      arm.hand=part(arm.end,handGeometry[i],details,0,0,0,1,1,1);
       return arm;
     });
-    const itemPivot = joint(chest);
-    itemPivot.scale.setScalar(1.35);
-    itemPivot.visible = false;
+    const itemPivots=SIDE.map(()=>{
+      const pivot=joint(chest);pivot.scale.setScalar(1.35);pivot.visible=false;
+      return {pivot,show:createItemProp(pivot)};
+    });
     const label = nickname && labelSprite ? labelSprite(nickname,coat) : null;
     if (label) group.add(label);
     const emote = new T.Sprite(new T.SpriteMaterial({transparent:true,depthWrite:false,toneMapped:false}));
@@ -561,7 +584,7 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
     group.visible = false;
     group.traverse(mesh => { if (mesh.isMesh && mesh !== shadow) mesh.castShadow = true; });
     return {group,body,floorY:null,teeHem,pelvis,chest,torso,waist,face,garb,faceMesh,ears,headJoint,hairMesh,pin,overcoat,hem,pufferCollar,hanbokDetails,skirt,legs,arms,label,
-      shadow,emote,chatSprite:null,chatMessage:null,itemPivot,itemProp:createItemProp(itemPivot),palette,offset,phase:(offset%100)/100,
+      shadow,emote,chatSprite:null,chatMessage:null,itemPivots,palette,offset,phase:(offset%100)/100,
       stride:0,sprint:0,seatBlend:0,petBlend:0,appearance:"",lastX:null,lastY:null,bike:null,hat:null,charm:null,umbrella:null};
   }
 
@@ -586,7 +609,7 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
     lower.quaternion.copy(upper.quaternion).invert().multiply(globalLower);
   }
 
-  function appearance(model, position, blink, blush) {
+  function appearance(model, position, blink, blush, sick) {
     const look = position.look;
     const hair = HAIR.includes(look?.hair) ? look.hair : position.character === "woman" ? "long" : "short";
     const eyes = EYES.includes(look?.eyes) ? look.eyes : "round";
@@ -635,7 +658,8 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
         arm.shortSleeve.visible = bare;
       }
     }
-    model.faceMesh.material = faceMaterial(eyes,blink,blush);
+    const expression=sick?"sick":blush>=3?"woozy":eyes;
+    model.faceMesh.material = faceMaterial(expression,expression===eyes&&blink,blush);
     model.ears.material = earMaterials[blush];
   }
 
@@ -682,7 +706,7 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
   }
 
   function update(model, position, {now,clock,delta=1/60,seat,floor=0,jump=0,emojiTexture,chatTexture,turnEase=1}) {
-    const {group,body,pelvis,chest,headJoint,legs,arms,itemPivot,emote} = model;
+    const {group,body,pelvis,chest,headJoint,legs,arms,itemPivots,emote} = model;
     const wasVisible = group.visible;
     group.visible = true;
     const smoothPose = wasVisible ? 1 - Math.exp(-delta*15) : 1;
@@ -691,19 +715,19 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
     const airborne = lift/JUMP_HEIGHT;
     const walking = Boolean(position.stepping && !seat && !riding && jump<.06);
     const running = walking && Boolean(position.running);
-    const waveAge = (clock - position.wave) / 1000;
-    const {claspSide,item,spec,itemAge,carrying,feedAge,feeding,petAge,petting:pet,itemSide,waveSide,umbrellaHand} =
-      avatarHands(position,clock,{riding,seated:Boolean(seat),walking});
+    const hands=avatarHands(position,clock,{riding,seated:Boolean(seat),walking});
+    const {claspSide,feedAge,feeding,petAge,petting:pet,petSide,umbrellaHand,itemFor,feedingSide}=hands;
     const feedPose = feeding ? smooth(Math.min(feedAge/320,(FEED_MS-feedAge)/360)) : 0;
     const petPose = pet ? smooth(Math.min(petAge/235,(PET_MS-petAge)/275)) : 0;
-    const clinkAge=clock-position.clink?.startedAt;
-    const clink=carrying&&!seat&&!claspSide&&clinkAge>=0&&clinkAge<CLINK_DURATION_MS
+    const clinkEvent=position.clink,clinkAge=clock-clinkEvent?.startedAt;
+    const clinkSide=clinkEvent?.slot==="secondItem"?-1:1;
+    const clink=itemFor(clinkSide)?.spec.verb==="마시기"&&!seat&&!claspSide&&clinkAge>=0&&clinkAge<CLINK_DURATION_MS
       ? smooth(Math.min(clinkAge/600,(CLINK_DURATION_MS-clinkAge)/730)) : 0;
     const contact=clink?Math.max(0,1-Math.abs(clinkAge-900)/170)*.045:0;
-    const waving = !umbrellaHand && !clink && !riding && waveAge >= 0 && waveAge < 2.45 && !pet && !feeding && !(claspSide && carrying);
-    const waveLift = waving ? smooth(Math.min(waveAge/.27,(2.45-waveAge)/.36)) : 0;
-    const umbrellaSide=position.umbrella&&!riding&&!position.bus&&!pet
-      ?umbrellaHand||SIDE.find(side=>side!==claspSide&&(!carrying||side!==itemSide)&&(!waving||side!==waveSide)):undefined;
+    const performance=gestureHands(position,clock,hands,{riding,busy:Boolean(clink)});
+    const {pose:acting,sick,umbrellaOpen,umbrellaSide}=performance;
+    const bodyPose=acting&&gestureBody(acting);
+    const blushLevel=alcoholLevel(position,clock);
 
     const facing = Math.PI - (seat?.heading ?? position.clink?.heading ?? position.heading ?? 252) * Math.PI/180;
     const turn = facing - group.rotation.y;
@@ -757,9 +781,14 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
       inverseChest.copy(chest.quaternion).invert();
     } else {
       body.position.y = seated*SEAT_LIFT;
-      pelvis.position.set(.020*pendulum*sway,.691+bob-strideDip+idleRise+breath*.004-seated*.145-crouch*.225,0);
-      chest.rotation.set(.020 + sprint*.13 + crouch*.34 + seated*.03 + clink*.22,pendulum*sway*.10,pendulum*sway*.065);
-      headJoint.rotation.set(-.030-sprint*.070+crouch*.16, -pendulum*sway*.05,breath*.020-pendulum*sway*.045);
+      const idleGesture=seat||!walking?1:.40;
+      const wobble=blushLevel>=3?Math.sin(clock*.0048+model.offset)*.062:0;
+      pelvis.position.set(.020*pendulum*sway+(bodyPose?.x??0)*(1-seated),
+        .691+bob-strideDip+idleRise+breath*.004-seated*.145-crouch*.225+(bodyPose?.y??0)*idleGesture,0);
+      chest.rotation.set(.020+sprint*.13+crouch*.34+seated*.03+clink*.22+(bodyPose?.pitch??0)*idleGesture,
+        pendulum*sway*.10+(bodyPose?.yaw??0)*idleGesture,pendulum*sway*.065+(bodyPose?.roll??0)*idleGesture+wobble*.41);
+      headJoint.rotation.set(-.030-sprint*.070+crouch*.16+(bodyPose?.headPitch??0)*idleGesture,
+        -pendulum*sway*.05+wobble*.65,breath*.020-pendulum*sway*.045+(bodyPose?.headRoll??0)*idleGesture+wobble);
     }
     model.shadow.visible = !seat;
     model.shadow.position.y = .028-lift-(model.floorY-floor);
@@ -767,8 +796,7 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
     model.shadow.scale.set(1+sprint*.05-airborne*.18,1+crouch*.13-airborne*.18,1);
 
     const blinkTick = (now + model.offset%4100) % 4120;
-    const blushLevel = position.blushUntil > clock ? clamp(Math.trunc(Number(position.blushLevel))||1,1,3) : 0;
-    appearance(model,position,blinkTick > 3970 && blinkTick < 4100,blushLevel);
+    appearance(model,position,blinkTick>3970&&blinkTick<4100,blushLevel,Boolean(sick?.weight>.38));
     if (model.hem.visible) {
       model.hem.scale.set(1+seated*.08,1-seated*.61,1+stride*.10);
       model.hem.rotation.set(-seated*.37-sprint*.12,pendulum*sway*.065,pendulum*sway*.044);
@@ -793,20 +821,29 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
       const stroke = footPhase < stance ? stance*.5-footPhase : stance*(smooth(swing)-.5);
       const step = clamp(cycleDistance/BODY*stroke*stride,-.38,.38);
       const lift = (.13+sprint*.12)*Math.sin(Math.PI*swing)*stride;
-      const ankleY = SOLE+lift*(1-seated)+seated*.10+airborne*(.17+i*.05);
-      leg.target.set(side*(.140+crouch*.033)-pelvis.position.x,ankleY-pelvis.position.y,
-        mix(step+crouch*.09,.47,seated)+airborne*(.10+i*.05));
+      const dance=acting?.kind==="dance"&&!walking?acting.weight*(1-seated):0;
+      const danceStep=dance?Math.sin(acting.time*TAU*1.36+side*Math.PI*.5):0;
+      const ankleY = SOLE+lift*(1-seated)+seated*.10+airborne*(.17+i*.05)+Math.max(0,danceStep)*dance*.081;
+      leg.target.set(side*(.140+crouch*.033+dance*.044)-pelvis.position.x,ankleY-pelvis.position.y,
+        mix(step+crouch*.09,.47,seated)+airborne*(.10+i*.05)+danceStep*dance*.10);
       solve(leg,leg.target,forward);
       const roll = (footPhase < stance ? 0 : Math.sin(swing*TAU)*.24*stride) * (1-seated);
       pitch.setFromAxisAngle(xAxis,roll+seated*.06);
       leg.end.quaternion.copy(globalLower).invert().multiply(pitch);
     }
 
-    const spark = carrying && item.kind === "sparkler";
-    const eat = carrying && !spark && item.kind !== "churu" && itemAge < spec.duration
-      ? smooth(Math.min(itemAge/255,(spec.duration-itemAge)/360)) : 0;
     for (let i=0;i<2;i++) {
       const side = SIDE[i], arm = arms[i];
+      const {pivot,show}=itemPivots[i];
+      const prop=itemFor(side),item=prop?.item,spec=prop?.spec,itemAge=prop?.itemAge;
+      const spark=item?.kind==="sparkler";
+      const eat=prop&&!spark&&item.kind!=="churu"&&itemAge<spec.duration
+        ?smooth(Math.min(itemAge/255,(spec.duration-itemAge)/360)):0;
+      const toasting=side===clinkSide?clink:0,serving=side===feedingSide?feedPose:0;
+      pivot.visible=Boolean(prop);
+      const performanceHand=performance.hand(side);
+      const fist=performanceHand?.curl<-.8&&acting.weight>.4;
+      arm.hand.geometry=fist?fistGeometry[i]:handGeometry[i];
       if (riding) {
         // The palm sits below the wrist, wrapping the centre of the grip.
         arm.target.set(side*bikeFit.gripX/BODY,(bikeFit.gripY-body.position.y)/BODY+.046-pelvis.position.y-chest.position.y,
@@ -814,6 +851,7 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
         pole.set(side*.5,-.7,-.25);
         solve(arm,arm.target,pole);
         arm.end.quaternion.copy(globalLower).invert().multiply(inverseChest);
+        show(null);
         continue;
       }
       let x = side*.385, y = -.015+seated*.09, z = .020+seated*.21;
@@ -830,54 +868,52 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
         x=side*.288;y=.385+seated*.075;z=.205;
         if(umbrellaHand&&side!==position.sharedUmbrella){x=position.sharedUmbrella*.065;z=.34;}
         pole.set(side*.67,-.32,-.33);
-      } else if (waving && side === waveSide) {
-        x = mix(x,side*(.590+Math.sin(waveAge*17)*.075),waveLift);
-        y = mix(y,.640+Math.cos(waveAge*17)*.034,waveLift);
-        z = mix(z,.150,waveLift);
-        pole.set(side,-.38,-.32);
-      } else if (clink && side === itemSide) {
-        x=mix(side*.370,side*.055,clink);
-        y=mix(.110,.375,clink);
-        z=mix(.330,.445,clink)-contact;
+      } else if (toasting) {
+        x=mix(side*.370,side*.055,toasting);
+        y=mix(.110,.375,toasting);
+        z=mix(.330,.445,toasting)-contact;
         pole.set(side*.8,-.42,-.11);
-      } else if (carrying && side === itemSide) {
+      } else if (prop) {
         x = side*mix(.370,.170,eat); y = mix(.110,.395,eat); z = mix(.330,.440,eat);
         if (spark) { x = side*.440; y = .150; z = .320; }
-        if (feeding) {
-          x = side*mix(.370,.18,feedPose);
-          y = mix(.110,-.215,feedPose);
-          z = mix(.330,.46,feedPose);
+        if (serving) {
+          x = side*mix(.370,.18,serving);
+          y = mix(.110,-.215,serving);
+          z = mix(.330,.46,serving);
         }
         pole.set(side*.8,-.69,-.16);
-      } else if (pet && side === 1) {
+      } else if (pet && side === petSide) {
         const pat = Math.sin(petAge*.018)*.041;
-        x = mix(x,.290,crouch); y = mix(y,.030+pat,crouch); z = mix(z,.390+pat,crouch);
+        x = mix(x,side*.290,crouch); y = mix(y,.030+pat,crouch); z = mix(z,.390+pat,crouch);
         pole.set(side*.42,-.48,-.76);
+      } else if (performanceHand) {
+        x=mix(x,performanceHand.x,acting.weight);y=mix(y,performanceHand.y,acting.weight);
+        z=mix(z,performanceHand.z,acting.weight);pole.set(side*.96,-.39,-.28);
       }
       const armEase = wasVisible && !clasping ? 1 - Math.exp(-delta*29) : 1;
       arm.target.set(mix(arm.target.x,x,armEase),mix(arm.target.y,y,armEase),mix(arm.target.z,z,armEase));
       solve(arm,arm.target,pole);
-      arm.end.rotation.set(0,0,waving && side === waveSide ? side*waveLift*Math.sin(waveAge*21)*.20 : 0);
+      arm.end.rotation.set((performanceHand?.bend??0)*(acting?.weight??0),0,(performanceHand?.roll??0)*(acting?.weight??0));
+      if(prop){
+        const hand=toasting?chest.worldToLocal(arm.end.getWorldPosition(grip)):arm.target;
+        pivot.position.set(hand.x,hand.y+.015,hand.z+.039);
+        if(clasping)pivot.position.x+=side*.13;
+        pivot.rotation.set(toasting?-.12*toasting+contact*3:spark?.11:serving?1.81*serving:-.66*eat,0,toasting*.08);
+      }
+      show(item?.kind??null,serving?feedAge/1000:spark&&item.started?itemAge/1000:-1);
     }
-    if(umbrellaSide&&!model.umbrella){model.umbrella=umbrellaTemplate.clone();model.umbrella.name="umbrella";chest.add(model.umbrella);}
+    if(umbrellaOpen&&!model.umbrella){model.umbrella=umbrellaTemplate.clone();model.umbrella.name="umbrella";chest.add(model.umbrella);}
     if(model.umbrella){
-      model.umbrella.visible=Boolean(umbrellaSide);
-      if(umbrellaSide){
-        model.umbrella.position.copy(arms[umbrellaSide===1?1:0].target);
+      model.umbrella.visible=umbrellaOpen;
+      if(umbrellaOpen){
+        if(umbrellaSide)model.umbrella.position.copy(arms[umbrellaSide===1?1:0].target);
+        else model.umbrella.position.set(0,.43+seated*.075,.15);
         const tilt=umbrellaHand?-position.sharedUmbrella*(umbrellaHand===position.sharedUmbrella?.13:.30):umbrellaSide*.20;
         model.umbrella.rotation.set(-.073,0,tilt+pendulum*sway*.035);
-        const width=umbrellaHand?1.35:1;
+        const width=position.sharedUmbrella?1.35:1;
         model.umbrella.scale.set(width,1,width);
       }
     }
-    itemPivot.visible = carrying;
-    if (carrying) {
-      const arm=arms[itemSide===1?1:0];
-      const hand=clink?chest.worldToLocal(arm.end.getWorldPosition(grip)):arm.target;
-      itemPivot.position.set(hand.x,hand.y+.015,hand.z+.039);
-      itemPivot.rotation.set(clink ? -.12*clink+contact*3 : spark ? .11 : feeding ? 1.81*feedPose : -.66*eat,0,clink*.08);
-    }
-    model.itemProp(carrying?item.kind:null,feeding?feedAge/1000:spark&&item.started?itemAge/1000:-1);
 
     const reaction = position.emote, age = (clock-reaction?.at)/1000;
     emote.visible = age >= -.3 && age < 3.15 && Boolean(emojiTexture);
@@ -900,7 +936,7 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
     model.group.removeFromParent();
     model.shadow.material.dispose();
     model.emote.material.dispose();
-    model.itemProp.dispose();
+    for(const {show} of model.itemPivots)show.dispose();
     if (model.label) {
       model.label.material.map.dispose();
       model.label.material.dispose();

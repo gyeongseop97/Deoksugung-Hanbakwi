@@ -197,10 +197,16 @@ dialog input,dialog code{display:block;width:100%;padding:9px;border-radius:7px;
   display:grid;grid-template-areas:"social" "nearby" "movement";
   grid-template-rows:repeat(3,var(--control-height));gap:var(--control-gap);width:clamp(193px,20vw,248px);
 }
-.social-actions,.nearby-controls,.movement-actions{
+.social-actions,.held-actions,.nearby-controls,.movement-actions{
   display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--control-gap);min-width:0;
 }
 .social-actions{grid-area:social}
+.held-actions{grid-area:held}
+#use-item{grid-column:1}
+#use-second-item{grid-column:2}
+.held-actions button{display:grid;align-content:center;justify-items:center;gap:2px;white-space:normal;line-height:1.12}
+.held-actions small,.held-actions span{width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.held-actions small{font-size:10px;font-weight:650}
 .nearby-controls{grid-area:nearby;grid-template-columns:minmax(0,1fr) 67px}
 .movement-actions{grid-area:movement}
 .game-command :is(button,.nearby-actions),.game-hud .game-pad button{pointer-events:auto}
@@ -227,6 +233,20 @@ dialog input,dialog code{display:block;width:100%;padding:9px;border-radius:7px;
   min-width:0;min-height:44px;padding:6px 10px;text-align:left;white-space:normal;
   overflow-wrap:anywhere;line-height:1.25;border-radius:7px;
 }
+.game-hud:has(.held-actions button:not([hidden])){--command-height:calc(4 * var(--control-height) + 3 * var(--control-gap))}
+.game-command:has(.held-actions button:not([hidden])){
+  grid-template-areas:"social" "held" "nearby" "movement";grid-template-rows:repeat(4,var(--control-height));
+}
+.held-actions:not(:has(button:not([hidden]))){display:none}
+.peer-hud{position:absolute;z-index:4;left:16px;bottom:16px;display:flex;align-items:end;gap:5px;pointer-events:none}
+.peer-hud :is(button,.nearby-actions){pointer-events:auto}
+.peer-hud>button{min-height:44px;min-width:68px;max-width:130px;padding:5px 8px;white-space:normal;font-size:12px;line-height:1.2}
+#peer-primary{background:#234641;color:#e5f7e9;border-color:#a9cfb9}
+#peer-toggle{background:#172e29;color:#d6eadc;border-color:#88b0a3}
+.peer-hud .nearby-actions{left:0;right:auto;bottom:50px;max-height:min(210px,32dvh)}
+.gesture-menu{z-index:5;right:16px;bottom:calc(3 * 44px + 3 * 6px + 16px);grid-template-columns:repeat(3,minmax(0,1fr));width:min(228px,calc(100vw - 24px))}
+.gesture-menu button{text-align:center}
+.scene-wrap:has(.held-actions button:not([hidden])) .gesture-menu{bottom:calc(4 * 44px + 4 * 6px + 16px)}
 .game-hud .game-pad{position:static;display:grid;grid-template-columns:repeat(3,40px)}
 .game-pad button{min-height:39px;background:#15231bd9}
 #wish{background:#17261ddf;border-color:#cbb27a;color:#f2d393}
@@ -695,6 +715,10 @@ dialog input,dialog code{display:block;width:100%;padding:9px;border-radius:7px;
   .nearby-controls{grid-template-columns:minmax(0,1fr) 58px}
   #nearby-toggle,.game-command>div>button{font-size:12px}
   .emote-menu{bottom:calc(3 * 44px + 3 * 6px + 12px);left:auto;right:8px;transform:none}
+  .peer-hud{left:9px;bottom:126px}
+  .peer-hud>button{min-width:0;width:68px;overflow-wrap:anywhere;padding-inline:4px}
+  .gesture-menu{right:8px}
+  .scene-wrap:has(.held-actions button:not([hidden])) .emote-menu{bottom:calc(4 * 44px + 4 * 6px + 12px)}
 }
 @media (orientation:landscape) and (max-height:560px){
   .top{min-height:calc(48px + env(safe-area-inset-top,0px));padding-block:calc(2px + env(safe-area-inset-top,0px)) 2px}
@@ -716,9 +740,22 @@ dialog input,dialog code{display:block;width:100%;padding:9px;border-radius:7px;
     grid-template-areas:"social nearby" "social movement";grid-template-columns:75px minmax(0,1fr);
     grid-template-rows:repeat(2,var(--control-height));width:clamp(227px,41vw,300px);
   }
+  .game-command:has(.held-actions button:not([hidden])){
+    grid-template-areas:"social held" "social nearby" ". movement";grid-template-rows:repeat(3,var(--control-height));
+  }
+  .game-hud:has(.held-actions button:not([hidden])){--command-height:calc(3 * var(--control-height) + 2 * var(--control-gap))}
   .social-actions{grid-template-columns:minmax(0,1fr);grid-template-rows:repeat(2,var(--control-height))}
   .emote-menu{grid-template-columns:repeat(8,44px);bottom:calc(2 * 44px + 2 * 6px + 7px)}
   .joystick{left:9px;bottom:7px;width:92px;height:92px}
+  .peer-hud{left:110px;bottom:7px}
+  .gesture-menu,.scene-wrap:has(.held-actions button:not([hidden])) .gesture-menu{
+    right:calc(clamp(227px,41vw,300px) + 16px);bottom:57px;
+    width:clamp(135px,33vw,228px);max-height:max(55px,calc(100% - 67px));
+  }
+  .scene-wrap:has(.held-actions button:not([hidden])) .emote-menu{
+    bottom:calc(2 * 44px + 2 * 6px + 7px);right:calc(clamp(227px,41vw,300px) + 16px);
+    grid-template-columns:repeat(4,44px);
+  }
   .map-panel{
     width:min(510px,calc(100vw - 18px - env(safe-area-inset-left,0px) - env(safe-area-inset-right,0px)));
     left:auto;right:max(9px,env(safe-area-inset-right,0px));

@@ -21,20 +21,31 @@ export const ITEMS={
   churu:{name:"츄르",verb:"간식 주기",uses:3,duration:FEED_MS}
 };
 
+function heldProp(avatar,clock,slot,side){
+  const item=avatar[slot],spec=ITEMS[item?.kind];
+  if(!spec)return null;
+  const itemAge=item.started?Math.max(0,clock-item.started):Infinity;
+  if(item.remaining<=0&&itemAge>=spec.duration)return null;
+  return {slot,side,item,spec,itemAge};
+}
+
 export function avatarHands(avatar,clock,{riding,seated,walking}){
   const claspSide=!riding&&(avatar.hand===-1||avatar.hand===1)?avatar.hand:0;
-  const item=avatar.item,spec=ITEMS[item?.kind];
-  const itemAge=item?.started?Math.max(0,clock-item.started):Infinity;
-  const carrying=Boolean(!riding&&spec&&(item.remaining>0||itemAge<spec.duration));
+  const first=riding?null:heldProp(avatar,clock,"item",1);
+  const second=riding?null:heldProp(avatar,clock,"secondItem",-1);
+  const itemFor=side=>side===1?first:second;
   const feedAge=clock-avatar.feed?.at,petAge=clock-avatar.pet?.at;
+  const feedActive=feedAge>=0&&feedAge<FEED_MS;
+  const using=(feedActive?avatar.feed.slot??"item":avatar.itemUse)==="secondItem"?second:first;
+  const main=using??first??second,carrying=Boolean(main);
   const canInteract=!seated&&!riding&&!walking&&!claspSide;
-  const feeding=canInteract&&item?.kind==="churu"&&feedAge>=0&&feedAge<FEED_MS;
-  const petting=canInteract&&!feeding&&petAge>=0&&petAge<PET_MS;
-  // The avatar faces local +Z, so local +X is the avatar's left hand.
-  const itemSide=claspSide?-claspSide:petting?-1:1;
-  const waveSide=claspSide?-claspSide:carrying?-1:1;
+  const feeding=canInteract&&using?.item.kind==="churu"&&feedActive;
+  const freeSide=[1,-1].find(side=>side!==claspSide&&!itemFor(side))??0;
+  const petSide=canInteract&&!feeding&&petAge>=0&&petAge<PET_MS?freeSide:0;
   const sharedSide=avatar.sharedUmbrella;
   const umbrellaHand=sharedSide===1||sharedSide===-1
-    ?carrying&&itemSide===sharedSide?-sharedSide:sharedSide:0;
-  return {claspSide,item,spec,itemAge,carrying,feedAge,feeding,petAge,petting,itemSide,waveSide,umbrellaHand};
+    ?[sharedSide,-sharedSide].find(side=>side!==claspSide&&!itemFor(side)&&side!==petSide)??0:0;
+  return {claspSide,item:main?.item,spec:main?.spec,itemAge:main?.itemAge??Infinity,carrying,feedAge,feeding,
+    petAge,petting:Boolean(petSide),petSide,itemSide:main?.side??1,waveSide:freeSide,umbrellaHand,itemFor,
+    feedingSide:feeding?using.side:0};
 }

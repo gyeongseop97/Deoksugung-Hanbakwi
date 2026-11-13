@@ -1,4 +1,5 @@
 import {ITEMS,JUMP_MS} from "../public/activities.js";
+import {validItemSlot} from "../public/held-items.js";
 import {isPicnicItem,picnicBlanketFits,picnicKinds,PICNIC_DEPTH,PICNIC_OFFER_MS,PICNIC_REACH,PICNIC_SLOTS,PICNIC_WIDTH} from "../public/picnic-data.js";
 
 const matLifetime=45*60*1000,requestLifetime=4*60*60*1000;
@@ -36,9 +37,10 @@ export function validPicnic(command){
   if(command.action==="open")return picnicBlanketFits(command);
   if(!validId(command.mat))return false;
   if(command.action==="close")return true;
-  if(command.action==="place")return isPicnicItem(command.kind);
+  const validHand=command.slot===undefined||validItemSlot(command.slot);
+  if(command.action==="place")return validHand&&isPicnicItem(command.kind);
   if(!validId(command.item))return false;
-  return command.action==="take"||command.action==="offer"&&validId(command.target);
+  return command.action==="take"?validHand:command.action==="offer"&&validId(command.target);
 }
 
 const avatarX="json_extract(w.avatar,'$.x')",avatarY="json_extract(w.avatar,'$.y')";
@@ -50,10 +52,18 @@ const readyWalker=`w.room=? AND w.id=? AND w.player_key=? AND w.updated>=?
 const readyArgs=({room,id,key,now,online})=>[room,id,key,online,now-JUMP_MS];
 const inReach=`${squared(avatarX+"-m.x",avatarY+"-m.y")}<=${PICNIC_REACH**2}`;
 const unseen="NOT EXISTS (SELECT 1 FROM picnic_requests WHERE room=? AND player=? AND request=?)";
-const heldKind="json_extract(w.avatar,'$.item.kind')",remaining="COALESCE(json_extract(w.avatar,'$.item.remaining'),0)";
-const started="COALESCE(json_extract(w.avatar,'$.item.started'),0)";
-const duration=`CASE ${heldKind} ${Object.entries(ITEMS).map(([kind,item])=>`WHEN '${kind}' THEN ${item.duration}`).join(" ")} ELSE 0 END`;
 const slots=PICNIC_SLOTS.map((_,index)=>`(${index})`).join(",");
+const durations=Object.entries(ITEMS).map(([kind,item])=>`WHEN '${kind}' THEN ${item.duration}`).join(" ");
+
+function inventoryPath(slot){
+  const path=slot==="secondItem"?"$.secondItem":"$.item";
+  const heldKind=`json_extract(w.avatar,'${path}.kind')`;
+  return {
+    path,heldKind,remaining:`COALESCE(json_extract(w.avatar,'${path}.remaining'),0)`,
+    started:`COALESCE(json_extract(w.avatar,'${path}.started'),0)`,
+    duration:`CASE ${heldKind} ${durations} ELSE 0 END`
+  };
+}
 
 function openMat(db,context,request){
   const {room,id,now,picnic}=context;
@@ -71,6 +81,7 @@ function openMat(db,context,request){
 
 function placeFood(db,context,request){
   const {room,id,key,now,picnic}=context;
+  const {path,heldKind,remaining,started}=inventoryPath(picnic.slot);
   const place=db.prepare(`
     WITH slots(slot) AS (VALUES ${slots})
     INSERT INTO picnic_food (room,mat,id,owner,nickname,kind,slot)
@@ -85,9 +96,9 @@ function placeFood(db,context,request){
   `).bind(picnic.id,picnic.kind,room,picnic.mat,now-matLifetime,...readyArgs(context),
     picnic.kind,now-ITEMS[picnic.kind].duration,...request);
   const spend=db.prepare(`
-    UPDATE walkers SET avatar=json_set(CASE WHEN json_extract(avatar,'$.item.remaining')=1
-      THEN json_remove(avatar,'$.item')
-      ELSE json_set(avatar,'$.item.remaining',json_extract(avatar,'$.item.remaining')-1) END,'$.picnicClaim',?)
+    UPDATE walkers SET avatar=json_set(CASE WHEN json_extract(avatar,'${path}.remaining')=1
+      THEN json_remove(avatar,'${path}')
+      ELSE json_set(avatar,'${path}.remaining',json_extract(avatar,'${path}.remaining')-1) END,'$.picnicClaim',?)
     WHERE room=? AND id=? AND player_key=? AND changes()=1
   `).bind(picnic.id,room,id,key);
   return [place,spend];
@@ -113,8 +124,9 @@ function offerFood(db,context,request){
 
 function takeFood(db,context,request){
   const {room,id,now,picnic}=context;
+  const {path,remaining,started,duration}=inventoryPath(picnic.slot);
   const take=db.prepare(`
-    UPDATE walkers AS w SET avatar=json_set(w.avatar,'$.item',json_object(
+    UPDATE walkers AS w SET avatar=json_set(w.avatar,'${path}',json_object(
       'kind',(SELECT kind FROM picnic_food WHERE room=? AND mat=? AND id=?),'remaining',1,'started',0),'$.picnicClaim',?)
     WHERE ${readyWalker} AND ${remaining}<=0 AND ${started}+${duration}<=?
       AND ${unseen} AND EXISTS (
