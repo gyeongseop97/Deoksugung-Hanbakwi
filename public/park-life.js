@@ -628,6 +628,28 @@ export function addParkLife(T,scene,kit){
         lure:null,lureCheckAt:0,feeding:null,pose:null,social:null,hunt:null,recognition:null,rejoin:null,frame:{}});
     }
   }
+  const catLimit=includeNorth=>includeNorth?population.coats.length:population.count;
+  function* populateCats(includeNorth){
+    while(population.index<catLimit(includeNorth)){
+      const current=population;
+      const {index,count,palaceCount}=population;
+      const wander=index<count?roam:index<count+palaceCount?palaceRoam:plazaRoam;
+      yield* wander.prepare();
+      if(population!==current)continue;
+      buildCats(population.index+1);
+      yield;
+    }
+  }
+  function needsPopulation(){
+    return population.index<catLimit(northLoaded)||
+      expanded.some(area=>area.ready&&area.index<area.catCount);
+  }
+  function* populate(){
+    while(needsPopulation()){
+      yield* populateCats(northLoaded);
+      for(const area of expanded)if(area.ready)yield* populateExpansion(area);
+    }
+  }
   function setSeed(value){
     const next=String(value??"preview");
     if(next===seed)return;
@@ -644,11 +666,8 @@ export function addParkLife(T,scene,kit){
     while(coats.length<total)coats.push(...shuffled(cats,random).slice(0,total-coats.length));
     const used={homes:new Set(),benches:new Set(),walls:new Set(),trees:new Set()};
     population={hash,count,palaceCount,coats,used,index:0};
-    buildCats(northLoaded?total:count);
-    for(const area of expanded){
-      area.index=0;
-      if(area.ready)buildExpansionCats(area,area.catCount);
-    }
+    for(const area of expanded)area.index=0;
+    if(!kit.deferPopulation)for(const _ of populate()){}
   }
   function buildExpansionCats(area,limit){
     const randomBase=catSeedNumber(seed+":"+area.id);
@@ -671,20 +690,21 @@ export function addParkLife(T,scene,kit){
         lure:null,lureCheckAt:0,feeding:null,pose:null,social:null,hunt:null,recognition:null,rejoin:null,frame:{}});
     }
   }
-  function* loadExpansion(id){
-    const area=expanded.find(value=>value.id===id);
+  function* populateExpansion(area){
     while(area.index<area.catCount){
-      buildExpansionCats(area,Math.min(area.catCount,area.index+2));
+      buildExpansionCats(area,area.index+1);
       yield;
     }
+  }
+  function* loadExpansion(id){
+    const area=expanded.find(value=>value.id===id);
+    yield* populateCats(northLoaded);
+    yield* populateExpansion(area);
     area.ready=true;
   }
   function* loadNorth(){
     // Resume the original room's sequence, or the current room's sequence if it changed.
-    while(population.index<population.coats.length){
-      buildCats(Math.min(population.coats.length,population.index+2));
-      if(population.index<population.coats.length)yield;
-    }
+    yield* populateCats(true);
     northLoaded=true;
   }
   setSeed(kit.catSeed);
@@ -958,5 +978,6 @@ export function addParkLife(T,scene,kit){
   // How many cats live on each map (used when checking a build).
   const census=()=>({deoksugung:live.filter(cat=>!cat.palace&&!cat.area).length,gyeongbokgung:live.filter(cat=>cat.palace).length,
     ...Object.fromEntries(expanded.map(area=>[area.id,live.filter(cat=>cat.area===area).length]))});
-  return {update,nearestCat,nearestFeedCat,soundSource,pet,feed,resetInteractions,setSeed,census,setSparse,loadNorth,loadExpansion};
+  return {update,nearestCat,nearestFeedCat,soundSource,pet,feed,resetInteractions,setSeed,census,setSparse,populate,
+    get needsPopulation(){return needsPopulation();},loadNorth,loadExpansion};
 }

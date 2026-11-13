@@ -43,7 +43,7 @@ function exactWalk(from,to,plan=true){
   return points.every((point,i)=>!i||clearSegment(points[i-1],point,.24))?points:[];
 }
 
-function makeNetwork(corridors,origin,plan){
+function* makeNetwork(corridors,origin,plan){
   const nodes=[],byLocation=new Map();
   function nodeFor(point){
     const key=keyOf(point);
@@ -66,12 +66,16 @@ function makeNetwork(corridors,origin,plan){
     for(let i=1;i<stops.length;i++){
       const a=stops[i-1],b=stops[i];
       if(a!==b&&!a.edges.some(edge=>edge.to===b))link(a,b,exactWalk(a.point,b.point,plan));
+      yield;
     }
   }
   // Paths drawn independently can meet a metre or two apart. Connect their real walkable junctions.
-  for(const a of nodes)for(const b of nodes){
-    if(b.index<=a.index||metres(a.point,b.point)>5.5||a.edges.some(edge=>edge.to===b))continue;
-    if(clearSegment(a.point,b.point,.24))link(a,b,[a.point,b.point]);
+  for(const a of nodes){
+    for(const b of nodes){
+      if(b.index<=a.index||metres(a.point,b.point)>5.5||a.edges.some(edge=>edge.to===b))continue;
+      if(clearSegment(a.point,b.point,.24))link(a,b,[a.point,b.point]);
+    }
+    yield;
   }
   // The origin may sit beside the trails rather than on one; begin from the nearest linked stop.
   const reachable=new Set(),first=nodeFor(origin);
@@ -115,8 +119,19 @@ function networkPath(from,to){
 // Each map has its own trail network. plan=false links only stops in plain sight of each
 // other, which keeps start-up quick on the much larger Gyeongbokgung grid.
 export function makeCatRoaming({trails=corridors,origin=spawn,plan=true}={}){
-  let network;
-  const graph=()=>network??=makeNetwork(trails,origin,plan);
+  let network,preparation;
+  function* prepare(){
+    while(!network){
+      preparation??=makeNetwork(trails,origin,plan);
+      const step=preparation.next();
+      if(step.done){network=step.value;preparation=null;}
+      else yield;
+    }
+  }
+  function graph(){
+    if(!network)for(const _ of prepare()){}
+    return network;
+  }
   const cachedPaths=new Map();
   function between(from,to){
     if(!onGround(from)||!onGround(to))return [];
@@ -238,5 +253,6 @@ export function makeCatRoaming({trails=corridors,origin=spawn,plan=true}={}){
     return point;
   };
   roam.between=between;
+  roam.prepare=prepare;
   return roam;
 }

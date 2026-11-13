@@ -181,13 +181,16 @@ export function makeTreeBuilder(T,scene,{clearance,rand,fits=()=>true}){
   };
 
   // Returns {radius,top,reach} when the tree stands clear of buildings, otherwise null.
-  function grow(x,z,{height,spread=height*.62,style=pick(treeStyles),palette=treePalettes.fresh}){
+  function grow(x,z,{height,spread=height*.62,style=pick(treeStyles),palette=treePalettes.fresh,terrainAnchor}){
     const parts=[],state={x,z,top:{x,y:0,z},reach:0};
     const colors=typeof palette==="string"?treePalettes[palette]:palette;
     if(!shapes[style](parts,state,colors,x,z,height,spread)||!state.top.y){
       return null;
     }
-    for(const mesh of parts)scene.add(mesh);
+    for(const mesh of parts){
+      if(terrainAnchor)mesh.userData.terrainAnchor=terrainAnchor;
+      scene.add(mesh);
+    }
     return {radius:height*.04,top:state.top,reach:state.reach,autumn:Boolean(colors.autumn),leaf:colors.leaf};
   }
 

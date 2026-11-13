@@ -19,6 +19,9 @@ export function* buildGyeongbok(T,scene,kit,tools){
   const world=(east,north)=>({x:wx(gwanghwamun.x+east),z:wz(gwanghwamun.y-north)});
   const rect=(west,east,south,north)=>[at(west,south),at(east,south),at(east,north),at(west,north)];
   const stoneTint=0xb7ae99,groups=new Map();
+  function anchorParts(from,anchor){
+    for(let i=from;i<scene.children.length;i++)scene.children[i].userData.terrainAnchor=anchor;
+  }
   // Solid box in palace coordinates; top defaults to a full-height wall.
   function solid(east,north,width,depth,top){
     const p=world(east,north);
@@ -84,6 +87,12 @@ export function* buildGyeongbok(T,scene,kit,tools){
   // japsang, a dancheong band under the eaves and paper-backed lattice doors.
   function pavilion(spec){
     const group=timberHall(spec),{w,d,h,bays}=spec,raised=spec.raised??.39;
+    if(!spec.lift&&!spec.noCollision){
+      if(spec.gate){
+        const width=(w-w/bays)/2;
+        for(const side of [-1,1])box(0xa9a394,side*(w-width)/2,-.44,0,width,.9,d+1.08,group);
+      }else box(0xa9a394,0,-.69,0,w+1.38,1.4,d+1.08,group);
+    }
     const width=w+(spec.open?3.2:2.5),depth=d+2.36,y=raised+h+.54;
     const rise=spec.rise??(spec.mainHall?3.05:spec.open?2.35:2.04),hip=spec.gate||spec.mainHall||Boolean(spec.hip);
     const ridge=width*(hip?.30:.42),figures=w>26?5:w>15?4:3;
@@ -115,12 +124,14 @@ export function* buildGyeongbok(T,scene,kit,tools){
 
   // ---- Ground -------------------------------------------------------------------------
   const centre=world(0,410);
-  box(0x677253,centre.x,-.36,centre.z,900,.65,1280).userData.flatBackground=true;
+  // This distant backing plane overlaps part of the avenue's sloping road.
+  box(0x677253,centre.x,-8.36,centre.z,900,.65,1280).userData.flatBackground=true;
   plot(gbWallOutline,materials.earth,.008);
   plot(rect(-92,92,-52,0),materials.paving,.02);
   for(const {kind,west,east,south,north} of gbLawns){
     const grass=clipGbGround(west,east,south,north);
     if(grass.length>=3)plot(grass,materials.garden[kind],.017);
+    yield;
   }
   for(const court of [gbCourts.heungnye,gbCourts.geunjeong]){
     plot(rect(court.west+1,court.east-1,court.south+1,court.north-1),materials.court,.022);
@@ -132,7 +143,10 @@ export function* buildGyeongbok(T,scene,kit,tools){
 
   // ---- Palace wall and its gates ---------------------------------------------------------
   const wallHeight=4.7;
-  for(const run of gbOuterWallRuns)for(let i=1;i<run.length;i++)wall(run[i-1],run[i],wallHeight,false,false);
+  for(const run of gbOuterWallRuns)for(let i=1;i<run.length;i++){
+    wall(run[i-1],run[i],wallHeight,false,false);
+    if(i%4===0)yield;
+  }
   const [westEntryNorth,westEntrySouth]=gbMuseumWestGate.jambs;
   const westEntryAngle=-Math.atan2(westEntrySouth.y-westEntryNorth.y,westEntrySouth.x-westEntryNorth.x);
   for(const {x,y} of gbMuseumWestGate.jambs){
@@ -156,9 +170,11 @@ export function* buildGyeongbok(T,scene,kit,tools){
       start=Math.max(start,high);
     }
     if(end-start>.35)wall(point(start),point(end),wallHeight,false,false);
+    if(i%4===0)yield;
   }
 
   // Gwanghwamun: a stone base with three arched passages carrying a two-storey gatehouse.
+  const gateParts=scene.children.length;
   const baseHeight=6.6,piers=[[-15.6,-10.6],[-6.2,-2.9],[2.9,6.2],[10.6,15.6]];
   for(const [west,east] of piers){
     masonry((west+east)/2,0,east-west,11.4,baseHeight);
@@ -180,6 +196,7 @@ export function* buildGyeongbok(T,scene,kit,tools){
   const gateSpec=gbSite.gwanghwamun;
   const gatehouse=pavilion({...gateSpec,h:6.6,raised:.3,rise:3.1,hip:true,noCollision:true});
   gatehouse.position.y=baseHeight;groups.set("gwanghwamun",gatehouse);
+  anchorParts(gateParts,gwanghwamun);
   // Haetae statues guard the square: seated granite beasts with a curled mane, bulging eyes,
   // a wide grin, a neck bell and scales, each on a stepped pedestal, heads turned to the road.
   const granite=new Map();
@@ -281,20 +298,24 @@ export function* buildGyeongbok(T,scene,kit,tools){
     return statue;
   }
   for(const {side,east,north} of gbHaetae){
-    slab(0xa29c8e,east,north,3.1,4.3,.4);
+    const parts=scene.children.length;
+    slab(0xa29c8e,east,north,3.1,4.3,.55,-.15);
     slab(0xb1ab9c,east,north,2.6,3.8,.72,.4);
     slab(0xbab4a5,east,north,2.8,4.0,.14,1.12);
     solid(east,north,3.1,4.3,3.4);
     const p=world(east,north),statue=haetae(-side*.5);
     statue.position.set(p.x,1.26,p.z);statue.scale.setScalar(1.2);statue.name="광화문 해태상";
     scene.add(statue);
+    anchorParts(parts,at(east,north));
+    yield;
   }
 
   // Woldae: a low two-step stone terrace with railings and the raised royal path, leading
   // from the square up to the three arches.
   {
     const {half,south,north,tier}=gbWoldae,mid=(south+north)/2,length=north-south;
-    slab(0xa7a192,0,mid-.3,half*2+1.2,length+.6,tier);
+    const parts=scene.children.length;
+    slab(0xa7a192,0,mid-.3,half*2+1.2,length+.6,tier+.10,-.10);
     solid(0,mid-.3,half*2+1.2,length+.6,tier);
     slab(stoneTint,0,mid,half*2,length,tier,tier);
     solid(0,mid,half*2,length,tier*2);
@@ -314,6 +335,7 @@ export function* buildGyeongbok(T,scene,kit,tools){
       slab(0xb5ae9c,east,mid,.14,length-.4,.3,tier*2+.1);
       solid(east,mid,.3,length,tier*2+1.1);
     }
+    anchorParts(parts,at(0,mid));
   }
 
   yield;
@@ -341,9 +363,11 @@ export function* buildGyeongbok(T,scene,kit,tools){
   // Throne hall on a two-tier stone terrace. The terrace and its steps are low boxes, so
   // walkers climb them a step at a time (or hop up the side).
   const throne=gbSite.geunjeongjeon,tier=.85,riser=.17,tread=.38;
+  const throneParts=scene.children.length;
   const tiers=[{half:29,south:276,north:323,top:tier,base:0},{half:22.6,south:283,north:317,top:tier*2,base:tier}];
   for(const {half,south,north,top,base} of tiers){
-    slab(stoneTint,0,(south+north)/2,half*2,north-south,top-base,base);
+    const footing=base||-.15;
+    slab(stoneTint,0,(south+north)/2,half*2,north-south,top-footing,footing);
     solid(0,(south+north)/2,half*2,north-south,top);
     // Steps: front (wide, on the royal road), back and both sides.
     const flights=[[0,south,0,-1,9],[0,north,0,1,5],[-half,300,-1,0,5],[half,300,1,0,5]];
@@ -351,7 +375,7 @@ export function* buildGyeongbok(T,scene,kit,tools){
       const height=base+(step+1)*riser,out=(4.5-step)*tread;
       const e=east+dx*out,n=northAt+dn*out;
       const w=dx?tread:width,d=dx?width:tread;
-      slab(0xb0ab9a,e,n,w,d,height-base,base);
+      slab(0xb0ab9a,e,n,w,d,height-footing,footing);
       solid(e,n,w,d,height);
     }
     // Stone balustrade posts along the edge.
@@ -368,6 +392,7 @@ export function* buildGyeongbok(T,scene,kit,tools){
       }
       for(const [a,b] of [[south+.3,296.7],[303.3,north-.3]])slab(0xc1b9a6,side*(half-.3),(a+b)/2,.14,b-a,.12,top+.56);
     }
+    yield;
   }
   // Bronze water vats at the terrace corners and incense burners before the hall.
   for(const sx of [-1,1]){
@@ -387,6 +412,8 @@ export function* buildGyeongbok(T,scene,kit,tools){
   }
   const hallGroup=pavilion({...throne,h:12.4,raised:.5,rise:4.1,hip:true,interior:"throne",lift:tier*2});
   hallGroup.position.y=tier*2;groups.set(throne.id,hallGroup);
+  anchorParts(throneParts,throne);
+  yield;
   // Rank stones line the royal road in the court.
   for(const side of [-1,1])for(let i=0;i<12;i++){
     slab(0x9d9e91,side*6.4,242+i*2.7,.34,.28,.62);
@@ -394,23 +421,26 @@ export function* buildGyeongbok(T,scene,kit,tools){
   }
 
   // Covered corridors around the courts, with gateways left open.
-  function corridor(a,b,gaps=[]){
+  function* corridor(a,b,gaps=[]){
     const vertical=a[0]===b[0],from=vertical?a[1]:a[0],to=vertical?b[1]:b[0];
     let cursor=Math.min(from,to);
     const end=Math.max(from,to);
     for(const [low,high] of [...gaps].sort((p,q)=>p[0]-q[0]).concat([[end,end]])){
-      if(low-cursor>.6)coveredWall(vertical?at(a[0],cursor):at(cursor,a[1]),vertical?at(a[0],low):at(low,a[1]),3.5);
+      if(low-cursor>.6){
+        coveredWall(vertical?at(a[0],cursor):at(cursor,a[1]),vertical?at(a[0],low):at(low,a[1]),3.5);
+        yield;
+      }
       cursor=Math.max(cursor,high);
     }
   }
   const {heungnye,geunjeong,sajeong}=gbCourts;
-  corridor([heungnye.west,heungnye.south],[heungnye.east,heungnye.south],[[-10,10]]);
-  for(const east of [heungnye.west,heungnye.east])corridor([east,heungnye.south],[east,heungnye.north],[[190,198]]);
-  corridor([heungnye.west,geunjeong.south],[heungnye.east,geunjeong.south],[[-9.6,9.6]]);
-  for(const east of [geunjeong.west,geunjeong.east])corridor([east,geunjeong.south],[east,geunjeong.north],[[244,251],[330,337]]);
-  corridor([geunjeong.west,geunjeong.north],[geunjeong.east,geunjeong.north],[[-6.4,6.4]]);
-  for(const east of [sajeong.west,sajeong.east])corridor([east,sajeong.south],[east,sajeong.north],[[366,372]]);
-  corridor([sajeong.west,sajeong.north],[sajeong.east,sajeong.north],[[-14,-9],[9,14]]);
+  yield* corridor([heungnye.west,heungnye.south],[heungnye.east,heungnye.south],[[-10,10]]);
+  for(const east of [heungnye.west,heungnye.east])yield* corridor([east,heungnye.south],[east,heungnye.north],[[190,198]]);
+  yield* corridor([heungnye.west,geunjeong.south],[heungnye.east,geunjeong.south],[[-9.6,9.6]]);
+  for(const east of [geunjeong.west,geunjeong.east])yield* corridor([east,geunjeong.south],[east,geunjeong.north],[[244,251],[330,337]]);
+  yield* corridor([geunjeong.west,geunjeong.north],[geunjeong.east,geunjeong.north],[[-6.4,6.4]]);
+  for(const east of [sajeong.west,sajeong.east])yield* corridor([east,sajeong.south],[east,sajeong.north],[[366,372]]);
+  yield* corridor([sajeong.west,sajeong.north],[sajeong.east,sajeong.north],[[-14,-9],[9,14]]);
 
   // Yeongjegyo: the stone bridge over the stream that crosses the first court.
   const streamNorth=180,streamWidth=5.2,bridgeHalf=5.2;
@@ -447,6 +477,7 @@ export function* buildGyeongbok(T,scene,kit,tools){
   // under one great roof. The ground floor is open to walk through; two timber stairs lead up.
   {
     const {centre,long,short,floor,base,norths,easts,stairs,columns}=gbRoyalPavilion;
+    const parts=scene.children.length;
     const hall=new T.Group(),middle=world(centre.east,centre.north);
     // The group's x axis runs north along the long side; z runs east.
     hall.position.set(middle.x,0,middle.z);hall.rotation.y=Math.PI/2;hall.name="경회루";scene.add(hall);
@@ -460,14 +491,17 @@ export function* buildGyeongbok(T,scene,kit,tools){
     solid(centre.east,centre.north,short+3.2,long+3.2,.19);
     slab(stoneTint,centre.east,centre.north,short+2,long+2,.19,.19);
     solid(centre.east,centre.north,short+2,long+2,base);
-    for(const [i,north] of norths.entries())for(const [j,east] of easts.entries()){
-      const outer=i===0||i===7||j===0||j===5,p=world(east,north);
-      if(outer)slab(0xb5af9f,east,north,.74,.74,4.5,base);
-      else cylinder(0xb0aa9a,p.x,base+2.25,p.z,.4,4.5,12,scene,.86);
-      slab(0xa39d8e,east,north,.98,.98,.14,base+4.5);
-      solid(east,north,.74,.74,floor-.2);
-      // Upper-floor columns stand on the same grid.
-      if(outer)cylinder(0x8f4936,p.x,floor+1.9,p.z,.25,3.8,12);
+    for(const [i,north] of norths.entries()){
+      for(const [j,east] of easts.entries()){
+        const outer=i===0||i===7||j===0||j===5,p=world(east,north);
+        if(outer)slab(0xb5af9f,east,north,.74,.74,4.5,base);
+        else cylinder(0xb0aa9a,p.x,base+2.25,p.z,.4,4.5,12,scene,.86);
+        slab(0xa39d8e,east,north,.98,.98,.14,base+4.5);
+        solid(east,north,.74,.74,floor-.2);
+        // Upper-floor columns stand on the same grid.
+        if(outer)cylinder(0x8f4936,p.x,floor+1.9,p.z,.25,3.8,12);
+      }
+      yield;
     }
     for(const {east,north} of columns){
       const p=world(east,north);
@@ -502,6 +536,7 @@ export function* buildGyeongbok(T,scene,kit,tools){
       band(hall,side*(long/2+.18),floor+3.28,0,short+.4,Math.PI/2);
       box(0x356c56,0,floor+3.98,side*(short/2+.3),long+1.2,.4,.6,hall);
       box(0x356c56,side*(long/2+.3),floor+3.98,0,.6,.4,short+1.2,hall);
+      yield;
     }
     // Coffered ceiling over the banquet floor.
     box(0x2f5a4a,0,floor+3.82,0,long+.4,.08,short+.4,hall);
@@ -514,6 +549,7 @@ export function* buildGyeongbok(T,scene,kit,tools){
     for(const side of [-1,1])box(0x4b504c,side*(width*.42+.3),eaves+rise+.56,0,.38,.9,.46,hall);
     hips(hall,width,depth,width*.42,eaves,rise,1,6);
     nameplate("慶會樓",hall,0,floor+3.0,short/2+.34,3.4,.85);
+    yield;
     // Timber stairs: open treads between two stringers, with handrails.
     for(const {south:low,north:high,foot,head} of stairs){
       const mid=(low+high)/2,steps=27,stride=(head-foot)/steps;
@@ -531,6 +567,7 @@ export function* buildGyeongbok(T,scene,kit,tools){
       }
       slab(0x7b4b38,foot+Math.sign(foot-head)*.06,mid,.07,high-low,.07,floor+.9);
       for(const lift of [.3,.62])slab(0x8a5a44,foot+Math.sign(foot-head)*.06,mid,.05,high-low,.04,floor+lift);
+      yield;
     }
     // Stone railing round the island, open at the three bridges.
     const {island}=gbLake;
@@ -547,12 +584,14 @@ export function* buildGyeongbok(T,scene,kit,tools){
     }
     const inset=.5,iw=island.west+inset,ie=island.east-inset,is=island.south+inset,inn=island.north-inset;
     railing([iw,is],[iw,inn]);railing([iw,is],[ie,is]);railing([iw,inn],[ie,inn]);
+    yield;
     let cursor=is;
     for(const bridge of gbLake.bridges){
       railing([ie,cursor],[ie,bridge.north-bridge.width/2-.3]);
       cursor=bridge.north+bridge.width/2+.3;
     }
     railing([ie,cursor],[ie,inn]);
+    anchorParts(parts,at(centre.east,centre.north));
   }
   for(const isle of lake.isles){
     const ring=Array.from({length:14},(_,i)=>at(isle.east+Math.cos(i*Math.PI/7)*isle.radius,isle.north+Math.sin(i*Math.PI/7)*isle.radius));
@@ -707,7 +746,7 @@ export function* buildGyeongbok(T,scene,kit,tools){
   let surveyed=0;
   for(const group of groups.values()){
     treeClearance.addModel(group);
-    if(++surveyed%7===0)yield;
+    if(++surveyed%3===0)yield;
   }
   const awayFromRoads=(x,y)=>gbPaths.every(({points,width})=>pathClear(points,x,y,width/2+1.6));
   function plant(east,north,height,choice){
@@ -727,7 +766,7 @@ export function* buildGyeongbok(T,scene,kit,tools){
       const wanted=Math.min(22,Math.round(area/(kind==="grove"?330:900)));
       for(let attempt=0,planted=0;attempt<wanted*5&&planted<wanted;attempt++){
         if(plant(west+rand()*(east-west),south+rand()*(north-south),6+rand()*6.5,treeMix.garden()))planted++;
-        if((attempt+1)%7===0&&planted<wanted)yield;
+        if((attempt+1)%3===0&&planted<wanted)yield;
       }
     }
     yield;
@@ -735,6 +774,7 @@ export function* buildGyeongbok(T,scene,kit,tools){
   for(const isle of gbLake.isles)plant(isle.east,isle.north,6.5,{style:"branchy",palette:"pine"});
   for(const [east,north] of [[-48,60],[48,60],[-40,110],[40,110],[-150,240],[150,360],[-44,520],[44,540],[70,446],[-70,360]]){
     plant(east,north,8+rand()*4,rand()<.5?{style:"round",palette:"ginkgo"}:treeMix.garden());
+    yield;
   }
   for(const [east,north,turn] of [[-88,48,Math.PI/2],[-30,104,0],[30,104,0],[-62,470,-Math.PI/2],[-30,690,0],[52,690,0]]){
     const p=world(east,north);
@@ -783,6 +823,7 @@ export function* buildGyeongbok(T,scene,kit,tools){
       sign(name,e-w/2-2.2,n,Math.PI/2,2.0);
     };
     site("협선당 터",72,-106,24,9,6,3);site("정본당 터",72,-122.5,28,12.5,7,4);site("석획당 터",72,-139.5,24,9,6,3);
+    yield;
     // Inner corridor by the avenue, bent like the letter L.
     for(const [e,n,w,d] of [[45.5,-124,2.6,44],[51,-146.5,13.6,2.6]]){
       plot(rect(e-w/2,e+w/2,n-d/2,n+d/2),materials.court,.031);
@@ -812,6 +853,7 @@ export function* buildGyeongbok(T,scene,kit,tools){
     }
     for(const [e,n] of [[100,-101],[124,-101],[146,-101],[140,-116],[146,-136],[136,-150],[120,-154],[102,-150],[58,-154],[40,-99],[104,-140],[130,-143]]){
       plant(e,n,6.5+rand()*4,rand()<.45?{style:"round",palette:"ginkgo"}:treeMix.garden());
+      yield;
     }
   }
 }

@@ -1,7 +1,7 @@
 import {validWishArt, WISH_FLIGHT_MS} from "./public/wish-art.js";
 import {FEED_MS, ITEMS} from "./public/activities.js";
 import {validItemSlot} from "./public/held-items.js";
-import {GESTURE_DURATIONS,MAX_ALCOHOL_LEVEL} from "./public/avatar-gestures.js";
+import {BIKE_FALL_DURATION_MS,GESTURE_DURATIONS,MAX_ALCOHOL_DRINKS,MAX_ALCOHOL_LEVEL} from "./public/avatar-gestures.js";
 import {isInsideMuseum} from "./public/visit-layout.js";
 import {BUS_COUNT,BUS_SEATS,BUS_BOARD_REACH,busAt,busStopById,busSeatPose} from "./public/sejong-bus.js";
 import {bikeDockReach,bikeDocks,bikeMountReach,bikeParkDuration} from "./public/sejong-bike.js";
@@ -60,6 +60,7 @@ const validAvatar = (a) => validPoint(a) &&
   validItem(a.item) && validItem(a.secondItem) && (a.itemUse==null||validItemSlot(a.itemUse)) &&
   (a.blushUntil===undefined || validTime(a.blushUntil)) &&
   (a.blushLevel===undefined || Number.isInteger(a.blushLevel) && finite(a.blushLevel,0,MAX_ALCOHOL_LEVEL)) &&
+  (a.alcoholGlasses===undefined || Number.isInteger(a.alcoholGlasses) && finite(a.alcoholGlasses,0,MAX_ALCOHOL_DRINKS)) &&
   (a.sickAt===undefined || validTime(a.sickAt)) &&
   (a.pet==null || typeof a.pet.id==="string" && /^[a-z0-9-]{1,32}$/.test(a.pet.id) && validTime(a.pet.at));
 const validView = (v) => v && finite(v.pan,-720,720) && finite(v.tilt,-90,90) &&
@@ -81,7 +82,7 @@ const busSeat = seat => Number.isInteger(seat)&&seat>=0&&seat<BUS_SEATS;
 const validBus = bus => bus?.action==="board"?busIndex(bus.index)&&busSeat(bus.seat):
   bus?.action==="exit"&&(bus.index==null||busIndex(bus.index));
 const docksById=new Map(bikeDocks.map(dock=>[dock.id,dock]));
-const validBike = bike => bike?.action==="park"||bike?.action==="mount"||
+const validBike = bike => bike?.action==="park"||bike?.action==="mount"||bike?.action==="fall"||
   (bike?.action==="take"||bike?.action==="return")&&docksById.has(bike.dock);
 const parkedBikeTime="json_extract(avatar,'$.bike.parked.at')";
 const mountedBike=(field="avatar")=>`(json_type(${field},'$.bike') IS 'object'
@@ -156,6 +157,7 @@ async function enterRoom(db,body){
   delete initialAvatar.chat;
   delete initialAvatar.bus;
   delete initialAvatar.bike;
+  delete initialAvatar.bikeFallAt;
   delete initialAvatar.picnicClaim;
   const {results}=await db.prepare(`
     INSERT INTO walkers (room,id,updated,avatar,view,player_key,nickname,coat)
@@ -185,7 +187,7 @@ async function enterRoom(db,body){
 }
 
 function avatarUpdate(db,room,id,key,avatar,view,now,active,pendingFeed="",bikeAction,pendingPicnic){
-  const {feed,chat,bus,bike,picnicClaim,...snapshotData}=avatar;
+  const {feed,chat,bus,bike,bikeFallAt,picnicClaim,...snapshotData}=avatar;
   const snapshot=JSON.stringify(snapshotData);
   const inheritWish=avatar.wishArt===undefined&&avatar.wish>now-WISH_FLIGHT_MS?avatar.wish:null;
   const acknowledgedFeed=validId(feed?.claim)?feed.claim:null;
@@ -216,7 +218,10 @@ function avatarUpdate(db,room,id,key,avatar,view,now,active,pendingFeed="",bikeA
     'blocked',json('false'),'up',json('false'),'jump',0`;
   // The first mount changes the canonical pose. A retry still posts the old approach pose.
   const mountedPose=bikeAction==="mount"?`,${vehiclePose}`:"";
-  const transportPatch=`json_patch(${parkedBikePatch}, CASE WHEN updated<? OR ${invalidBusRide} THEN ${expiredRidePatch}
+  const transportPatch=`json_patch(json_patch(${parkedBikePatch},
+    CASE WHEN json_extract(avatar,'$.bikeFallAt') IS NOT NULL
+      THEN json_object('bikeFallAt',json_extract(avatar,'$.bikeFallAt')) ELSE '{}' END),
+    CASE WHEN updated<? OR ${invalidBusRide} THEN ${expiredRidePatch}
     WHEN json_type(avatar,'$.bus')='object' THEN json_object(
       'bus',json_extract(avatar,'$.bus'),'seat',NULL,'seatSide',NULL,${vehiclePose})
     WHEN ${mountedBike()} THEN json_object(
@@ -323,7 +328,8 @@ const nearVehicleAccess=`
 `;
 const accessArguments=(point,reach)=>[point.x,point.x,point.y,point.y,reach**2];
 const availableRider=`json_extract(avatar,'$.bus') IS NULL AND NOT ${mountedBike()}
-  AND json_extract(avatar,'$.seat') IS NULL AND COALESCE(json_extract(avatar,'$.feed.at'),0)<=?`;
+  AND json_extract(avatar,'$.seat') IS NULL AND COALESCE(json_extract(avatar,'$.feed.at'),0)<=?
+  AND COALESCE(json_extract(avatar,'$.bikeFallAt'),0)<=?`;
 
 function busStatements(db,room,id,key,action,now,active){
   if(action.action==="board"){
@@ -339,7 +345,7 @@ function busStatements(db,room,id,key,action,now,active){
           SELECT 1 FROM walkers peer WHERE peer.room=walkers.room AND peer.id<>walkers.id AND peer.updated>=?
             AND json_extract(peer.avatar,'$.bus.index')=? AND json_extract(peer.avatar,'$.bus.seat')=?
         )
-    `).bind(JSON.stringify({index:action.index,seat:action.seat,resume:stop.exit}),x,y,heading,room,id,key,active,now-FEED_MS,
+    `).bind(JSON.stringify({index:action.index,seat:action.seat,resume:stop.exit}),x,y,heading,room,id,key,active,now-FEED_MS,now-BIKE_FALL_DURATION_MS,
       ...accessArguments(stop.board,BUS_BOARD_REACH),active,action.index,action.seat)];
   }
   const buses=action.index==null?Array.from({length:BUS_COUNT},(_,index)=>index):[action.index];
@@ -356,13 +362,18 @@ function busStatements(db,room,id,key,action,now,active){
 }
 
 function bikeStatement(db,room,id,key,action,now,active){
-  if(action.action==="park")return db.prepare(`
-    UPDATE walkers SET avatar=json_set(avatar,'$.bike.parked',json_object(
-      'x',json_extract(avatar,'$.x'),'y',json_extract(avatar,'$.y'),
-      'heading',COALESCE(json_extract(avatar,'$.heading'),0),'at',?),
-      '$.vx',0,'$.vy',0,'$.running',json('false'),'$.blocked',json('false'))
-    WHERE room=? AND id=? AND player_key=? AND updated>=? AND ${mountedBike()}
-  `).bind(now,room,id,key,active);
+  if(action.action==="park"||action.action==="fall"){
+    const fall=action.action==="fall";
+    return db.prepare(`
+      UPDATE walkers SET avatar=json_set(avatar,'$.bike.parked',json_object(
+        'x',json_extract(avatar,'$.x'),'y',json_extract(avatar,'$.y'),
+        'heading',COALESCE(json_extract(avatar,'$.heading'),0),'at',?),
+        '$.vx',0,'$.vy',0,'$.running',json('false'),'$.blocked',json('false')
+        ${fall?",'$.bikeFallAt',?":""})
+      WHERE room=? AND id=? AND player_key=? AND updated>=? AND ${mountedBike()}
+        ${fall?"AND json_extract(avatar,'$.blushUntil')>?":""}
+    `).bind(now,...(fall?[now]:[]),room,id,key,active,...(fall?[now]:[]));
+  }
   if(action.action==="mount")return db.prepare(`
     UPDATE walkers SET avatar=json_remove(json_set(avatar,
       '$.x',json_extract(avatar,'$.bike.parked.x'),'$.y',json_extract(avatar,'$.bike.parked.y'),
@@ -375,7 +386,7 @@ function bikeStatement(db,room,id,key,action,now,active){
         (json_extract(avatar,'$.y')-json_extract(avatar,'$.bike.parked.y')) *
         (json_extract(avatar,'$.y')-json_extract(avatar,'$.bike.parked.y'))
       ) <= ?
-  `).bind(room,id,key,active,now-FEED_MS,now-bikeParkDuration,bikeMountReach**2);
+  `).bind(room,id,key,active,now-FEED_MS,now-BIKE_FALL_DURATION_MS,now-bikeParkDuration,bikeMountReach**2);
   const dock=docksById.get(action.dock);
   const nearDock=`(${nearVehicleAccess} OR ${nearVehicleAccess})`;
   const position=[...accessArguments(dock.access,bikeDockReach),...accessArguments(dock,bikeDockReach)];
@@ -384,7 +395,7 @@ function bikeStatement(db,room,id,key,action,now,active){
     WHERE room=? AND id=? AND player_key=? AND updated>=?
       AND ${availableRider} AND (json_extract(avatar,'$.bike') IS NULL OR ${parkedBikeTime}<=?)
       AND ${nearDock}
-  `).bind(JSON.stringify({dock:action.dock}),room,id,key,active,now-FEED_MS,now-bikeParkDuration,...position);
+  `).bind(JSON.stringify({dock:action.dock}),room,id,key,active,now-FEED_MS,now-BIKE_FALL_DURATION_MS,now-bikeParkDuration,...position);
   return db.prepare(`
     UPDATE walkers SET avatar=json_remove(avatar,'$.bike')
     WHERE room=? AND id=? AND player_key=? AND updated>=?
@@ -429,6 +440,7 @@ function transportResult(bus,bike,avatar,walkers,id,now){
     const rental=avatar.bike,mounted=rental&&!rental.parked;
     if(bike.action==="take")result.bike=mounted&&rental.dock===bike.dock?"taken":"unavailable";
     else if(bike.action==="park")result.bike=rental?.parked?"parked":"unavailable";
+    else if(bike.action==="fall")result.bike=rental?.parked&&rental.parked.at===avatar.bikeFallAt?"fell":"unavailable";
     else if(bike.action==="mount")result.bike=mounted?"mounted":"unavailable";
     else result.bike=rental?"unavailable":"returned";
   }

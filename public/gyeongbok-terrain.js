@@ -1,5 +1,5 @@
 import {gbEastWallX,insideGbWall,onGbWestPath} from "./gyeongbok-perimeter.js";
-import {court,hall,middle,palacePond,stoneFountain,stoneHall,ticket} from "./layout.js";
+import {court,courtAngle,hall,middle,palacePond,pavilions,stoneFountain,stoneHall,ticket} from "./layout.js";
 import {plazaSites} from "./plaza-layout.js";
 
 const gate=plazaSites.gate;
@@ -13,9 +13,16 @@ const sejongProfile=[[-905,0],[-840,.1],[-750,-.3],[-620,-.75],[-495,-1.2],[-355
 const gardenProfile=[[6,6.1],[70,5.4],[140,4.3],[216,3.05],[300,2.0],[386,.9],[450,.2]];
 const levelPads=[
   [stoneHall,34,24,.85],[stoneFountain,12,12,.90],[palacePond,23,23,.15],
-  [hall,18,17,-.10],[court,20,13,-.20],[middle,13,13,-.26],[ticket,7,5,-3.16]
+  [court,20,13,-.20],[middle,13,13,-.26],[ticket,7,5,-3.16]
 ];
 const clamp=value=>Math.max(0,Math.min(1,value));
+const pavilion=name=>pavilions.find(site=>site.name===name);
+const terracePads=[
+  [hall,courtAngle,-24.1,23.6,-19.3,33.1,-.10],
+  [pavilion("함녕전"),-.21,-19,19,-13,15,-.90],
+  [pavilion("석어당"),-.20,-15,15,-9,10,1.84],
+  [pavilion("정관헌"),-.04,-14,14,-10,13,.41]
+].map(([site,angle,west,east,north,south,base])=>({site,cos:Math.cos(angle),sin:Math.sin(angle),west,east,north,south,base}));
 function profileAt(value,profile,direction){
   for(let i=1;i<profile.length;i++){
     const [start,low]=profile[i-1],[end,high]=profile[i];
@@ -38,6 +45,20 @@ export function southWorldTerrainHeight({x,y}){
     const gap=Math.max(Math.abs(x-site.x)-w,Math.abs(y-site.y)-d,0);
     level+=(base-level)*clamp(1-gap/15);
   }
+  // Each rotated stone terrace and its treads share the building datum.
+  // Blend overlapping approaches, preserving the exact elevation inside a pad.
+  let totalWeight=1,weightedHeight=level;
+  for(const {site,cos,sin,west,east,north,south,base} of terracePads){
+    const dx=x-site.x,dy=y-site.y;
+    if(Math.abs(dx)>56||Math.abs(dy)>56)continue;
+    const along=dx*sin+dy*cos,across=dx*cos-dy*sin;
+    const gap=Math.max(west-across,across-east,north-along,along-south,0);
+    if(!gap){totalWeight=1;weightedHeight=base;break;}
+    const weight=Math.max(0,15/gap-1);
+    totalWeight+=weight;
+    weightedHeight+=base*weight;
+  }
+  level=weightedHeight/totalWeight;
   // Keep the plaza road and palace entrance at the same height.
   const gateBlend=clamp((y-gate.y)/55);
   return level*gateBlend;
@@ -52,6 +73,8 @@ export function gyeongbokTerrainHeight({x,y}){
   if(north<=0||north>910||Math.abs(x-gate.x)>330)return 0;
   const east=x-gate.x;
   let level=profileAt(north,palaceProfile,1);
+  const terraceGap=Math.max(Math.abs(east)-31.5,Math.abs(north-300)-26.5,0);
+  level+=(profileAt(300,palaceProfile,1)-level)*clamp(1-terraceGap/15);
   if(east>=-198&&east<=-59&&north>=353&&north<=495)level=6.2;
   else if(east>-219&&east<-39&&north>331&&north<517){
     const margin=Math.min(east+219,-39-east,north-331,517-north);
@@ -66,42 +89,156 @@ export function palaceGroundOffset(x,y){
   return insideGbWall(x,y)||onGbWestPath(x,y)?gyeongbokTerrainHeight({x,y}):0;
 }
 
-// The pavilion and trees stand upright. Ground and wall meshes follow the
-// terrain at their own vertices so long paths meet the ground along their edges.
-export function* gradePalaceMeshes(T,objects,height=gyeongbokTerrainHeight){
-  const vertex=new T.Vector3(),other=new T.Vector3(),matrix=new T.Matrix4(),inverse=new T.Matrix4();
+const terrainCell=8,terrainPatchCells=8,terrainPatchSize=terrainCell*terrainPatchCells;
+const heightGrids=new WeakMap();
+function terrainGrid(height){
+  if(heightGrids.has(height))return heightGrids.get(height);
+  const levels=new Map(),planes=new Map();
+  function sample(x,z){
+    const key=x+","+z;
+    if(!levels.has(key))levels.set(key,height({x:x+300,y:z+225}));
+    return levels.get(key);
+  }
+  function plane(x,z,size){
+    const key=x+","+z+","+size;
+    if(planes.has(key))return planes.get(key);
+    const start=sample(x,z),dx=(sample(x+size,z)-start)/size,dz=(sample(x,z+size)-start)/size;
+    const level=(a,b)=>start+(a-x)*dx+(b-z)*dz;
+    let planar=true;
+    for(let row=z;planar&&row<=z+size;row+=terrainCell){
+      for(let col=x;col<=x+size;col+=terrainCell){
+        if(Math.abs(sample(col,row)-level(col,row))>1e-8){planar=false;break;}
+      }
+    }
+    planes.set(key,planar?level:null);
+    return planes.get(key);
+  }
+  const grid={sample,plane};
+  heightGrids.set(height,grid);
+  return grid;
+}
+
+// The same world-space grid must underlie ground, roads, paving and their
+// markings. Independent triangle splits can put an upper layer below its base.
+function clipTerrainPolygon(vertices,axis,limit,side){
+  if(!vertices.length)return vertices;
+  const measure=point=>((axis<0?point[0]+point[2]:point[axis])-limit)*side;
+  if(side<0&&vertices.every(point=>measure(point)===0))return [];
+  const clipped=[];
+  let from=vertices.at(-1),start=measure(from);
+  for(const to of vertices){
+    const end=measure(to);
+    if(start*end<0){
+      const fraction=start/(start-end);
+      clipped.push(from.map((value,index)=>value+(to[index]-value)*fraction));
+    }
+    if(end>=0)clipped.push(to);
+    from=to;start=end;
+  }
+  return clipped;
+}
+
+function* drapeTerrainMesh(T,object,grid){
+  object.updateMatrix();
+  const matrix=object.matrix,inverse=matrix.clone().invert(),vertex=new T.Vector3();
+  const old=object.geometry,{position,uv}=old.attributes;
+  const points=[],vertices=[],texels=[],indices=[];
+  let low=Infinity,high=-Infinity;
+  for(let i=0;i<position.count;i++){
+    vertex.fromBufferAttribute(position,i).applyMatrix4(matrix);
+    const {x,y,z}=vertex;
+    points.push([x,y,z,uv?.getX(i)??0,uv?.getY(i)??0]);
+    low=Math.min(low,y);high=Math.max(high,y);
+  }
+  if(high-low<1e-5)object.userData.terrainSurface=true;
+
+  function emitPolygon(polygon,height){
+    const [a]=polygon;
+    const corners=[];
+    function corner(index){
+      if(corners[index]!==undefined)return corners[index];
+      const [x,y,z,u,v]=polygon[index];
+      const offset=vertices.length/3;
+      vertex.set(x,y+height(x,z),z).applyMatrix4(inverse);
+      vertices.push(vertex.x,vertex.y,vertex.z);
+      if(uv)texels.push(u,v);
+      corners[index]=offset;
+      return offset;
+    }
+    for(let i=1;i<polygon.length-1;i++){
+      const b=polygon[i],c=polygon[i+1];
+      const abx=b[0]-a[0],aby=b[1]-a[1],abz=b[2]-a[2];
+      const acx=c[0]-a[0],acy=c[1]-a[1],acz=c[2]-a[2];
+      if(Math.hypot(aby*acz-abz*acy,abz*acx-abx*acz,abx*acy-aby*acx)<1e-7)continue;
+      indices.push(corner(0),corner(i),corner(i+1));
+    }
+  }
+  function drapePatch(polygon,x,z,size){
+    if(polygon.length<3)return;
+    const level=grid.plane(x,z,size);
+    if(level){emitPolygon(polygon,level);return;}
+    if(size===terrainCell){
+      const nw=grid.sample(x,z),ne=grid.sample(x+size,z);
+      const sw=grid.sample(x,z+size),se=grid.sample(x+size,z+size);
+      const diagonal=x+z+size;
+      emitPolygon(clipTerrainPolygon(polygon,-1,diagonal,-1),(a,b)=>
+        nw+(ne-nw)*(a-x)/size+(sw-nw)*(b-z)/size);
+      emitPolygon(clipTerrainPolygon(polygon,-1,diagonal,1),(a,b)=>
+        se+(sw-se)*(x+size-a)/size+(ne-se)*(z+size-b)/size);
+      return;
+    }
+    const half=size/2;
+    for(const east of [false,true]){
+      const side=east?1:-1;
+      const strip=clipTerrainPolygon(polygon,0,x+half,side);
+      if(strip.length<3)continue;
+      const col=east?x+half:x;
+      drapePatch(clipTerrainPolygon(strip,2,z+half,-1),col,z,half);
+      drapePatch(clipTerrainPolygon(strip,2,z+half,1),col,z+half,half);
+    }
+  }
+  const index=old.index,faceCount=(index?.count??points.length)/3;
+  const patchStart=value=>Math.floor(value/terrainPatchSize)*terrainPatchSize;
+  for(let face=0;face<faceCount;face++){
+    const i=face*3;
+    const a=points[index?index.getX(i):i],b=points[index?index.getX(i+1):i+1],c=points[index?index.getX(i+2):i+2];
+    const triangle=[a,b,c];
+    const top=patchStart(Math.min(a[2],b[2],c[2])),bottom=Math.max(a[2],b[2],c[2]);
+    const left=patchStart(Math.min(a[0],b[0],c[0])),right=Math.max(a[0],b[0],c[0]);
+    if(bottom<top+terrainPatchSize&&right<left+terrainPatchSize)drapePatch(triangle,left,top,terrainPatchSize);
+    else for(let z=top;z<=bottom;z+=terrainPatchSize){
+      const lower=clipTerrainPolygon(triangle,2,z,1);
+      const row=clipTerrainPolygon(lower,2,z+terrainPatchSize,-1);
+      if(row.length<3)continue;
+      const rowLeft=patchStart(Math.min(...row.map(point=>point[0]))),rowRight=Math.max(...row.map(point=>point[0]));
+      for(let x=rowLeft;x<=rowRight;x+=terrainPatchSize){
+        const east=clipTerrainPolygon(row,0,x,1);
+        drapePatch(clipTerrainPolygon(east,0,x+terrainPatchSize,-1),x,z,terrainPatchSize);
+      }
+      yield;
+    }
+    if(face%64===63)yield;
+  }
+  const geometry=new T.BufferGeometry();
+  geometry.setAttribute("position",new T.Float32BufferAttribute(vertices,3));
+  if(uv)geometry.setAttribute("uv",new T.Float32BufferAttribute(texels,2));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  object.geometry=geometry;
+  if(!object.userData.sharedTerrainGeometry)old.dispose();
+}
+
+// The pavilion and trees stand upright, while paving and long walls conform.
+export const palaceMeshHeight=point=>point.y>=gate.y?southWorldTerrainHeight(point):gyeongbokTerrainHeight(point);
+export function* gradePalaceMeshes(T,objects,height=palaceMeshHeight){
+  const grid=terrainGrid(height);
   let count=0;
   for(const object of objects){
     if(object.userData.flatBackground)continue;
-    if(object.userData.followTerrain){
-      object.updateMatrix();
-      matrix.copy(object.matrix);inverse.copy(matrix).invert();
-      const old=object.geometry,source=old.index?old.toNonIndexed():old;
-      const pos=source.attributes.position,uv=source.attributes.uv,vertices=[],texels=[];
-      const read=index=>[pos.getX(index),pos.getY(index),pos.getZ(index),uv?.getX(index)??0,uv?.getY(index)??0];
-      function distance(a,b){return vertex.fromArray(a).applyMatrix4(matrix).distanceTo(other.fromArray(b).applyMatrix4(matrix));}
-      function triangle(a,b,c){
-        const ab=distance(a,b),bc=distance(b,c),ca=distance(c,a);
-        if(Math.max(ab,bc,ca)>23){
-          if(ab>=bc&&ab>=ca){const m=a.map((value,i)=>(value+b[i])/2);triangle(a,m,c);triangle(m,b,c);}
-          else if(bc>=ca){const m=b.map((value,i)=>(value+c[i])/2);triangle(a,b,m);triangle(a,m,c);}
-          else{const m=c.map((value,i)=>(value+a[i])/2);triangle(a,b,m);triangle(m,b,c);}
-          return;
-        }
-        for(const p of [a,b,c]){
-          vertex.fromArray(p).applyMatrix4(matrix);
-          vertex.y+=height({x:vertex.x+300,y:vertex.z+225});
-          vertex.applyMatrix4(inverse);
-          vertices.push(vertex.x,vertex.y,vertex.z);texels.push(p[3],p[4]);
-        }
-      }
-      for(let i=0;i<pos.count;i+=3)triangle(read(i),read(i+1),read(i+2));
-      const geo=new T.BufferGeometry();
-      geo.setAttribute("position",new T.Float32BufferAttribute(vertices,3));
-      geo.setAttribute("uv",new T.Float32BufferAttribute(texels,2));
-      geo.computeVertexNormals();object.geometry=geo;
-      if(source!==old)source.dispose();
-      if(!object.userData.sharedTerrainGeometry)old.dispose();
+    if(object.userData.terrainAnchor){
+      object.position.y+=height(object.userData.terrainAnchor);
+    }else if(object.userData.followTerrain){
+      yield* drapeTerrainMesh(T,object,grid);
     }else{
       const {x,z}=object.position;
       object.position.y+=height({x:x+300,y:z+225});

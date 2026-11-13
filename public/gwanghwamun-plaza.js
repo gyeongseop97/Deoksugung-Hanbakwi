@@ -1,6 +1,6 @@
 import {addObstacle} from "./layout.js";
 import {makeTreeBuilder} from "./lowpoly-trees.js";
-import {addPlazaCity} from "./plaza-city.js";
+import {assemblePlazaCity} from "./plaza-city.js";
 import {addPlazaMonuments,plazaMonumentFootprints} from "./plaza-monuments.js";
 import {plazaAt,plazaOutline,plazaBeds,plazaSites,plazaTransitStops,insidePlazaPolygon,
   plazaRoadProfile,plazaCrossings,plazaCrossingApronHalf,eastCurb,eastRoadWidth,sajikRoad,haechiBasin} from "./plaza-layout.js";
@@ -166,11 +166,11 @@ export function* assembleGwanghwamunPlaza(T,scene,kit,{birdPerches,terrainHeight
       const e=minE+1+random()*(width-2),n=minN+1+random()*(length-2),p=plazaAt(e,n);
       if(!insidePlazaPolygon(p.x,p.y,bed.outline)||planted.some(a=>Math.hypot(a.east-e,a.north-n)<4.6))continue;
       const {x,z}=world(e,n),r=random(),style=pine?"cloud":r<.4?"branchy":r<.73?"round":"column";
-      const tree=trees.grow(x,z,{height:pine?6+random()*3:3.8+random()*4.9,style,
+      const tree=trees.grow(x,z,{height:pine?6+random()*3:3.8+random()*4.9,style,terrainAnchor:p,
         palette:pine?"pine":r<.22?"ginkgo":r<.39?"amber":r<.52?"maple":r<.73?"olive":"deep"});
       if(birdPerches&&tree?.top){
         const x=tree.top.x-wx(0),y=tree.top.z-wz(0);
-        birdPerches.push({x,y,height:tree.top.y+.015+terrainHeight({x,y}),kind:"tree"});
+        birdPerches.push({x,y,height:tree.top.y+.015+terrainHeight(p),kind:"tree"});
       }
       planted.push(p);
     }
@@ -247,17 +247,21 @@ export function* assembleGwanghwamunPlaza(T,scene,kit,{birdPerches,terrainHeight
   rampGeometry.setAttribute("uv",new T.Float32BufferAttribute([0,0,4,0,4,5,0,0,4,5,0,5],2));rampGeometry.computeVertexNormals();
   const ramp=new T.Mesh(rampGeometry,stone);ramp.receiveShadow=true;ramp.userData.followTerrain=true;group.add(ramp);
   const basinLength=north-south,centre=(north+south)/2;
+  const basinWall=(...args)=>{
+    const mesh=block(...args);
+    mesh.userData.followTerrain=true;mesh.userData.sharedTerrainGeometry=true;
+  };
   for(const side of [west,east]){
-    block(0x8b9290,side,centre,.31,basinLength,depth,-depth);
-    block(0x596864,side,centre,.08,basinLength,.07,.90);
-    block(0xa2a7a1,side,centre,.45,basinLength,.21,.02);
+    basinWall(0x8b9290,side,centre,.31,basinLength,depth,-depth);
+    basinWall(0x596864,side,centre,.08,basinLength,.07,.90);
+    basinWall(0xa2a7a1,side,centre,.45,basinLength,.21,.02);
     for(let n=south+.4;n<north;n+=2.2)block(0x697570,side,n,.09,.09,.92,.02);
   }
-  block(0x8d9291,(west+east)/2,south,east-west,.48,depth+.95,-depth);
+  basinWall(0x8d9291,(west+east)/2,south,east-west,.48,depth+.95,-depth);
   for(let i=0;i<4;i++){
     const e=west+1.05+i*.98;
-    block(0xb2b0a6,e,108,.93,17.2,.20+i*.16,-depth);
-    block(0x8e6a51,e,108,.84,16.9,.055,-depth+.20+i*.16);
+    basinWall(0xb2b0a6,e,108,.93,17.2,.20+i*.16,-depth);
+    basinWall(0x8e6a51,e,108,.84,16.9,.055,-depth+.20+i*.16);
   }
   const mediaMaterials=[];
   for(let i=0;i<15;i++){
@@ -269,9 +273,9 @@ export function* assembleGwanghwamunPlaza(T,scene,kit,{birdPerches,terrainHeight
   // Historic channel, courtyard shade and the protected archaeological remains.
   for(const [start,end] of [[155,186],[202,248],[283,306],[345,380],[397,434],[456,513]]){
     const e=-19.6,n=(start+end)/2;
-    block(0x777e79,e,n,.96,end-start,.045,.03);
-    block(water,e,n,.63,end-start-.18,.04,.074);
-    for(const side of [-1,1])block(0xa3a7a0,e+side*.47,n,.16,end-start,.064,.041);
+    basinWall(0x777e79,e,n,.96,end-start,.045,.03);
+    basinWall(water,e,n,.63,end-start-.18,.04,.074);
+    for(const side of [-1,1])basinWall(0xa3a7a0,e+side*.47,n,.16,end-start,.064,.041);
   }
   const ruins=plazaSites.ruins;
   block(0x6b665a,ruins.east,ruins.north,10.7,13.8,.13,.02);
@@ -322,7 +326,7 @@ export function* assembleGwanghwamunPlaza(T,scene,kit,{birdPerches,terrainHeight
   yield;
   addPlazaMonuments(T,group,kit,{yi:plazaSites.yi,sejong:plazaSites.sejong});
   yield;
-  addPlazaCity(T,group,kit);
+  yield* assemblePlazaCity(T,group,kit);
   yield;
   const fountains=addPlazaFountains({T,group,world,block,water,random,terrainHeight});
   return function updatePlaza(now,night,anchor,showStart=0,clock=now){

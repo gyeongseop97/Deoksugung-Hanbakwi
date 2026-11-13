@@ -3,7 +3,7 @@ import {bikeFit,bikePedal,makeRidingBike} from "./sejong-bike-model.js";
 import {isCycling} from "./sejong-bike.js";
 import {CLINK_DURATION_MS} from "./social-events.js";
 import {makeUmbrella,makeWearables} from "./wearables-models.js";
-import {alcoholLevel,gestureBody,gestureHands,MAX_ALCOHOL_LEVEL} from "./avatar-gestures.js";
+import {alcoholGlasses,alcoholLevel,gestureBody,gestureHands,MAX_ALCOHOL_LEVEL} from "./avatar-gestures.js";
 
 const TAU = Math.PI * 2;
 const HAIR = ["short", "bob", "long", "bun"];
@@ -609,7 +609,7 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
     lower.quaternion.copy(upper.quaternion).invert().multiply(globalLower);
   }
 
-  function appearance(model, position, blink, blush, sick) {
+  function appearance(model, position, blink, blush, woozy, sick) {
     const look = position.look;
     const hair = HAIR.includes(look?.hair) ? look.hair : position.character === "woman" ? "long" : "short";
     const eyes = EYES.includes(look?.eyes) ? look.eyes : "round";
@@ -658,7 +658,7 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
         arm.shortSleeve.visible = bare;
       }
     }
-    const expression=sick?"sick":blush>=3?"woozy":eyes;
+    const expression=sick?"sick":woozy?"woozy":eyes;
     model.faceMesh.material = faceMaterial(expression,expression===eyes&&blink,blush);
     model.ears.material = earMaterials[blush];
   }
@@ -725,9 +725,10 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
       ? smooth(Math.min(clinkAge/600,(CLINK_DURATION_MS-clinkAge)/730)) : 0;
     const contact=clink?Math.max(0,1-Math.abs(clinkAge-900)/170)*.045:0;
     const performance=gestureHands(position,clock,hands,{riding,busy:Boolean(clink)});
-    const {pose:acting,sick,umbrellaOpen,umbrellaSide}=performance;
+    const {pose:acting,sick,fall,umbrellaOpen,umbrellaSide}=performance;
     const bodyPose=acting&&gestureBody(acting);
     const blushLevel=alcoholLevel(position,clock);
+    const woozy=alcoholGlasses(position,clock)>=2;
 
     const facing = Math.PI - (seat?.heading ?? position.clink?.heading ?? position.heading ?? 252) * Math.PI/180;
     const turn = facing - group.rotation.y;
@@ -781,9 +782,9 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
       headJoint.rotation.set(-.25,0,breath*.012);
       inverseChest.copy(chest.quaternion).invert();
     } else {
-      body.position.y = seated*SEAT_LIFT;
+      body.position.y = seated*SEAT_LIFT+(fall?.weight??0)*.23;
       const idleGesture=seat||!walking?1:.40;
-      const wobble=blushLevel>=3?Math.sin(clock*.0048+model.offset)*.062:0;
+      const wobble=woozy?Math.sin(clock*.0048+model.offset)*.062:0;
       pelvis.position.set(.020*pendulum*sway+(bodyPose?.x??0)*(1-seated),
         .691+bob-strideDip+idleRise+breath*.004-seated*.145-crouch*.225+(bodyPose?.y??0)*idleGesture,0);
       chest.rotation.set(.020+sprint*.13+crouch*.34+seated*.03+clink*.22+(bodyPose?.pitch??0)*idleGesture,
@@ -791,13 +792,14 @@ export function makeWalkerModels(T, scene, {wx, wz}, createItemProp) {
       headJoint.rotation.set(-.030-sprint*.070+crouch*.16+(bodyPose?.headPitch??0)*idleGesture,
         -pendulum*sway*.05+wobble*.65,breath*.020-pendulum*sway*.045+(bodyPose?.headRoll??0)*idleGesture+wobble);
     }
+    body.rotation.z=-(fall?.weight??0)*1.48;
     model.shadow.visible = !seat;
     model.shadow.position.y = .028-lift-(model.floorY-floor);
     model.shadow.material.opacity = .25 - sprint*bob*1.12 - airborne*.09;
     model.shadow.scale.set(1+sprint*.05-airborne*.18,1+crouch*.13-airborne*.18,1);
 
     const blinkTick = (now + model.offset%4100) % 4120;
-    appearance(model,position,blinkTick>3970&&blinkTick<4100,blushLevel,Boolean(sick?.weight>.38));
+    appearance(model,position,blinkTick>3970&&blinkTick<4100,blushLevel,woozy,Boolean(sick?.weight>.38));
     if (model.hem.visible) {
       model.hem.scale.set(1+seated*.08,1-seated*.61,1+stride*.10);
       model.hem.rotation.set(-seated*.37-sprint*.12,pendulum*sway*.065,pendulum*sway*.044);

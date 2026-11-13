@@ -115,7 +115,8 @@ export function buildSejongCorridor(T,scene,kit){
     const dx=b.x-a.x,dy=b.y-a.y,length=Math.hypot(dx,dy),ux=dx/length,uy=dy/length;
     const angle=Math.atan2(-ux,-uy);
     for(let k=1;k<length-.54;k+=1.15){
-      block(white,a.x+ux*k,a.y+uy*k,width-.28,.52,.015,.071,angle);
+      const stripe=block(white,a.x+ux*k,a.y+uy*k,width-.28,.52,.015,.071,angle);
+      stripe.userData.followTerrain=true;stripe.userData.sharedTerrainGeometry=true;
     }
     for(const end of [a,b]){
       block(0xc69e40,end.x,end.y,width-.05,.46,.029,.049,angle);
@@ -195,14 +196,14 @@ export function buildSejongCorridor(T,scene,kit){
       const w=side===1?2.34:2.72,d=i%3===0?6.3:4.72;
       plantBed(x,y,w,d,[0xdb9b67,0xdbbb60,0xb97e75][i%3]);
       const height=5.3+random()*4.1;
-      trees.grow(wx(x),wz(y),{height,style:i%4===2?"branchy":"round",palette:autumn[i%autumn.length]});
+      trees.grow(wx(x),wz(y),{height,terrainAnchor:{x,y},style:i%4===2?"branchy":"round",palette:autumn[i%autumn.length]});
       obstacle(x,y,.53,.55,height*.78);
     }
   }
   for(const [x,y] of [[450,-225],[447,-198],[448,-175],[453,-149],[468,-106],[467,-17],
     [474.1,37],[474.5,55],[473.4,87],[474.9,114],[473.9,152],[531,-151],[531,-120],[533,115],[545,190],[541,261]]){
     if(branchAt(x,y)||crossingAt(x,y))continue;
-    trees.grow(wx(x),wz(y),{height:5.7+random()*3.2,style:y===55?"cloud":"branchy",palette:y===55?"pine":"ginkgo"});
+    trees.grow(wx(x),wz(y),{height:5.7+random()*3.2,terrainAnchor:{x,y},style:y===55?"cloud":"branchy",palette:y===55?"pine":"ginkgo"});
     obstacle(x,y,.50,.50,4.2);
   }
   for(const [x,y] of [[471,-225],[471,-205],[471,-182],[471,-112],[473,34],[474,93],[473,131],[472,265],[528,-152],[527,127]]){
@@ -222,8 +223,8 @@ export function buildSejongCorridor(T,scene,kit){
   surface(rectangle(575,-155,88,23),paved,.061);
   surface(rectangle(615,-154,119,6.5),matte(0x42666a),.069);
   for(const side of [-1,1]){
-    block(0x9b9b8d,614,-154+side*3.8,119,.80,.31,.055);
-    block(0xa6a79b,614,-154+side*4.9,119,1.4,.14,.055);
+    strip(0x9b9b8d,{x:554.5,y:-154+side*3.8},{x:673.5,y:-154+side*3.8},.80,.31,.055);
+    strip(0xa6a79b,{x:554.5,y:-154+side*4.9},{x:673.5,y:-154+side*4.9},1.4,.14,.055);
   }
   block(0xa9a69a,553,-154,4.6,7.1,.46,.062);
   block(0x748d8d,553,-154,4.2,6.75,.035,.524);
@@ -252,7 +253,7 @@ function buildCorridorFacades({T,group,wx,wz,box,matte,block:buildBlock,obstacle
     const front=x+side*(w/2+.04),cell=d/columns;
     for(let level=0;level<levels;level++)for(let col=0;col<columns;col++){
       const color=colors[(col*3+level*7+Math.floor(col/3))%colors.length];
-      block(color,front,y-d/2+(col+.5)*cell,.11,cell*ratio,pitch*gap,base+(level+.16)*pitch);
+      block(color,front,y-d/2+(col+.5)*cell,.11,cell*ratio,pitch*gap,base+(level+.16)*pitch).userData.streamDetail=true;
     }
   }
   function roofTile(color,x,y,w,d,base){

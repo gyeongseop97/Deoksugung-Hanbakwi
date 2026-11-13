@@ -97,6 +97,7 @@ export function* assembleHwangudan(T,root,kit){
     }
     const side=faces(parent,vertices,sideMaterial);
     side.castShadow=true;
+    side.userData.followTerrain=true;
     plane(parent,ring,topMaterial,base+height);
   }
   function granite(){
@@ -128,7 +129,8 @@ export function* assembleHwangudan(T,root,kit){
       const a=p[0],b=p[1],length=Math.hypot(b[0]-a[0],b[1]-a[1]);
       for(let d=1.1;d<length-1;d+=1.92){
         const x=a[0]+(b[0]-a[0])*d/length,z=a[1]+(b[1]-a[1])*d/length;
-        block(group,0xe3ded0,x,z,.91,width-.6,.008,.06,Math.atan2(a[1]-b[1],b[0]-a[0]));
+        const stripe=block(group,0xe3ded0,x,z,.91,width-.6,.008,.06,Math.atan2(a[1]-b[1],b[0]-a[0]));
+        stripe.userData.followTerrain=true;stripe.userData.sharedTerrainGeometry=true;
       }
       continue;
     }
@@ -145,10 +147,11 @@ export function* assembleHwangudan(T,root,kit){
   yield;
 
   const instanceBox=new T.BoxGeometry(1,1,1),sample=new T.Object3D();
-  function batch(entries,material,parent=group){
+  function facadeDetail(entries,material,parent){
     if(!entries.length)return;
     const node=new T.InstancedMesh(instanceBox,material,entries.length);
     node.receiveShadow=true;
+    node.userData.streamStatic=true;node.userData.streamDetail=true;
     entries.forEach(([x,y,z,width,height,depth,angle],index)=>{
       sample.position.set(x,y,z);sample.rotation.y=angle;sample.scale.set(width,height,depth);
       sample.updateMatrix();node.setMatrixAt(index,sample.matrix);
@@ -209,8 +212,8 @@ export function* assembleHwangudan(T,root,kit){
         }
       }
     }
-    batch(windows[0],matte(blue),towerGroup);batch(windows[1],matte(lightBlue),towerGroup);
-    batch(windows[2],lighting,towerGroup);batch(trim,matte(bandTone),towerGroup);
+    facadeDetail(windows[0],matte(blue),towerGroup);facadeDetail(windows[1],matte(lightBlue),towerGroup);
+    facadeDetail(windows[2],lighting,towerGroup);facadeDetail(trim,matte(bandTone),towerGroup);
     if(levels>4)block(towerGroup,baseTone,center[0],center[1],8.6,5.2,1.1,height+.35);
     if(captions[id]){
       const [caption,x,y,z,angle]=captions[id];
@@ -458,12 +461,15 @@ export function* assembleHwangudan(T,root,kit){
     const a=[wx(ax),wz(ay)],b=[wx(bx),wz(by)],length=Math.hypot(bx-ax,by-ay);
     const count=Math.ceil(length/1.46);
     for(let i=0;i<=count;i++)block(group,0x534c40,a[0]+(b[0]-a[0])*i/count,a[1]+(b[1]-a[1])*i/count,.098,.098,.86,.064);
-    for(const h of [.48,.82])strip(group,0x534c40,a,b,.07,.068,h);
+    for(const h of [.48,.82]){
+      const rail=strip(group,0x534c40,a,b,.07,.068,h);
+      rail.userData.followTerrain=true;rail.userData.sharedTerrainGeometry=true;
+    }
   }
   function batchLocal(parent){
     const entries=new Map();
     for(const mesh of parent.children){
-      if(!mesh.isMesh||mesh.isInstancedMesh||!mesh.material?.isMeshStandardMaterial||mesh.material.map)continue;
+      if(!mesh.isMesh||mesh.isInstancedMesh||mesh.userData.followTerrain||!mesh.material?.isMeshStandardMaterial||mesh.material.map)continue;
       if(mesh.material===lighting||mesh.material===lightGold)continue;
       const key=[mesh.geometry.uuid,mesh.material.uuid,mesh.castShadow,mesh.receiveShadow].join("/");
       if(!entries.has(key))entries.set(key,[]);
@@ -484,7 +490,8 @@ export function* assembleHwangudan(T,root,kit){
   const trees=treeGroups.map(node=>makeTreeBuilder(T,node,{rand:random,clearance}));
   for(const [x,y,height,kind] of hwangudanPlantings){
     const tree=trees[x<628?0:x<694?1:2];
-    tree.grow(wx(x),wz(y),{height,palette:treePalettes[kind],style:kind==="pine"?"cloud":kind==="ginkgo"?"column":"branchy"});
+    tree.grow(wx(x),wz(y),{height,terrainAnchor:{x,y},palette:treePalettes[kind],
+      style:kind==="pine"?"cloud":kind==="ginkgo"?"column":"branchy"});
   }
   yield;
   const lamps=[[650.4,291.9],[667.5,302.5],[685.5,305.7],[699.9,320.9],[713.9,325],[727.9,324.9],[702.1,340.3],[723.8,339.2]];

@@ -33,6 +33,10 @@ export function* buildGyeongbokCompounds(T,root,{wx,wz,box,cylinder},{wall,block
   function part(color,east,north,width,depth,height,base=0){
     const p=world(east,north);return box(color,p.x,base+height/2,p.z,width,height,depth);
   }
+  function followGround(mesh){
+    mesh.userData.followTerrain=true;mesh.userData.sharedTerrainGeometry=true;
+    return mesh;
+  }
   const tiles=new Uint8Array(64*64*4);
   for(let y=0;y<64;y++)for(let x=0;x<64;x++){
     const roll=Math.cos((x%16)/16*Math.PI*2),joint=y%16===0?-.8:0;
@@ -88,6 +92,7 @@ export function* buildGyeongbokCompounds(T,root,{wx,wz,box,cylinder},{wall,block
         block(x,z,.53,d+.10,angle,2.81);
       }
     }else{
+      piece(darkerStone,0,-.49,0,w+1.55,1,d+1.22);
       piece(darkerStone,0,raised*.25,0,w+1.58,raised*.5,d+1.26);
       piece(granite,0,raised*.75,0,w+1.50,raised*.5,d+1.15);
       block(p.x,p.z,w+1.50,d+1.15,angle,raised);
@@ -147,8 +152,8 @@ export function* buildGyeongbokCompounds(T,root,{wx,wz,box,cylinder},{wall,block
       if(compound.id==="hamhwadang"){
         const center=world((e1+e2)/2,(n1+n2)/2);
         const angle=Math.atan2(n2-n1,e2-e1);
-        box(0x966e5b,center.x,height-.15,center.z,length+.19,.18,.58).rotation.y=angle;
-        box(0xb28e79,center.x,height-.25,center.z,length+.20,.029,.59).rotation.y=angle;
+        followGround(box(0x966e5b,center.x,height-.15,center.z,length+.19,.18,.58)).rotation.y=angle;
+        followGround(box(0xb28e79,center.x,height-.25,center.z,length+.20,.029,.59)).rotation.y=angle;
       }
     }
     if(!gap)return;
@@ -217,9 +222,11 @@ export function* buildGyeongbokCompounds(T,root,{wx,wz,box,cylinder},{wall,block
   // Four six-sided brick chimneys rise behind Gyotaejeon on Amisan's stone tiers.
   for(let tier=0;tier<4;tier++){
     const west=-15+tier*.75,right=30-tier*.7,north=478+tier*4.05,depth=4.45,height=(tier+1)*.24;
-    part(granite,(west+right)/2,north,right-west,depth,height);
-    part(0x75824e,(west+right)/2,north+.13,right-west-1.04,depth-.58,.08,height);
-    for(let i=0;i<Math.floor((right-west)/1.5);i++)part(i%3?0xa29c8d:0xb5ac9c,west+.76+i*1.5,north-depth/2,1.46,.19,.22,height-.23);
+    followGround(part(granite,(west+right)/2,north,right-west,depth,height+.16,-.16));
+    followGround(part(0x75824e,(west+right)/2,north+.13,right-west-1.04,depth-.58,.08,height));
+    for(let i=0;i<Math.floor((right-west)/1.5);i++){
+      followGround(part(i%3?0xa29c8d:0xb5ac9c,west+.76+i*1.5,north-depth/2,1.46,.19,.22,height-.23));
+    }
     solid((west+right)/2,north,right-west,depth,0,height);
   }
   for(const east of [-6,2,10,18]){
@@ -313,7 +320,7 @@ export function* buildGyeongbokCompounds(T,root,{wx,wz,box,cylinder},{wall,block
       for(let step=0;step<4;step++){
         const pos=t=>new T.Vector3(a.x+(b.x-a.x)*t,.56-Math.sin(t*Math.PI)*.125,a.z+(b.z-a.z)*t);
         const from=pos(step/4),to=pos((step+1)/4),direction=to.clone().sub(from),center=from.clone().addScaledVector(direction,.5);
-        const cord=cylinder(cordColor,center.x,center.y,center.z,.016,direction.length()+.018,5);
+        const cord=followGround(cylinder(cordColor,center.x,center.y,center.z,.016,direction.length()+.018,5));
         cord.quaternion.setFromUnitVectors(new T.Vector3(0,1,0),direction.normalize());
       }
     }
@@ -334,7 +341,7 @@ export function* buildGyeongbokCompounds(T,root,{wx,wz,box,cylinder},{wall,block
   groups.set(museum.id,museumModel);
   const museumPart=(color,x,y,z,w,h,d)=>box(color,x,y,z,w,h,d,museumModel);
   const wallStone=0xbcbab0,edgeStone=0x9e9f96;
-  museumPart(edgeStone,0,.55,0,74.6,1.1,45.6);
+  museumPart(edgeStone,0,-.30,0,74.6,2.8,45.6);
   museumPart(wallStone,0,3.68,1.4,72.3,5.16,40.6);
   museumPart(0x9b9c91,0,6.34,1.4,73.8,.42,41.4);
   for(const side of [-1,1]){
@@ -343,6 +350,7 @@ export function* buildGyeongbokCompounds(T,root,{wx,wz,box,cylinder},{wall,block
     for(let i=0;i<5;i++)museumPart(0x6f7774,side*25.8+(i-2)*3.26,9.16,4.4,1.86,2.8,.11);
     roof(wing,21.4,22.6,11.75,3.25,true);
     for(let i=0;i<7;i++)museumPart(0xa5a79c,side*(14.7+i*3.16),4.05,21.76,.59,4.0,.56);
+    yield;
   }
   museumPart(wallStone,0,8.29,-.5,28,4.25,26.3);
   museumPart(edgeStone,0,10.49,-.5,28.6,.35,26.8);
@@ -358,6 +366,7 @@ export function* buildGyeongbokCompounds(T,root,{wx,wz,box,cylinder},{wall,block
     }
     roof(storey,w,w*.91,height+h,.96+i*.08,true);
     height+=h+.22;
+    yield;
   }
   cylinder(0x747870,0,height+1.50,-.5,.37,2.6,10,museumModel,.47);
   for(let i=0;i<15;i++){

@@ -1,12 +1,12 @@
 import {plazaAt} from "./plaza-layout.js";
 
-export function addPlazaCity(T,group,{wx,wz}){
-  const stone=[],glass=[],screens=[],distant=[];
+export function* assemblePlazaCity(T,group,{wx,wz}){
+  let stone=[],glass=[],screens=[],distant=[];
   const concrete=0xa6a6a0,granite=0xbeb8aa,shadow=0x535655;
   let terrainAnchor;
   const at=(east,north)=>{terrainAnchor=plazaAt(east,north);};
   const box=(color,east,level,north,width,height,length,batch=stone)=>
-    batch.push({color,east,level,north,width,height,length,terrainAnchor});
+    batch.push({color,east,level,north,width,height,length});
   const slab=(color,east,north,width,length,bottom,height,batch=stone)=>{
     box(color,east,bottom+height/2,north,width,height,length,batch);
     if(!bottom&&width>4&&length>4)box(color,east,-.5,north,width,1.0,length,batch);
@@ -221,13 +221,21 @@ export function addPlazaCity(T,group,{wx,wz}){
     }
   }
 
-  at(-96,204);sejongCenter();
-  at(-91,68);hyundai();
-  at(-146,470);government();
-  at(87,52);kyobo();
-  at(82,184);kt();
-  at(82,291);civicEast(291,false);
-  at(82,385);civicEast(385,true);
+  const cube=new T.BoxGeometry(1,1,1);
+  const transform=new T.Object3D(),tint=new T.Color();
+  const masonry=new T.MeshStandardMaterial({roughness:.9});
+  const glazing=new T.MeshStandardMaterial({roughness:.54,metalness:.19});
+  const screensMaterial=new T.MeshBasicMaterial({color:0xe0e3e6});
+  const backdrop=new T.MeshStandardMaterial({roughness:.92});
+  for(const [east,north,build] of [[-96,204,sejongCenter],[-91,68,hyundai],[-146,470,government],[87,52,kyobo],
+    [82,184,kt],[82,291,()=>civicEast(291,false)],[82,385,()=>civicEast(385,true)]]){
+    at(east,north);build();
+    renderBatch(stone,masonry,true);
+    renderBatch(glass,glazing,false,true);
+    renderBatch(screens,screensMaterial,false,true);
+    stone=[];glass=[];screens=[];
+    yield;
+  }
 
   // Secondary blocks sit behind the recognizable frontage and leave the gate's sightline open.
   for(const [east,north,width,length,height,color] of [
@@ -245,11 +253,13 @@ export function addPlazaCity(T,group,{wx,wz}){
       const side=Math.sign(east),front=east-side*(width/2+.05);
       box(0x667e87,front,h,north,.16,3.2,length*.87,distant);
     }
+    renderBatch(distant,backdrop);
+    distant=[];
+    yield;
   }
 
-  const cube=new T.BoxGeometry(1,1,1);
-  const transform=new T.Object3D(),tint=new T.Color();
-  function renderBatch(entries,material,shadows=false){
+  function renderBatch(entries,material,shadows=false,detail=false){
+    if(!entries.length)return;
     const mesh=new T.InstancedMesh(cube,material,entries.length);
     for(const [index,part] of entries.entries()){
       const p=plazaAt(part.east,part.north);
@@ -260,12 +270,9 @@ export function addPlazaCity(T,group,{wx,wz}){
       mesh.setColorAt(index,tint.setHex(part.color));
     }
     mesh.castShadow=shadows;mesh.receiveShadow=true;
-    mesh.userData.terrainAnchors=entries.map(part=>part.terrainAnchor);
+    mesh.userData.terrainAnchor=terrainAnchor;
+    mesh.userData.streamStatic=true;mesh.userData.streamDetail=detail;
     mesh.computeBoundingSphere();
     group.add(mesh);
   }
-  renderBatch(stone,new T.MeshStandardMaterial({roughness:.9}),true);
-  renderBatch(glass,new T.MeshStandardMaterial({roughness:.54,metalness:.19}));
-  renderBatch(screens,new T.MeshBasicMaterial({color:0xe0e3e6}));
-  renderBatch(distant,new T.MeshStandardMaterial({roughness:.92}));
 }

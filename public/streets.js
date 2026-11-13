@@ -1,4 +1,4 @@
-import {gradePalaceMeshes} from "./gyeongbok-terrain.js";
+import {gradePalaceMeshes,palaceMeshHeight} from "./gyeongbok-terrain.js";
 import {
   route,entranceWalk,pavilions,city,estateOutline,stonewallVerge,palacePaths,palaceCourts,palaceGardens,palacePlantings,palacePond,palaceWalls,
   gate,ticket,ticketGuide,bridge,middle,hall,stoneHall,stoneFountain,court,courtAngle,fountain,garden,spawn,addObstacle,solidAt,withObstacleScope
@@ -328,12 +328,8 @@ export function buildJeongdong(T,scene,kit,{deferGyeongbok=false}={}) {
     }
   }
   function tree(x,z,height,choice=treeMix.garden(),spread=height*(.52+rand()*.2)){
-    const firstPart=target.children.length;
-    const grown=treeKit.grow(x,z,{height,spread,...choice});
+    const grown=treeKit.grow(x,z,{height,spread,...choice,terrainAnchor:{x:x+300,y:z+225}});
     if(!grown)return 0;
-    if(target===scene)for(let index=firstPart;index<target.children.length;index++){
-      target.children[index].userData.terrainAnchor={x:x+300,y:z+225};
-    }
     trees.push({x,z,height,top:grown.top});
     block(x,z,grown.radius*2.2,grown.radius*2.2,0,height*.5);
     shade(x,z,grown.reach*1.05,grown.reach*.92);
@@ -744,9 +740,20 @@ export function buildJeongdong(T,scene,kit,{deferGyeongbok=false}={}) {
         if(solid)block(x+px*Math.cos(angle)+d*.44*Math.sin(angle),z-px*Math.sin(angle)+d*.44*Math.cos(angle),wings,.30,angle,raised+h*.81);
       }
     }
+    const roofGroup=spec.surveyRoof!=null?new T.Group():g;
+    if(spec.surveyRoof!=null){
+      g.add(roofGroup);g.userData.surveyRoofs=[roofGroup];
+      // Measured eaves overhang the rebuilt timber shell. Close the roof
+      // cavity behind the brackets without placing a surface over the tiles.
+      if(spec.surveyRoof>0){
+        const soffit=spec.surveyRoof;
+        const base=Math.min(raised+h*.81,soffit-.45);
+        box(0x39382c,0,(base+soffit+.58)/2,0,w-.29,soffit+.58-base,d-.31,g);
+      }
+    }
     if(spec.stories===2){
       box(0x815643,0,raised+h*.76,0,w*.87,h*.46,d*.80,g);
-      roof(g,w+2.0,d+1.95,raised+h*.52,1.22,false);
+      roof(roofGroup,w+2.0,d+1.95,raised+h*.52,1.22,false);
       for(const side of [-1,1])for(let i=0;i<bays;i++){
         const x=(i+.5-bays/2)*w*.86/bays,z=side*d*.413;
         box(0x74503a,x,raised+h*.78,z,w*.75/bays,h*.24,.16,g);
@@ -757,7 +764,7 @@ export function buildJeongdong(T,scene,kit,{deferGyeongbok=false}={}) {
       box(0xc1b8a5,0,.29,0,w+5.8,.56,d+5.2,g);
       for(let j=0;j<5;j++)box(0xb9b0a0,0,.075+j*.095,d/2+3.1-j*.47,6.1,.18,.66,g);
     }
-    roof(g,w+(spec.open?3.2:2.5),d+2.36,raised+h+.54,spec.rise??(spec.mainHall?3.05:spec.open?2.35:2.04),spec.gate||spec.mainHall||Boolean(spec.hip));
+    roof(roofGroup,w+(spec.open?3.2:2.5),d+2.36,raised+h+.54,spec.rise??(spec.mainHall?3.05:spec.open?2.35:2.04),spec.gate||spec.mainHall||Boolean(spec.hip));
     if(spec.sign||spec.name)nameplate(spec.sign||spec.name,g,0,raised+h-.24,d*.61,Math.min(3.5,w*.25),.79);
     return g;
   }
@@ -816,7 +823,8 @@ export function buildJeongdong(T,scene,kit,{deferGyeongbok=false}={}) {
     const g=placed(middle),shift=side*6.4;
     block(g.x+shift*Math.cos(courtAngle),g.z-shift*Math.sin(courtAngle),8.6,10.0,courtAngle);
   }
-  const hallModel=pavilion({...hall,w:18.6,d:17.6,h:5.0,bays:5,angle:courtAngle,raised:1.01,mainHall:true,sign:"殿和中",interior:"throne",lift:1.12,groundFloor:true});
+  const hallModel=pavilion({...hall,w:22.5,d:17.6,h:6.0,bays:5,angle:courtAngle,raised:1.01,
+    mainHall:true,sign:"殿和中",interior:"throne",lift:1.12,groundFloor:true,surveyRoof:7.72});
   const hallSite={...hall,angle:courtAngle};
   // Block the edges of each raised level and leave both stair openings clear.
   for(const [halfWidth,back,front,top] of [[19.85,-15.3,27.2,1.14],[13.55,-8.5,22.65,2.08]]){
@@ -834,6 +842,11 @@ export function buildJeongdong(T,scene,kit,{deferGyeongbok=false}={}) {
   for(const part of hallModel.children)part.position.y+=.81;
   box(0xaaa591,-.25,.50,5.95,39.7,1,42.5,hallModel);
   box(0xb7ae99,-.25,.91,7.075,27.10,1.82,31.15,hallModel);
+  for(const [height,z,width,depth] of [[1.003,5.95,39.7,42.5],[1.823,7.075,27.1,31.15]]){
+    const terrace=new T.Mesh(new T.PlaneGeometry(width,depth),courtStoneMaterial);
+    terrace.rotation.x=-Math.PI/2;terrace.position.set(-.25,height,z);
+    terrace.receiveShadow=true;hallModel.add(uvScale(terrace,width*.19,depth*.19));
+  }
   for(const [start,end,bottom,top] of [[29.06,27.2,0,1],[24.06,22.65,1.05,1.82]]){
     for(let step=0;step<5;step++){
       const depth=(start-end)/5,height=bottom+(top-bottom)*(step+1)/5;
@@ -849,6 +862,24 @@ export function buildJeongdong(T,scene,kit,{deferGyeongbok=false}={}) {
     orient(box(0x9d9e91,px,.36,pz,.36,.72,.28),courtAngle);block(px,pz,.36,.29,courtAngle,.72);
   }
   const pavilionModels=new Map();
+  const rebuiltPorches={
+    함녕전:{width:3.6,landing:1.39,head:8,foot:11.17,body:5.7,soffit:5.38},
+    석어당:{width:3.5,landing:1.08,head:4.1,foot:6.55,body:3.7,soffit:0}
+  };
+  function addSurveyPorch(spec){
+    const {width,landing,head,foot,body}=rebuiltPorches[spec.name];
+    // These porch coordinates belong to the surveyed landmark, not to one
+    // wing's shifted origin.
+    const {x,z}=placed(spec),porch=new T.Group();
+    porch.position.set(x,0,z);porch.rotation.y=spec.angle;scene.add(porch);
+    const depth=Math.max(.4,head-body);
+    box(0xb8ad97,0,landing/2,head-depth/2,spec.w,landing,depth,porch);
+    const count=Math.ceil(landing/.17),tread=(foot-head)/count;
+    for(let step=0;step<count;step++){
+      const height=landing*(1-step/count);
+      box(0xb2a993,0,height/2,head+(step+.5)*tread,width,height,tread+.01,porch);
+    }
+  }
   for(const spec of pavilions){
     if(["redBrick","western","westernAnnex"].includes(spec.kind)){
       buildWestern(T,scene,kit,spec);
@@ -881,14 +912,15 @@ export function buildJeongdong(T,scene,kit,{deferGyeongbok=false}={}) {
       // The sleeping hall has a short rear wing rather than a rectangular roof plan.
       const {x,y,angle}=spec,c=Math.cos(angle),s=Math.sin(angle);
       const wing=(dx,dz,w,d,bays,sign,interior)=>pavilion({
-        ...spec,x:x+dx*c+dz*s,y:y-dx*s+dz*c,w,d,bays,sign,name:"",interior
+        ...spec,x:x+dx*c+dz*s,y:y-dx*s+dz*c,w,d,bays,sign,name:"",interior,surveyRoof:rebuiltPorches[spec.name]?.soffit
       });
       pavilionModels.set(spec.name,{spec,groups:[
         wing(1.1,1.95,29.5,11.7,9,spec.sign,spec.interior),wing(-9.5,-5.84,8.4,4.0,3)
       ]});
     }else{
-      pavilionModels.set(spec.name,{spec,groups:[pavilion(spec)]});
+      pavilionModels.set(spec.name,{spec,groups:[pavilion({...spec,surveyRoof:rebuiltPorches[spec.name]?.soffit})]});
     }
+    if(rebuiltPorches[spec.name])addSurveyPorch(spec);
   }
   const sh=placed(stoneHall),sf=placed(stoneFountain);
   const classical=new T.Group();classical.position.set(sh.x,0,sh.z);scene.add(classical);
@@ -974,6 +1006,7 @@ export function buildJeongdong(T,scene,kit,{deferGyeongbok=false}={}) {
   function* buildGyeongbokDistrict(root){
     const steps=buildGyeongbok(T,root,districtKit,districtTools);
     const scope=deferGyeongbok?new Map():null;
+    const firstTree=trees.length;
     // Starting state of the original palace random stream after Jeongdong's build.
     let seed=1574068689;
     const districtRandom=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};
@@ -983,7 +1016,13 @@ export function buildJeongdong(T,scene,kit,{deferGyeongbok=false}={}) {
       try{step=scope?withObstacleScope(scope,()=>steps.next()):steps.next();}
       finally{target=scene;activeRand=kit.rand;drawBenchesOnly=false;}
       if(step.done){
-        if(deferGyeongbok)yield* gradePalaceMeshes(T,root.children);
+        if(deferGyeongbok){
+          yield* gradePalaceMeshes(T,root.children);
+          for(let i=firstTree;i<trees.length;i++){
+            const {x,z,top}=trees[i];
+            if(top)top.y+=palaceMeshHeight({x:x+300,y:z+225});
+          }
+        }
         return step.value;
       }
       yield;

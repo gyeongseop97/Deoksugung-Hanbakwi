@@ -1,6 +1,9 @@
 export const GESTURE_DURATIONS=Object.freeze({wave:2450,clap:2250,punch:2100,dance:3600,heart:2500,cheer:2450});
 export const SICK_DURATION_MS=2150;
 export const MAX_ALCOHOL_LEVEL=8;
+export const MAX_ALCOHOL_DRINKS=8;
+export const ALCOHOL_DURATION_MS=120000;
+export const BIKE_FALL_DURATION_MS=2750;
 
 const TAU=Math.PI*2;
 const clamp=(value,min=0,max=1)=>Math.min(max,Math.max(min,value));
@@ -21,6 +24,33 @@ export function alcoholLevel(avatar,clock){
   return avatar.blushUntil>clock?clamp(Math.trunc(Number(avatar.blushLevel))||1,1,MAX_ALCOHOL_LEVEL):0;
 }
 
+export function alcoholGlasses(avatar,clock){
+  return avatar.blushUntil>clock?clamp(avatar.alcoholGlasses??0,0,MAX_ALCOHOL_DRINKS):0;
+}
+
+export function finishAlcoholSip(avatar,clock,empty){
+  const level=alcoholLevel(avatar,clock),glasses=alcoholGlasses(avatar,clock);
+  return {
+    blushLevel:Math.min(MAX_ALCOHOL_LEVEL,level+1),
+    blushUntil:clock+ALCOHOL_DURATION_MS,
+    alcoholGlasses:Math.min(MAX_ALCOHOL_DRINKS,glasses+Number(empty)),
+    sickAt:empty&&glasses>=2?clock:0
+  };
+}
+
+export function bikeFallChance(avatar,clock,distance){
+  if(distance<=0||!alcoholLevel(avatar,clock))return 0;
+  const rate=.003+.003*Math.min(3,alcoholGlasses(avatar,clock));
+  return 1-Math.exp(-distance*rate);
+}
+
+export function bikeFallAt(avatar,clock){
+  const age=clock-avatar.bikeFallAt;
+  if(!avatar.bikeFallAt||age<0||age>=BIKE_FALL_DURATION_MS)return null;
+  const weight=ease(age/410)*(1-ease((age-1510)/(BIKE_FALL_DURATION_MS-1510)));
+  return {kind:"bikeFall",time:age/1000,weight};
+}
+
 export function sickPoseAt(avatar,clock){
   const age=clock-avatar.sickAt;
   if(!avatar.sickAt||!Number.isFinite(age)||age<0||age>=SICK_DURATION_MS)return null;
@@ -33,9 +63,9 @@ export function sickPoseAt(avatar,clock){
 export function gestureHands(avatar,clock,hands,{riding,busy}){
   const {claspSide,itemFor,petting,feeding,petSide,waveSide,umbrellaHand}=hands;
   const grounded=!riding&&!avatar.bus;
-  const sick=grounded?sickPoseAt(avatar,clock):null;
-  const gesture=grounded&&!busy&&!petting&&!feeding&&!sick?gestureAt(avatar,clock):null;
-  const umbrellaOpen=Boolean(grounded&&avatar.umbrella);
+  const sick=grounded?sickPoseAt(avatar,clock):null,fall=grounded?bikeFallAt(avatar,clock):null;
+  const gesture=grounded&&!busy&&!petting&&!feeding&&!sick&&!fall?gestureAt(avatar,clock):null;
+  const umbrellaOpen=Boolean(grounded&&avatar.umbrella&&!fall);
   const needsBoth=gesture?.kind==="clap"||gesture?.kind==="heart";
   const centreUmbrella=needsBoth&&!avatar.sharedUmbrella&&!claspSide&&!itemFor(1)&&!itemFor(-1);
   const umbrellaSide=umbrellaOpen&&!centreUmbrella?umbrellaHand||[1,-1].find(side=>side!==claspSide&&!itemFor(side)&&side!==petSide&&
@@ -43,8 +73,8 @@ export function gestureHands(avatar,clock,hands,{riding,busy}){
   const free=side=>side!==claspSide&&side!==umbrellaSide&&!itemFor(side);
   const left=free(1),right=free(-1),gestureSide=left?1:right?-1:0;
   const allowed=gesture&&(gesture.kind==="dance"||(needsBoth?left&&right:gestureSide));
-  const pose=sick??(allowed?gesture:null);
-  return {pose,sick,umbrellaOpen,umbrellaSide,hand(side,firstPerson=false){
+  const pose=fall??sick??(allowed?gesture:null);
+  return {pose,sick,fall,umbrellaOpen,umbrellaSide,hand(side,firstPerson=false){
     return pose&&free(side)?gestureHand(pose,firstPerson?-side:side,firstPerson?-gestureSide:gestureSide,firstPerson):null;
   }};
 }
@@ -63,6 +93,7 @@ export function gestureBody(pose){
       roll:sway*.052*weight,headPitch:-.085*weight,headRoll:0};
     case "sick":return {x:0,y:(-.055-heave*.035)*weight,pitch:(.35+heave*.23)*weight,yaw:0,roll:sway*.035*weight,
       headPitch:(.12+heave*.14)*weight,headRoll:sway*.025*weight};
+    case "bikeFall":return {x:0,y:0,pitch:.16*weight,yaw:0,roll:0,headPitch:.22*weight,headRoll:-.15*weight};
     default:return null;
   }
 }
@@ -104,6 +135,9 @@ export function gestureHand(pose,side,waveSide,firstPerson=false){
     case "sick":return side!==waveSide?null:firstPerson?
       {x:side*(.13+heave*.045),y:-.19-heave*.22,z:.54,bend:-.77,roll:side*.74,curl:-.40}:
       {x:side*(.122+heave*.03),y:.599-heave*.123,z:.294,bend:-.50,roll:side*.66,curl:0};
+    case "bikeFall":return firstPerson?
+      {x:side*.52,y:-.43,z:.76,bend:-.30,roll:side*.72,curl:0}:
+      {x:side*.42,y:.16,z:.32,bend:-.16,roll:side*.28,curl:0};
     default:return null;
   }
 }

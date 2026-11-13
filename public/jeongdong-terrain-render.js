@@ -28,20 +28,17 @@ export function* gradeJeongdongMeshes(T,root,terrain,{trees=[],catWalls=[]}={}){
   for(const wall of catWalls)wall.groundAt=terrain;
   const material=new T.MeshStandardMaterial({color:0x777650,roughness:1});
   material.userData.seasonFoliage="ground";
-  const patch=64,steps=12,edge=485;
+  const patch=64,edge=485;
   for(let top=-12;top<451;top+=patch){
     for(let left=-47;left<edge;left+=patch){
       const width=Math.min(patch,edge-left);
-      const geometry=new T.PlaneGeometry(width,patch,steps,steps);
+      const geometry=new T.PlaneGeometry(width,patch);
       geometry.rotateX(-Math.PI/2);
-      const vertices=geometry.getAttribute("position");
-      const x=left+width/2,y=top+patch/2;
-      for(let i=0;i<vertices.count;i++){
-        vertices.setY(i,terrain({x:x+vertices.getX(i),y:y+vertices.getZ(i)})-.20);
-      }
-      geometry.computeVertexNormals();
       const tile=new T.Mesh(geometry,material);tile.receiveShadow=true;
-      tile.position.set(x-300,0,y-225);root.add(tile);
+      tile.position.set(left+width/2-300,-.20,top+patch/2-225);
+      tile.userData.followTerrain=true;
+      yield* gradePalaceMeshes(T,[tile],terrain);
+      root.add(tile);
     }
     yield;
   }

@@ -44,7 +44,7 @@ import {bindTutorial} from "./tutorial.js";
 import {makePicnic} from "./picnic-client.js";
 import {isPicnicItem} from "./picnic-data.js";
 import {ITEM_SLOTS,handLabel,itemAnimating,freeItemSlot} from "./held-items.js";
-import {GESTURE_DURATIONS,MAX_ALCOHOL_LEVEL,SICK_DURATION_MS} from "./avatar-gestures.js";
+import {BIKE_FALL_DURATION_MS,GESTURE_DURATIONS,SICK_DURATION_MS,bikeFallChance,finishAlcoholSip} from "./avatar-gestures.js";
 
 const $=id=>document.getElementById(id);
 const token=()=>Array.from(crypto.getRandomValues(new Uint8Array(16)),byte=>byte.toString(16).padStart(2,"0")).join("");
@@ -70,7 +70,8 @@ function initialAvatar(){
   }catch{}
   return {x:ticketApproach.x+1,y:ticketApproach.y-2.4,heading:entranceHeading,vx:0,vy:0,wish:0,wishOrigin:null,wishHeading:0,wishArt:null,wave:0,jump:0,vaultBase:null,emote:null,chat:null,
     seat:null,seatSide:null,bus:null,bike:null,item:null,secondItem:null,itemUse:null,picnicClaim:null,umbrella:false,umbrellaReady:false,
-    blushUntil:0,blushLevel:0,sickAt:0,gesture:null,pet:null,feed:null,running:false,blocked:false,up:false,character,look};
+    blushUntil:0,blushLevel:0,alcoholGlasses:0,sickAt:0,bikeFallAt:0,gesture:null,pet:null,feed:null,
+    running:false,blocked:false,up:false,character,look};
 }
 const me=initialAvatar(),people=new Map(),markers=new Map(),seenSignals=new Map(),lookPings=new Map(),formations=new Map();
 let ownView=initialView(),trackedPersonId=null,world,worldLoading,worldFailed=false;
@@ -80,6 +81,7 @@ let pageVersion=0,walkPositionAt=0,lastWalkPosition=null;
 let syncTimer,syncDue=Infinity,syncInFlight=null,syncStarted=-Infinity,syncFailures=0;
 let links=[],queuedSignal=null,queuedHand=null,queuedFeed=null,queuedChat=null,toastTimer;
 let queuedBus=null,queuedBike=null,lastBusHeading=null;
+let alcoholSip=null,bikeFallHintSeen=false;
 let fountainShow=null,clinks=[],queuedShow=null,queuedClink=null;
 let queuedMinigame=null,queuedPhoto=null,roomPhoto=null,minigameKiteCuts=[];
 let queuedPicnic=null;
@@ -170,7 +172,7 @@ function hideCatRunTip(){
   $("cat-run-tip").hidden=true;
 }
 function onCatFlee(runnerId){
-  if(!session||runnerId!==session.id||catTipDismissed||!$("cat-run-tip").hidden)return;
+  if(!session||runnerId!==session.id||catTipDismissed||!$("cat-run-tip").hidden||!bikeFallTip.hidden)return;
   $("cat-run-tip").hidden=false;
   catTipTimer=setTimeout(hideCatRunTip,6200);
 }
@@ -178,6 +180,23 @@ $("cat-run-tip-dismiss").addEventListener("click",()=>{
   catTipDismissed=true;
   localStorage.setItem("jeongdong-cat-run-tip-hidden","true");
   hideCatRunTip();focusGame();
+});
+const bikeFallTip=$("bike-fall-tip");
+let bikeFallTipTimer;
+function hideBikeFallTip(){
+  clearTimeout(bikeFallTipTimer);
+  bikeFallTip.hidden=true;
+}
+function showBikeFallTip(){
+  if(bikeFallHintSeen||localStorage.getItem("jeongdong-bike-fall-tip-hidden")==="true")return;
+  bikeFallHintSeen=true;
+  hideCatRunTip();
+  bikeFallTip.hidden=false;
+  bikeFallTipTimer=setTimeout(hideBikeFallTip,8500);
+}
+$("bike-fall-tip-dismiss").addEventListener("click",()=>{
+  localStorage.setItem("jeongdong-bike-fall-tip-hidden","true");
+  hideBikeFallTip();focusGame();
 });
 
 const mobileHeader=matchMedia("(max-width:810px), (orientation:landscape) and (max-height:560px)");
@@ -918,6 +937,7 @@ function returnToLobby(message=""){
   leaveBeacon();session=null;clearSyncTimer();resetInput();
   queuedSignal=queuedHand=queuedFeed=queuedChat=null;people.clear();changeLinks([]);resetLocationGuides();
   queuedBus=queuedBike=lastBusHeading=selectedBus=null;
+  alcoholSip=null;bikeFallHintSeen=false;hideBikeFallTip();
   fountainShow=queuedShow=queuedClink=null;clinks=[];heardClinks.clear();nextShowAudio=0;
   queuedPhoto=roomPhoto=queuedMinigame=queuedPicnic=null;minigames.reset();picnic.reset();photoMode.close();tutorial.close();
   minigameKiteCuts=[];
@@ -1476,11 +1496,12 @@ function nearbyStation(){
   return best;
 }
 function sickLocked(time){
-  return Boolean(me.sickAt&&time<me.sickAt+SICK_DURATION_MS);
+  return Boolean(me.sickAt&&time<me.sickAt+SICK_DURATION_MS||
+    me.bikeFallAt&&time<me.bikeFallAt+BIKE_FALL_DURATION_MS);
 }
 function canUseItem(time,slot){
   return Boolean(!me.bus&&!riding&&!isCycling(me)&&!queuedBus&&!queuedBike&&!picnicInventoryBusy()&&
-    !clinkLocked(time)&&!sickLocked(time)&&!feedingLocked(time)&&me[slot]?.remaining&&
+    !alcoholSip&&!clinkLocked(time)&&!sickLocked(time)&&!feedingLocked(time)&&me[slot]?.remaining&&
     !ITEM_SLOTS.some(slot=>itemAnimating(me[slot],time)));
 }
 function feedingLocked(time){
@@ -1619,6 +1640,7 @@ function confirmTransport(avatar,result,bus,bike){
   const ridingBus=me.bus;
   if((avatar.bus&&!ridingBus)||(isCycling(avatar)&&!isCycling(me)))rememberWalkPosition();
   me.bus=avatar.bus??null;me.bike=avatar.bike??null;
+  me.bikeFallAt=avatar.bikeFallAt??0;
   if(ridingBus?.index!==me.bus?.index||ridingBus?.seat!==me.bus?.seat){
     resetInput();
     Object.assign(me,{x:avatar.x,y:avatar.y,heading:avatar.heading,vx:0,vy:0,jump:0,vaultBase:null,blocked:false,running:false,up:false});
@@ -1634,13 +1656,14 @@ function confirmTransport(avatar,result,bus,bike){
   if(bike&&queuedBike===bike){
     queuedBike=null;
     const outcome=result?.bike;
-    if(outcome==="parked"||outcome==="mounted"){
+    if(outcome==="parked"||outcome==="mounted"||outcome==="fell"){
       resetInput();Object.assign(me,{x:avatar.x,y:avatar.y,heading:avatar.heading,vx:0,vy:0,blocked:false,running:false});
       setText($("location"),placeName(me));
     }
     if(outcome==="taken")toast("따릉이를 빌렸어요. 평소처럼 움직이면 자전거가 달려요.");
     else if(outcome==="returned")toast("따릉이를 반납했어요.");
     else if(outcome==="parked")toast("따릉이를 세웠어요. 10분 안에 돌아와 다시 탈 수 있어요.");
+    else if(outcome==="fell")showBikeFallTip();
     else if(outcome==="unavailable")toast(bike.action==="mount"?"세워둔 따릉이 가까이에서 다시 타 주세요.":"지금은 따릉이를 이용할 수 없어요.");
   }
 }
@@ -1783,17 +1806,7 @@ function useHeldItem(slot){
   me[slot]={...item,remaining:item.remaining-1,started:time};
   disableHeldActions();
   me.itemUse=slot;me.gesture=null;me.wave=0;
-  if(spec.alcohol){
-    const previous=time<me.blushUntil?me.blushLevel||1:0;
-    me.blushLevel=Math.min(MAX_ALCOHOL_LEVEL,previous+1);
-    me.blushUntil=time+120000;
-    if(me.blushLevel>=5){
-      me.sickAt=time+spec.duration;
-      const link=myLink();
-      if(link?.active)releasePair(link);
-      resetInput();
-    }
-  }
+  if(spec.alcohol)alcoholSip={at:time+spec.duration,empty:item.remaining===1};
   dirty=true;wakeSync();focusGame();
 }
 ITEM_SLOTS.forEach((slot,index)=>$(useItemButtons[index]).addEventListener("click",()=>useHeldItem(slot)));
@@ -1937,7 +1950,6 @@ function updateActivities(time,guideNearby){
   for(const slot of ITEM_SLOTS)if(me[slot]?.remaining===0&&!itemAnimating(me[slot],time)){
     me[slot]=null;dirty=true;
   }
-  if(me.blushLevel&&time>=me.blushUntil){me.blushLevel=0;me.blushUntil=0;me.sickAt=0;dirty=true;}
   $("gesture-open").disabled=!gestureReady(time);
   if(!$("gesture-menu").hidden)for(const button of gestureButtons)button.disabled=!gestureReady(time,button.dataset.gesture);
   const eligible=world&&session&&!me.bus&&!isCycling(me)&&!queuedBus&&!queuedBike;
@@ -2054,6 +2066,13 @@ function motion(now,elapsed){
     }else walkCourse(speed);
   }
   const moved=oldX!==me.x||oldY!==me.y;
+  const distance=moved?Math.hypot(me.x-oldX,me.y-oldY):0;
+  if(moved&&isCycling(me)&&!queuedBike&&me.blushUntil>gameTime(now)&&
+    Math.random()<bikeFallChance(me,gameTime(now),distance)){
+    queuedBike={action:"fall"};resetInput();
+    Object.assign(me,{vx:0,vy:0,running:false,blocked:false});
+    dirty=true;wakeSync();return false;
+  }
   soundscape(gameTime(now),moved&&!isCycling(me)&&me.seat==null?Math.min(1.2,Math.hypot(me.x-oldX,me.y-oldY)):0,wading,pace);
   if(moved){
     const location=placeName(me);
@@ -2130,6 +2149,17 @@ function frame(now){
   requestAnimationFrame(frame);
   if(!session)return;
   const time=gameTime(now);
+  if(alcoholSip&&time>=alcoholSip.at){
+    Object.assign(me,finishAlcoholSip(me,alcoholSip.at,alcoholSip.empty));
+    alcoholSip=null;
+    if(me.sickAt&&time<me.sickAt+SICK_DURATION_MS){
+      const link=myLink();
+      if(link?.active)releasePair(link);
+      resetInput();
+    }
+    dirty=true;wakeSync();
+  }
+  if(me.blushLevel&&time>=me.blushUntil){me.blushLevel=0;me.blushUntil=0;me.alcoholGlasses=0;me.sickAt=0;dirty=true;}
   smoothPeople(people,elapsed,time,roundTrip);
   const stepping=motion(now,elapsed);
   if(now>=walkPositionAt){
